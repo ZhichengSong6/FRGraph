@@ -1,0 +1,4 @@
+Symlinking /home/zhicheng/Project/FRGraph/devel/share/decomp_ros_utils/cmake/decomp_ros_utilsConfig.cmake
+Symlinking /home/zhicheng/Project/FRGraph/devel/share/decomp_ros_utils/cmake/decomp_ros_utilsConfig-version.cmake
+Symlinking /home/zhicheng/Project/FRGraph/devel/lib/libdecomp_rviz_plugins.so
+Symlinking /home/zhicheng/Project/FRGraph/devel/lib/pkgconfig/decomp_ros_utils.pc

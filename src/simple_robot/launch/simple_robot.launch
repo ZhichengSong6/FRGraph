@@ -1,0 +1,18 @@
+<launch>
+    <arg name="if_3D_Lidar" default="1" doc="if_3D_Lidar: [0, 1]"/>
+
+    <param name="robot_description" command="$(find xacro)/xacro '$(find simple_robot)/urdf/simple_robot.xacro' if_3D_Lidar:=$(arg if_3D_Lidar)"/>
+
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" output="screen" />
+
+    <node pkg="rviz" type="rviz" name="rviz" output="screen" args="-d $(find simple_robot)/rviz/simple_robot.rviz"/>
+
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <!-- <arg name="paused" value="false"/>
+        <arg name="use_sim_time" value="true"/> -->
+        <arg name="gui" value="true"/>
+    </include>
+
+    <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" clear_params="true"
+            args="-z 0.5 -param robot_description -urdf -model simple_robot" output="screen"/>
+</launch>

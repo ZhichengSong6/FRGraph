@@ -1,0 +1,1 @@
+/usr/bin/c++   -std=c++11 -Wall -Wno-deprecated-declarations -O2 -g -DNDEBUG  -rdynamic CMakeFiles/test_ellipsoid_decomp.dir/test/test_ellipsoid_decomp.cpp.o  -o test_ellipsoid_decomp 

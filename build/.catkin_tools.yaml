@@ -1,0 +1,6 @@
+devel_space: /home/zhicheng/Project/FRGraph/devel
+install: false
+install_space: /home/zhicheng/Project/FRGraph/install
+profile: default
+source_space: /home/zhicheng/Project/FRGraph/src
+workspace: /home/zhicheng/Project/FRGraph

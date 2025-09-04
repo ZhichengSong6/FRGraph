@@ -1,0 +1,1 @@
+/home/zhicheng/Project/FRGraph/devel/.private/velodyne_gazebo_plugins/lib/pkgconfig/velodyne_gazebo_plugins.pc

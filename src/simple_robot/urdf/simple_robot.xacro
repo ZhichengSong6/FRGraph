@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="simple_robot">
+
+
+  <xacro:arg name="if_3D_Lidar" default="1"/>
+  <xacro:include filename="$(find simple_robot)/urdf/velodyne.xacro"/>
+  <xacro:include filename="$(find simple_robot)/urdf/scan2d.xacro"/>
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.2 0.2 0.2"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0 0 1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.2 0.2 0.2"/>
+      </geometry>
+    </collision>
+  </link>
+
+
+  <xacro:if value="$(arg if_3D_Lidar)">
+    <xacro:Velodyne-HDL-32E connected_to="base_link" scan_name="scan" xyz="0. 0. 0.2" rpy="0. 0. 0."/>
+  </xacro:if>
+  <xacro:unless value="$(arg if_3D_Lidar)">
+    <xacro:scan2d connected_to="base_link" scan_name="scan" xyz="0. 0. 0.2" rpy="0. 0. 0."/>
+  </xacro:unless>
+
+</robot>

@@ -1,0 +1,1 @@
+/home/zhicheng/Project/FRGraph/devel/.private/decomp_ros_msgs/share/gennodejs/ros/decomp_ros_msgs/msg/Ellipsoid.js

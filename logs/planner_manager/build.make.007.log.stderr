@@ -1,0 +1,124 @@
+In file included from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:1[m[K:
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager.h:40:44:[m[K [01;31m[Kerror: [m[K‘[01m[KLaserScanConstPtr[m[K’ in namespace ‘[01m[Ksensor_msgs[m[K’ does not name a type
+   40 |     void scan2dCallback(const sensor_msgs::[01;31m[KLaserScanConstPtr[m[K &msg);
+      |                                            [01;31m[K^~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager.h:52:2:[m[K [01;31m[Kerror: [m[Kexpected ‘[01m[K;[m[K’ after class definition
+   52 | }
+      |  [01;31m[K^[m[K
+      |  [32m[K;[m[K
+In file included from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager_fsm.h:8[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager_fsm.cpp:1[m[K:
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager.h:40:44:[m[K [01;31m[Kerror: [m[K‘[01m[KLaserScanConstPtr[m[K’ in namespace ‘[01m[Ksensor_msgs[m[K’ does not name a type
+   40 |     void scan2dCallback(const sensor_msgs::[01;31m[KLaserScanConstPtr[m[K &msg);
+      |                                            [01;31m[K^~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:[m[K In member function ‘[01m[Kvoid PlannerManager::initPlannerModule(ros::NodeHandle&)[m[K’:
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:27:58:[m[K [01;31m[Kerror: [m[Kno match for ‘[01m[Koperator=[m[K’ (operand types are ‘[01m[Kconst Matrix4f[m[K’ {aka ‘[01m[Kconst Eigen::Matrix<float, 4, 4>[m[K’} and ‘[01m[KEigen::MatrixBase<Eigen::Matrix<double, 4, 4> >::CastXpr<float>::Type[m[K’ {aka ‘[01m[Kconst Eigen::CwiseUnaryOp<Eigen::internal::scalar_cast_op<double, float>, const Eigen::Matrix<double, 4, 4> >[m[K’})
+   27 |     T_lidar_base_mat = T_lidar_base.matrix().cast<float>([01;31m[K)[m[K;
+      |                                                          [01;31m[K^[m[K
+In file included from [01m[K/usr/include/eigen3/Eigen/Core:458[m[K,
+                 from [01m[K/usr/include/eigen3/Eigen/Geometry:11[m[K,
+                 from [01m[K/opt/ros/noetic/include/tf2_eigen/tf2_eigen.h:33[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager.h:12[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:1[m[K:
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:206:33:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[KEigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>&) [with _Scalar = float; int _Rows = 4; int _Cols = 4; int _Options = 0; int _MaxRows = 4; int _MaxCols = 4][m[K’ <near match>
+  206 |     EIGEN_STRONG_INLINE Matrix& [01;36m[Koperator[m[K=(const Matrix& other)
+      |                                 [01;36m[K^~~~~~~~[m[K
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:206:33:[m[K [01;36m[Knote: [m[K  passing ‘[01m[Kconst Matrix4f*[m[K’ {aka ‘[01m[Kconst Eigen::Matrix<float, 4, 4>*[m[K’} as ‘[01m[Kthis[m[K’ argument discards qualifiers
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:223:33:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[KEigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::CwiseUnaryOp<Eigen::internal::scalar_cast_op<double, float>, const Eigen::Matrix<double, 4, 4> >; _Scalar = float; int _Rows = 4; int _Cols = 4; int _Options = 0; int _MaxRows = 4; int _MaxCols = 4][m[K’ <near match>
+  223 |     EIGEN_STRONG_INLINE Matrix& [01;36m[Koperator[m[K=(const DenseBase<OtherDerived>& other)
+      |                                 [01;36m[K^~~~~~~~[m[K
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:223:33:[m[K [01;36m[Knote: [m[K  passing ‘[01m[Kconst Matrix4f*[m[K’ {aka ‘[01m[Kconst Eigen::Matrix<float, 4, 4>*[m[K’} as ‘[01m[Kthis[m[K’ argument discards qualifiers
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:236:33:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[KEigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::EigenBase<OtherDerived>&) [with OtherDerived = Eigen::CwiseUnaryOp<Eigen::internal::scalar_cast_op<double, float>, const Eigen::Matrix<double, 4, 4> >; _Scalar = float; int _Rows = 4; int _Cols = 4; int _Options = 0; int _MaxRows = 4; int _MaxCols = 4][m[K’ <near match>
+  236 |     EIGEN_STRONG_INLINE Matrix& [01;36m[Koperator[m[K=(const EigenBase<OtherDerived> &other)
+      |                                 [01;36m[K^~~~~~~~[m[K
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:236:33:[m[K [01;36m[Knote: [m[K  passing ‘[01m[Kconst Matrix4f*[m[K’ {aka ‘[01m[Kconst Eigen::Matrix<float, 4, 4>*[m[K’} as ‘[01m[Kthis[m[K’ argument discards qualifiers
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:243:33:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[Ktemplate<class OtherDerived> Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::ReturnByValue<OtherDerived>&) [with OtherDerived = OtherDerived; _Scalar = float; int _Rows = 4; int _Cols = 4; int _Options = 0; int _MaxRows = 4; int _MaxCols = 4][m[K’
+  243 |     EIGEN_STRONG_INLINE Matrix& [01;36m[Koperator[m[K=(const ReturnByValue<OtherDerived>& func)
+      |                                 [01;36m[K^~~~~~~~[m[K
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:243:33:[m[K [01;36m[Knote: [m[K  template argument deduction/substitution failed:
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:27:58:[m[K [01;36m[Knote: [m[K  ‘[01m[KEigen::MatrixBase<Eigen::Matrix<double, 4, 4> >::CastXpr<float>::Type[m[K’ {aka ‘[01m[Kconst Eigen::CwiseUnaryOp<Eigen::internal::scalar_cast_op<double, float>, const Eigen::Matrix<double, 4, 4> >[m[K’} is not derived from ‘[01m[Kconst Eigen::ReturnByValue<Derived>[m[K’
+   27 |     T_lidar_base_mat = T_lidar_base.matrix().cast<float>([01;36m[K)[m[K;
+      |                                                          [01;36m[K^[m[K
+In file included from [01m[K/usr/include/eigen3/Eigen/Core:458[m[K,
+                 from [01m[K/usr/include/eigen3/Eigen/Geometry:11[m[K,
+                 from [01m[K/opt/ros/noetic/include/tf2_eigen/tf2_eigen.h:33[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager.h:12[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:1[m[K:
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:279:13:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[KEigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>&&) [with _Scalar = float; int _Rows = 4; int _Cols = 4; int _Options = 0; int _MaxRows = 4; int _MaxCols = 4][m[K’ <near match>
+  279 |     Matrix& [01;36m[Koperator[m[K=(Matrix&& other) EIGEN_NOEXCEPT_IF(std::is_nothrow_move_assignable<Scalar>::value)
+      |             [01;36m[K^~~~~~~~[m[K
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:279:13:[m[K [01;36m[Knote: [m[K  passing ‘[01m[Kconst Matrix4f*[m[K’ {aka ‘[01m[Kconst Eigen::Matrix<float, 4, 4>*[m[K’} as ‘[01m[Kthis[m[K’ argument discards qualifiers
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:390:13:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[Ktemplate<class OtherDerived> Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>& Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::operator=(const Eigen::RotationBase<OtherDerived, Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::ColsAtCompileTime>&) [with OtherDerived = OtherDerived; _Scalar = float; int _Rows = 4; int _Cols = 4; int _Options = 0; int _MaxRows = 4; int _MaxCols = 4][m[K’
+  390 |     Matrix& [01;36m[Koperator[m[K=(const RotationBase<OtherDerived,ColsAtCompileTime>& r);
+      |             [01;36m[K^~~~~~~~[m[K
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:390:13:[m[K [01;36m[Knote: [m[K  template argument deduction/substitution failed:
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:27:58:[m[K [01;36m[Knote: [m[K  ‘[01m[KEigen::MatrixBase<Eigen::Matrix<double, 4, 4> >::CastXpr<float>::Type[m[K’ {aka ‘[01m[Kconst Eigen::CwiseUnaryOp<Eigen::internal::scalar_cast_op<double, float>, const Eigen::Matrix<double, 4, 4> >[m[K’} is not derived from ‘[01m[Kconst Eigen::RotationBase<OtherDerived, 4>[m[K’
+   27 |     T_lidar_base_mat = T_lidar_base.matrix().cast<float>([01;36m[K)[m[K;
+      |                                                          [01;36m[K^[m[K
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager.h:52:2:[m[K [01;31m[Kerror: [m[Kexpected ‘[01m[K;[m[K’ after class definition
+   52 | }
+      |  [01;31m[K^[m[K
+      |  [32m[K;[m[K
+In file included from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager_fsm.cpp:1[m[K:
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager_fsm.h:23:21:[m[K [01;31m[Kerror: [m[K‘[01m[KPtr[m[K’ in ‘[01m[Kclass PlannerManager[m[K’ does not name a type
+   23 |     PlannerManager::[01;31m[KPtr[m[K planner_manager_;
+      |                     [01;31m[K^~~[m[K
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager_fsm.h:26:35:[m[K [01;31m[Kerror: [m[KISO C++ forbids declaration of ‘[01m[KDynamicReplanFSMPOP[m[K’ with no type [[01;31m[K-fpermissive[m[K]
+   26 |     DynamicReplanFSMPOP(/* args */[01;31m[K)[m[K {}
+      |                                   [01;31m[K^[m[K
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager_fsm.h:27:25:[m[K [01;31m[Kerror: [m[Kexpected class-name before ‘[01m[K([m[K’ token
+   27 |     ~DynamicReplanFSMPOP[01;31m[K([m[K) {}
+      |                         [01;31m[K^[m[K
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager_fsm.h:32:2:[m[K [01;31m[Kerror: [m[Kexpected ‘[01m[K;[m[K’ after class definition
+   32 | }
+      |  [01;31m[K^[m[K
+      |  [32m[K;[m[K
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager_fsm.h:[m[K In member function ‘[01m[Kint PlannerManagerFSM::DynamicReplanFSMPOP()[m[K’:
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager_fsm.h:26:38:[m[K [01;35m[Kwarning: [m[Kno return statement in function returning non-void [[01;35m[K-Wreturn-type[m[K]
+   26 |     DynamicReplanFSMPOP(/* args */) {[01;35m[K}[m[K
+      |                                      [01;35m[K^[m[K
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager_fsm.cpp:[m[K In member function ‘[01m[Kvoid PlannerManagerFSM::init(ros::NodeHandle&)[m[K’:
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager_fsm.cpp:9:104:[m[K [01;31m[Kerror: [m[Kno matching function for call to ‘[01m[Kros::NodeHandle::param<std::vector<double, std::allocator<double> > >(const char [26], Eigen::Vector3d&, <brace-enclosed initializer list>)[m[K’
+    9 |     node_.param<std::vector<double>>("size_of_croped_pointcloud", size_of_croped_pointcloud_, {3, 3, 2}[01;31m[K)[m[K;
+      |                                                                                                        [01;31m[K^[m[K
+In file included from [01m[K/opt/ros/noetic/include/ros/ros.h:45[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager_fsm.h:4[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager_fsm.cpp:1[m[K:
+[01m[K/opt/ros/noetic/include/ros/node_handle.h:2120:8:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[Kbool ros::NodeHandle::param(const string&, T&, const T&) const [with T = std::vector<double>; std::string = std::__cxx11::basic_string<char>][m[K’
+ 2120 |   bool [01;36m[Kparam[m[K(const std::string& param_name, T& param_val, const T& default_val) const
+      |        [01;36m[K^~~~~[m[K
+[01m[K/opt/ros/noetic/include/ros/node_handle.h:2120:48:[m[K [01;36m[Knote: [m[K  no known conversion for argument 2 from ‘[01m[KEigen::Vector3d[m[K’ {aka ‘[01m[KEigen::Matrix<double, 3, 1>[m[K’} to ‘[01m[Kstd::vector<double>&[m[K’
+ 2120 |   bool param(const std::string& param_name, [01;36m[KT& param_val[m[K, const T& default_val) const
+      |                                             [01;36m[K~~~^~~~~~~~~[m[K
+[01m[K/opt/ros/noetic/include/ros/node_handle.h:2153:5:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[KT ros::NodeHandle::param(const string&, const T&) const [with T = std::vector<double>; std::string = std::__cxx11::basic_string<char>][m[K’
+ 2153 |   T [01;36m[Kparam[m[K(const std::string& param_name, const T& default_val) const
+      |     [01;36m[K^~~~~[m[K
+[01m[K/opt/ros/noetic/include/ros/node_handle.h:2153:5:[m[K [01;36m[Knote: [m[K  candidate expects 2 arguments, 3 provided
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager_fsm.cpp:12:5:[m[K [01;31m[Kerror: [m[K‘[01m[Kplanner_manager_[m[K’ was not declared in this scope; did you mean ‘[01m[KPlannerManager[m[K’?
+   12 |     [01;31m[Kplanner_manager_[m[K.reset(new PlannerManager());
+      |     [01;31m[K^~~~~~~~~~~~~~~~[m[K
+      |     [32m[KPlannerManager[m[K
+In file included from [01m[K/usr/include/eigen3/Eigen/Core:366[m[K,
+                 from [01m[K/usr/include/eigen3/Eigen/Geometry:11[m[K,
+                 from [01m[K/opt/ros/noetic/include/tf2_eigen/tf2_eigen.h:33[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/include/planner_manager.h:12[m[K,
+                 from [01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:1[m[K:
+/usr/include/eigen3/Eigen/src/Core/AssignEvaluator.h: In instantiation of ‘[01m[Kvoid Eigen::internal::call_assignment_no_alias(Dst&, const Src&, const Func&) [with Dst = Eigen::Matrix<double, 3, 1>; Src = Eigen::Matrix<float, 3, 1>; Func = Eigen::internal::assign_op<double, float>][m[K’:
+[01m[K/usr/include/eigen3/Eigen/src/Core/PlainObjectBase.h:732:41:[m[K   required from ‘[01m[KDerived& Eigen::PlainObjectBase<Derived>::_set_noalias(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::Matrix<float, 3, 1>; Derived = Eigen::Matrix<double, 3, 1>][m[K’
+[01m[K/usr/include/eigen3/Eigen/src/Core/PlainObjectBase.h:537:7:[m[K   required from ‘[01m[KEigen::PlainObjectBase<Derived>::PlainObjectBase(const Eigen::DenseBase<OtherDerived>&) [with OtherDerived = Eigen::Matrix<float, 3, 1>; Derived = Eigen::Matrix<double, 3, 1>][m[K’
+[01m[K/usr/include/eigen3/Eigen/src/Core/Matrix.h:377:29:[m[K   required from ‘[01m[KEigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols>::Matrix(const Eigen::EigenBase<OtherDerived>&) [with OtherDerived = Eigen::Matrix<float, 3, 1>; _Scalar = double; int _Rows = 3; int _Cols = 1; int _Options = 0; int _MaxRows = 3; int _MaxCols = 1][m[K’
+[01m[K/home/zhicheng/Project/FRGraph/src/planner_manager/src/planner_manager.cpp:66:120:[m[K   required from here
+[01m[K/usr/include/eigen3/Eigen/src/Core/util/XprHelper.h:819:96:[m[K [01;31m[Kerror: [m[Kstatic assertion failed: YOU_MIXED_DIFFERENT_NUMERIC_TYPES__YOU_NEED_TO_USE_THE_CAST_METHOD_OF_MATRIXBASE_TO_CAST_NUMERIC_TYPES_EXPLICITLY
+  819 |   EIGEN_STATIC_ASSERT([01;31m[K(Eigen::internal::has_ReturnType<ScalarBinaryOpTraits<LHS, RHS,BINOP> >::value)[m[K, \
+      |                       [01;31m[K~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~[m[K
+[01m[K/usr/include/eigen3/Eigen/src/Core/util/StaticAssert.h:33:54:[m[K [01;36m[Knote: [m[Kin definition of macro ‘[01m[KEIGEN_STATIC_ASSERT[m[K’
+   33 |     #define EIGEN_STATIC_ASSERT(X,MSG) static_assert([01;36m[KX[m[K,#MSG);
+      |                                                      [01;36m[K^[m[K
+[01m[K/usr/include/eigen3/Eigen/src/Core/AssignEvaluator.h:834:3:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[KEIGEN_CHECK_BINARY_COMPATIBILIY[m[K’
+  834 |   [01;36m[KEIGEN_CHECK_BINARY_COMPATIBILIY[m[K(Func,typename ActualDstTypeCleaned::Scalar,typename Src::Scalar);
+      |   [01;36m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+make[2]: *** [CMakeFiles/planner_manager_node.dir/build.make:76: CMakeFiles/planner_manager_node.dir/src/planner_manager_fsm.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+make[2]: *** [CMakeFiles/planner_manager_node.dir/build.make:63: CMakeFiles/planner_manager_node.dir/src/planner_manager.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:215: CMakeFiles/planner_manager_node.dir/all] Error 2
+make: *** [Makefile:141: all] Error 2

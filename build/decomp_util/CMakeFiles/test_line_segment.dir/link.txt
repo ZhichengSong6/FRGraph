@@ -1,0 +1,1 @@
+/usr/bin/c++   -std=c++11 -Wall -Wno-deprecated-declarations -O2 -g -DNDEBUG  -rdynamic CMakeFiles/test_line_segment.dir/test/test_line_segment.cpp.o  -o test_line_segment 

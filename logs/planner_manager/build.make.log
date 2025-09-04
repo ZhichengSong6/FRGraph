@@ -1,0 +1,4 @@
+[35m[1mScanning dependencies of target planner_manager_node[0m
+[ 33%] [32mBuilding CXX object CMakeFiles/planner_manager_node.dir/src/planner_manager_fsm.cpp.o[0m
+[ 66%] [32m[1mLinking CXX executable /home/zhicheng/Project/FRGraph/devel/.private/planner_manager/lib/planner_manager/planner_manager_node[0m
+[100%] Built target planner_manager_node

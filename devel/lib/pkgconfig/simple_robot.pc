@@ -1,0 +1,1 @@
+/home/zhicheng/Project/FRGraph/devel/.private/simple_robot/lib/pkgconfig/simple_robot.pc

@@ -1,0 +1,6 @@
+third_party/velodyne_simulator/velodyne_gazebo_plugins
+/home/zhicheng/Project/FRGraph/devel/.private/velodyne_gazebo_plugins/share/velodyne_gazebo_plugins/cmake/velodyne_gazebo_pluginsConfig-version.cmake /home/zhicheng/Project/FRGraph/devel/share/velodyne_gazebo_plugins/cmake/velodyne_gazebo_pluginsConfig-version.cmake
+/home/zhicheng/Project/FRGraph/devel/.private/velodyne_gazebo_plugins/share/velodyne_gazebo_plugins/cmake/velodyne_gazebo_pluginsConfig.cmake /home/zhicheng/Project/FRGraph/devel/share/velodyne_gazebo_plugins/cmake/velodyne_gazebo_pluginsConfig.cmake
+/home/zhicheng/Project/FRGraph/devel/.private/velodyne_gazebo_plugins/lib/libgazebo_ros_velodyne_gpu_laser.so /home/zhicheng/Project/FRGraph/devel/lib/libgazebo_ros_velodyne_gpu_laser.so
+/home/zhicheng/Project/FRGraph/devel/.private/velodyne_gazebo_plugins/lib/libgazebo_ros_velodyne_laser.so /home/zhicheng/Project/FRGraph/devel/lib/libgazebo_ros_velodyne_laser.so
+/home/zhicheng/Project/FRGraph/devel/.private/velodyne_gazebo_plugins/lib/pkgconfig/velodyne_gazebo_plugins.pc /home/zhicheng/Project/FRGraph/devel/lib/pkgconfig/velodyne_gazebo_plugins.pc

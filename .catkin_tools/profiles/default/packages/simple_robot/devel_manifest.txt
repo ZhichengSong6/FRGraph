@@ -1,0 +1,4 @@
+simple_robot
+/home/zhicheng/Project/FRGraph/devel/.private/simple_robot/share/simple_robot/cmake/simple_robotConfig-version.cmake /home/zhicheng/Project/FRGraph/devel/share/simple_robot/cmake/simple_robotConfig-version.cmake
+/home/zhicheng/Project/FRGraph/devel/.private/simple_robot/share/simple_robot/cmake/simple_robotConfig.cmake /home/zhicheng/Project/FRGraph/devel/share/simple_robot/cmake/simple_robotConfig.cmake
+/home/zhicheng/Project/FRGraph/devel/.private/simple_robot/lib/pkgconfig/simple_robot.pc /home/zhicheng/Project/FRGraph/devel/lib/pkgconfig/simple_robot.pc
