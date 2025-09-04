@@ -1,8 +1,0 @@
-prefix=/home/zhicheng/Project/FRGraph/install
-
-Name: simple_robot
-Description: Description of simple_robot
-Version: 0.0.0
-Cflags: 
-Libs: -L${prefix}/lib 
-Requires: 

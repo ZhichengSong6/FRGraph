@@ -1,1 +1,0 @@
-/home/zhicheng/Project/FRGraph/devel/.private/decomp_ros_msgs/share/roseus/ros/decomp_ros_msgs/msg/EllipsoidArray.l
