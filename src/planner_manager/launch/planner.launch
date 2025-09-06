@@ -1,6 +1,8 @@
 <launch>
     <rosparam file="$(find planner_manager)/config/config.yaml" command="load"/>
+    <arg name="goal_topic" default="/move_base_simple/goal" doc="the topic to receive goal"/>
 
     <node pkg="planner_manager" name="planner" type="planner_manager_node" output="screen">
+        <remap from="goal" to="$(arg goal_topic)"/>
     </node>
 </launch>
