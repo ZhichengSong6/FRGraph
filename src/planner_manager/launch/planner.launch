@@ -1,6 +1,6 @@
 <launch>
-    <rosparam file="$(planner_manager)/config/config.yaml" command="load"/>
+    <rosparam file="$(find planner_manager)/config/config.yaml" command="load"/>
 
-    <node pkg="planner_manager" name="planner" type="planner_node" output="screen">
+    <node pkg="planner_manager" name="planner" type="planner_manager_node" output="screen">
     </node>
 </launch>

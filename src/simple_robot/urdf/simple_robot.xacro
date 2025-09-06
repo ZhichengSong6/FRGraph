@@ -5,6 +5,7 @@
   <xacro:arg name="if_3D_Lidar" default="1"/>
   <xacro:include filename="$(find simple_robot)/urdf/velodyne.xacro"/>
   <xacro:include filename="$(find simple_robot)/urdf/scan2d.xacro"/>
+  <xacro:include filename="$(find simple_robot)/urdf/imu.xacro"/>
 
   <link name="base_link">
     <visual>
@@ -30,4 +31,5 @@
     <xacro:scan2d connected_to="base_link" scan_name="scan" xyz="0. 0. 0.2" rpy="0. 0. 0."/>
   </xacro:unless>
 
+  <xacro:IMU connected_to="base_link" imu_name="imu" xyz="0. 0. 0.1" rpy="0. 0. 0."/>
 </robot>

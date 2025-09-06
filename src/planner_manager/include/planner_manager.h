@@ -5,6 +5,7 @@
 
 #include <sensor_msgs/point_cloud_conversion.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/LaserScan.h>
 
 #include <tf/transform_listener.h>
 #include <geometry_msgs/TransformStamped.h>
@@ -39,7 +40,7 @@ class PlannerManager {
 
     /* Callback Functions */
     void velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg);
-    // void scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg);
+    void scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg);
     void odomTimerCallback(const ros::TimerEvent &event);
 
     ros::Timer odom_timer_;
@@ -51,6 +52,7 @@ class PlannerManager {
     Eigen::Matrix4f T_lidar_base_mat = Eigen::Matrix4f::Identity();
 
     vec_Vec3f pointcloud_croped_base_frame_;
+    vec_Vec2f pointcloud_croped_base_frame_2d_;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
