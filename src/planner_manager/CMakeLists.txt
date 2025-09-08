@@ -32,8 +32,11 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/../third_party/DecompROS/DecompUtil/include
 )
 
-add_executable(${PROJECT_NAME}_node src/planner_manager.cpp src/planner_manager_fsm.cpp)
-
+add_executable(${PROJECT_NAME}_node
+  src/planner_manager.cpp
+  src/planner_manager_fsm.cpp
+  src/free_regions_graph/free_regions_graph.cpp
+)
 
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}

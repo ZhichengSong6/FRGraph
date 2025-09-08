@@ -33,10 +33,6 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
 }
 
 void PlannerManagerFSM::odomCallback(const nav_msgs::OdometryConstPtr &msg) {
-    if (!msg) {
-        ROS_WARN("Received null odometry message");
-        return;
-    }
     odom_pos_ = Eigen::Vector3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
     odom_vel_ = Eigen::Vector3d(msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z);
     odom_ori_ = Eigen::Quaterniond(msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z);
@@ -46,10 +42,6 @@ void PlannerManagerFSM::odomCallback(const nav_msgs::OdometryConstPtr &msg) {
 }
 
 void PlannerManagerFSM::goalCallback(const geometry_msgs::PoseStampedPtr &msg) {
-    if (!msg) {
-        ROS_WARN("Received null goal message");
-        return;
-    }
     if (!have_odom_){
         return;
     }
@@ -67,7 +59,7 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
     /* init phase wating for odom & goal */
     static int FSM_num = 0;
     FSM_num++;
-    if (FSM_num == 2000){
+    if (FSM_num == 100){
         if (!have_odom_){
             ROS_INFO("[FSM]: Wait for odom!");
         }
@@ -81,18 +73,21 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
     switch (current_state_)
     {
     case INIT:
+    {
         if (!have_odom_){
             return;
         }
-        /* code */
+        Eigen::Vector3d start_pos = odom_pos_;
+        planner_manager_->free_regions_graph_ptr_->setRootNode(start_pos);
 
         if (!have_goal_){
             return;
         }
         changeFSMState(WAIT_GOAL, "FSM");
         break;
-
+    }
     case WAIT_GOAL:
+    {
         if (!have_goal_){
             return;
         }
@@ -100,10 +95,17 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
             changeFSMState(PLAN_TRAJECTORY, "FSM");
         }
         break;
-
+    }
     case PLAN_TRAJECTORY:
-        /* code */
+    {
+        if (odom_vel_.norm() > 0.1) {
+            ROS_INFO("[FSM]: Waiting for robot to stop!");
+            stopRobot();
+            return;
+        }
+
         break;
+    }
     }
 }
 

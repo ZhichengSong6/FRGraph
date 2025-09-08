@@ -16,6 +16,8 @@
 
 #include <decomp_ros_utils/data_ros_utils.h>
 
+#include "free_regions_graph/free_regions_graph.h"
+
 class PlannerManager {
     private:
     ros::NodeHandle node_;
@@ -53,6 +55,9 @@ class PlannerManager {
 
     vec_Vec3f pointcloud_croped_base_frame_;
     vec_Vec2f pointcloud_croped_base_frame_2d_;
+
+    FreeRegionsGraph::Ptr free_regions_graph_ptr_;
+    GraphNode *current_node_;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

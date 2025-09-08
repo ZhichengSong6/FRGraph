@@ -32,6 +32,8 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     tf_listener_odom_ = std::make_shared<tf2_ros::TransformListener>(tfBuffer_odom_);
 
     odom_timer_ = node_.createTimer(ros::Duration(0.1), &PlannerManager::odomTimerCallback, this);
+
+    free_regions_graph_ptr_.reset(new FreeRegionsGraph());
 }
 
 void PlannerManager::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg) {
