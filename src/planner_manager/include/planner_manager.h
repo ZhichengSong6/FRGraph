@@ -17,6 +17,7 @@
 #include <decomp_ros_utils/data_ros_utils.h>
 
 #include "free_regions_graph/free_regions_graph.h"
+#include "interesting_directions_extractor/interesting_directions_extractor.h"
 
 class PlannerManager {
     private:
@@ -58,6 +59,8 @@ class PlannerManager {
 
     FreeRegionsGraph::Ptr free_regions_graph_ptr_;
     GraphNode *current_node_;
+
+    InterestingDirectionExtractor::Ptr interesting_direction_extractor_ptr_;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

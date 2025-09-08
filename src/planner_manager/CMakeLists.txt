@@ -11,11 +11,14 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
+  pcl_conversions
+  pcl_ros
   decomp_ros_msgs
   decomp_ros_utils
 )
 
 find_package(Eigen3 REQUIRED)
+find_package(PCL 1.7 REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 
 catkin_package(
@@ -29,6 +32,7 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${Eigen3_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
   ${PROJECT_SOURCE_DIR}/../third_party/DecompROS/DecompUtil/include
 )
 
@@ -36,6 +40,7 @@ add_executable(${PROJECT_NAME}_node
   src/planner_manager.cpp
   src/planner_manager_fsm.cpp
   src/free_regions_graph/free_regions_graph.cpp
+  src/interesting_directions_extractor/interesting_directions_extractor.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_node

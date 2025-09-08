@@ -34,6 +34,14 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     odom_timer_ = node_.createTimer(ros::Duration(0.1), &PlannerManager::odomTimerCallback, this);
 
     free_regions_graph_ptr_.reset(new FreeRegionsGraph());
+    interesting_direction_extractor_ptr_.reset(new InterestingDirectionExtractor());
+    if (env_type_ == 3) {
+        interesting_direction_extractor_ptr_->initialize(node_, true);
+    } else if (env_type_ == 2) {
+        interesting_direction_extractor_ptr_->initialize(node_, false);
+    } else {
+        ROS_ERROR("Wrong env_type! Please check the param env_type in the config file.");
+    }
 }
 
 void PlannerManager::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg) {

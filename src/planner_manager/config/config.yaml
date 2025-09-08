@@ -1,2 +1,5 @@
 env_type: 2 # 2 for 2D, 3 for 3D
 size_of_croped_pointcloud: [6, 6, 3]
+
+# Parameters for interesting direction extraction
+direction_extractor/num_of_corner_pts_: 20
