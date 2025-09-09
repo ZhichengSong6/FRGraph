@@ -22,14 +22,14 @@
 class PlannerManager {
     private:
     ros::NodeHandle node_;
-    int env_type_;
-    Eigen::Vector3d size_of_croped_pointcloud_;
+    bool env_type_;
+    Eigen::Vector3d size_of_cropped_pointcloud_;
 
     public:
     PlannerManager() {}
     ~PlannerManager() {}
     void setEnvType(int env_type) { env_type_ = env_type; }
-    void setSizeOfCropedPointcloud(const Eigen::Vector3d &size) { size_of_croped_pointcloud_ = size; }
+    void setSizeOfCroppedPointcloud(const Eigen::Vector3d &size) { size_of_cropped_pointcloud_ = size; }
 
     typedef std::unique_ptr<PlannerManager> Ptr;
 
@@ -54,8 +54,8 @@ class PlannerManager {
     geometry_msgs::TransformStamped::Ptr lidar_to_base_ptr_, base_to_odom_ptr_;
     Eigen::Matrix4f T_lidar_base_mat = Eigen::Matrix4f::Identity();
 
-    vec_Vec3f pointcloud_croped_base_frame_;
-    vec_Vec2f pointcloud_croped_base_frame_2d_;
+    vec_Vec3f pointcloud_cropped_odom_frame_;
+    vec_Vec2f pointcloud_cropped_odom_frame_2d_;
 
     FreeRegionsGraph::Ptr free_regions_graph_ptr_;
     GraphNode *current_node_;

@@ -3,16 +3,13 @@
 void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     node_ = nh;
 
-    if(env_type_ == 3){
+    if(env_type_){
         ROS_INFO("3D environment, using velodyne pointcloud");
         velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &PlannerManager::velodyneCallback, this);
     }
-    else if(env_type_ == 2){
+    else {
         ROS_INFO("2D environment, using 2D laser scan");
         scan2d_sub_ = node_.subscribe("/scan", 1, &PlannerManager::scan2dCallback, this);
-    }
-    else{
-        ROS_ERROR("Wrong env_type! Please check the param env_type in the config file.");
     }
 
     lidar_to_base_ptr_ = geometry_msgs::TransformStamped::Ptr(new geometry_msgs::TransformStamped);
@@ -35,20 +32,15 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
 
     free_regions_graph_ptr_.reset(new FreeRegionsGraph());
     interesting_direction_extractor_ptr_.reset(new InterestingDirectionExtractor());
-    if (env_type_ == 3) {
-        interesting_direction_extractor_ptr_->initialize(node_, true);
-    } else if (env_type_ == 2) {
-        interesting_direction_extractor_ptr_->initialize(node_, false);
-    } else {
-        ROS_ERROR("Wrong env_type! Please check the param env_type in the config file.");
-    }
+    interesting_direction_extractor_ptr_->initialize(node_, env_type_);
+    interesting_direction_extractor_ptr_->setSizeOfCroppedPointcloud(size_of_cropped_pointcloud_);
 }
 
 void PlannerManager::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg) {
     // Process the Velodyne point cloud data
     if (msg->data.size() == 0)
         {
-        ROS_WARN("Received empty point cloud data");
+        ROS_WARN("[Planner_manager] Received empty point cloud data");
         return;
         }
     
@@ -56,35 +48,35 @@ void PlannerManager::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &ms
     sensor_msgs::convertPointCloud2ToPointCloud(*msg, cloud);
 
     vec_Vec3f pointcloud = DecompROS::cloud_to_vec(cloud);
-    vec_Vec3f pointcloud_croped;
+    vec_Vec3f pointcloud_cropped;
 
     // crop the point cloud
     for (const auto &pt : pointcloud) {
-        if (pt[0] > -size_of_croped_pointcloud_[0]/2 && pt[0] < size_of_croped_pointcloud_[0]/2 &&
-            pt[1] > -size_of_croped_pointcloud_[1]/2 && pt[1] < size_of_croped_pointcloud_[1]/2 &&
-            pt[2] > -size_of_croped_pointcloud_[2]/2 && pt[2] < size_of_croped_pointcloud_[2]/2) {
-                pointcloud_croped.push_back(pt);
+        if (pt[0] > -size_of_cropped_pointcloud_[0]/2 && pt[0] < size_of_cropped_pointcloud_[0]/2 &&
+            pt[1] > -size_of_cropped_pointcloud_[1]/2 && pt[1] < size_of_cropped_pointcloud_[1]/2 &&
+            pt[2] > -size_of_cropped_pointcloud_[2]/2 && pt[2] < size_of_cropped_pointcloud_[2]/2) {
+                pointcloud_cropped.push_back(pt);
             }
     }
 
-    // pointcloud are in scan frame, transform it into base frame
+    // pointcloud are in scan frame, transform it into odom frame
     const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
     const Eigen::Matrix4f T_base_odom_mat = T_base_odom.matrix().cast<float>(); 
 
-    vec_Vec3f pointcloud_croped_base_frame;
-    for (const auto &pt : pointcloud_croped) {
+    vec_Vec3f pointcloud_cropped_odom_frame;
+    for (const auto &pt : pointcloud_cropped) {
         Eigen::Vector4f pt_homogeneous(pt[0], pt[1], pt[2], 1.0);
         Eigen::Vector4f pt_transformed = T_base_odom_mat * T_lidar_base_mat * pt_homogeneous;
-        pointcloud_croped_base_frame.push_back(Eigen::Vector3d(pt_transformed[0], pt_transformed[1], pt_transformed[2]));
+        pointcloud_cropped_odom_frame.push_back(Eigen::Vector3d(pt_transformed[0], pt_transformed[1], pt_transformed[2]));
     }
-    pointcloud_croped_base_frame_ = pointcloud_croped_base_frame;
+    pointcloud_cropped_odom_frame_ = pointcloud_cropped_odom_frame;
 }
 
 void PlannerManager::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg) {
     // Process the 2D laser scan data
     if (msg->ranges.size() == 0)
         {
-        ROS_WARN("Received empty laser scan data");
+        ROS_WARN("[Planner_manager] Received empty laser scan data");
         return;
         }
     vec_Vec2f pointcloud_2d;
@@ -98,27 +90,27 @@ void PlannerManager::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg) {
         angle += msg->angle_increment;
     }
 
-    vec_Vec2f pointcloud_croped_2d;
+    vec_Vec2f pointcloud_cropped_2d;
 
     // crop the point cloud
     for (const auto &pt : pointcloud_2d) {
-        if (pt[0] > -size_of_croped_pointcloud_[0]/2 && pt[0] < size_of_croped_pointcloud_[0]/2 &&
-            pt[1] > -size_of_croped_pointcloud_[1]/2 && pt[1] < size_of_croped_pointcloud_[1]/2) {
-                pointcloud_croped_2d.push_back(pt);
+        if (pt[0] > -size_of_cropped_pointcloud_[0]/2 && pt[0] < size_of_cropped_pointcloud_[0]/2 &&
+            pt[1] > -size_of_cropped_pointcloud_[1]/2 && pt[1] < size_of_cropped_pointcloud_[1]/2) {
+                pointcloud_cropped_2d.push_back(pt);
             }
     }
 
-    // pointcloud are in scan frame, transform it into base frame
+    // pointcloud are in scan frame, transform it into odom frame
     const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
     const Eigen::Matrix4f T_base_odom_mat = T_base_odom.matrix().cast<float>();
 
-    vec_Vec2f pointcloud_croped_2d_base_frame;
-    for (const auto &pt : pointcloud_croped_2d) {
+    vec_Vec2f pointcloud_cropped_2d_odom_frame;
+    for (const auto &pt : pointcloud_cropped_2d) {
         Eigen::Vector4f pt_homogeneous(pt[0], pt[1], 0.0, 1.0);
         Eigen::Vector4f pt_transformed = T_base_odom_mat * T_lidar_base_mat * pt_homogeneous;
-        pointcloud_croped_2d_base_frame.push_back(Eigen::Vector2d(pt_transformed[0], pt_transformed[1]));
+        pointcloud_cropped_2d_odom_frame.push_back(Eigen::Vector2d(pt_transformed[0], pt_transformed[1]));
     }
-    pointcloud_croped_base_frame_2d_ = pointcloud_croped_2d_base_frame;
+    pointcloud_cropped_odom_frame_2d_ = pointcloud_cropped_2d_odom_frame;
 }
 
 void PlannerManager::odomTimerCallback(const ros::TimerEvent &event) {

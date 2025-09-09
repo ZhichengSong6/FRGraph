@@ -1,5 +1,8 @@
-env_type: 2 # 2 for 2D, 3 for 3D
-size_of_croped_pointcloud: [6, 6, 3]
+env_type: 0 # 0 for 2D, 1 for 3D
+size_of_cropped_pointcloud: [6, 6, 3]
 
 # Parameters for interesting direction extraction
 direction_extractor/num_of_corner_pts_: 20
+direction_extractor/curvature_threshold_: 0.8
+direction_extractor/num_of_neighbors_to_cluster_: 10 # better to be even number, since we will search half on each side
+direction_extractor/clustering_distance_threshold_: 0.05 # meters
