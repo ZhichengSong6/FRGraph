@@ -6,7 +6,7 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     have_odom_ = false;
     have_goal_ = false;
 
-    node_.param<int>("env_type", env_type_, 2); 
+    node_.param<int>("env_type", env_type_, 1); 
     ROS_INFO("[PlannerManagerFSM] env_type: %d", env_type_);
     std::vector<double> crop_size_vec;
     node_.param<std::vector<double>>("size_of_cropped_pointcloud", crop_size_vec, {3, 3, 2});

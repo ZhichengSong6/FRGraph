@@ -138,6 +138,14 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /edge_points
+      Name: Marker
+      Namespaces:
+        edge_points: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -175,10 +183,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 74.70089721679688
+      Scale: 128.8221435546875
       Target Frame: <Fixed Frame>
-      X: -1.2423696517944336
-      Y: 0.6234719157218933
+      X: -0.8076605796813965
+      Y: 0.5458453893661499
     Saved: ~
 Window Geometry:
   Displays:

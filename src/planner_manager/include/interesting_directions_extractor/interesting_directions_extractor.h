@@ -15,9 +15,12 @@
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/point_cloud_conversion.h>
 
+#include <visualization_msgs/Marker.h>
+
 struct EdgePoint {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Eigen::Vector3d position;
+    int index_in_cloud;
     bool left_obstacle; // true if obstacle on the left side
     bool right_obstacle; // true if obstacle on the right side
 };
@@ -45,8 +48,14 @@ class InterestingDirectionExtractor {
     void computeCurvature(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud);
     void sortIndicesBasedOnCurvature();
     void selectEdgePoints(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, int num_points);
+    void sortEdgePoints();
     void getInfoOfEdgePoints(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud);
+
+    void ExtractDirectionsFromEdgePoints();
     
+    void publishEdgePoints();
+    void publishInterestingDirections2D();
+
     private:
     ros::NodeHandle node_;
     
@@ -70,12 +79,15 @@ class InterestingDirectionExtractor {
     /* Callbacks */
     void velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg);
     void scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg);
+    void visualizationCallback(const ros::TimerEvent &e);
 
     /* Timer */
     ros::Timer direction_extraction_timer_;
+    ros::Timer visualization_timer_;
 
     /* Publisher */
-    ros::Publisher interesting_pts_pub_;
+    ros::Publisher edge_pts_pub_;       // for debug
+    ros::Publisher direction_2d_pub_;   // interesting directions in 2D
 
     /* Subscriber */
     ros::Subscriber velodyne_sub_;   // pointcloud for 3D environment
