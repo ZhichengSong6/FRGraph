@@ -4,6 +4,6 @@ planner:
 
   # Parameters for interesting direction extraction
   direction_extractor/num_of_edge_pts_: 20
-  direction_extractor/curvature_threshold_: 0.9
+  direction_extractor/curvature_threshold_: 0.8
   direction_extractor/num_of_neighbors_to_cluster_: 10 # better to be even number, since we will search half on each side
-  direction_extractor/clustering_distance_threshold_: 0.20 # meters
+  direction_extractor/clustering_distance_threshold_: 0.10 # meters

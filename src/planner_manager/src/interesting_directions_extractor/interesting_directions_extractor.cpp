@@ -151,11 +151,11 @@ void InterestingDirectionExtractor::computeCurvature(const pcl::PointCloud<pcl::
         curvature_sorted_indices_[i] = i;
     }
 
-    // get the curvature of the first 5 and last 5 points
+    // get the curvature of the first 5 points
     for (int i = 0; i < 5; ++i) {
-        float diffX = cloud->points[i].x + cloud->points[i+1].x + cloud->points[i+2].x + cloud->points[i+3].x + cloud->points[i+4].x - 10 * cloud->points[i].x;
-        float diffY = cloud->points[i].y + cloud->points[i+1].y + cloud->points[i+2].y + cloud->points[i+3].y + cloud->points[i+4].y - 10 * cloud->points[i].y;
-        float diffZ = cloud->points[i].z + cloud->points[i+1].z + cloud->points[i+2].z + cloud->points[i+3].z + cloud->points[i+4].z - 10 * cloud->points[i].z;
+        float diffX = cloud->points[i+1].x + cloud->points[i+2].x + cloud->points[i+3].x + cloud->points[i+4].x + cloud->points[i+5].x - 10 * cloud->points[i].x;
+        float diffY = cloud->points[i+1].y + cloud->points[i+2].y + cloud->points[i+3].y + cloud->points[i+4].y + cloud->points[i+5].y - 10 * cloud->points[i].y;
+        float diffZ = cloud->points[i+1].z + cloud->points[i+2].z + cloud->points[i+3].z + cloud->points[i+4].z + cloud->points[i+5].z - 10 * cloud->points[i].z;
         
         // base on the index of the point, add certain points from the end of the cloud to make sure 10 points are used
         for (int j = 0; j < 5 - i; ++j) {
@@ -164,9 +164,30 @@ void InterestingDirectionExtractor::computeCurvature(const pcl::PointCloud<pcl::
             diffZ += cloud->points[cloud->points.size() - 1 - j].z;
         }
         for (int j = 0; j < i; ++j) {
-            diffX += cloud->points[i + 1 + j].x;
-            diffY += cloud->points[i + 1 + j].y;
-            diffZ += cloud->points[i + 1 + j].z;
+            diffX += cloud->points[j].x;
+            diffY += cloud->points[j].y;
+            diffZ += cloud->points[j].z;
+        }
+        curvatures_[i] = diffX * diffX + diffY * diffY + diffZ * diffZ;
+        cloud_neighbor_picked_[i] = 0;
+        curvature_sorted_indices_[i] = i;
+    }
+    // get the curvature of the last 5 points
+    for (int i = cloud->points.size() - 5; i < cloud->points.size(); ++i) {
+        float diffX = cloud->points[i-5].x + cloud->points[i-4].x + cloud->points[i-3].x + cloud->points[i-2].x + cloud->points[i-1].x - 10 * cloud-> points[i].x;
+        float diffY = cloud->points[i-5].y + cloud->points[i-4].y + cloud->points[i-3].y + cloud->points[i-2].y + cloud->points[i-1].y - 10 * cloud-> points[i].y;
+        float diffZ = cloud->points[i-5].z + cloud->points[i-4].z + cloud->points[i-3].z + cloud->points[i-2].z + cloud->points[i-1].z - 10 * cloud-> points[i].z;
+        
+        // base on the index of the point, add certain points from the beginning of the cloud to make sure 10 points are used
+        for (int j = 0; j < i - (cloud->points.size() - 5) + 1; ++j) {
+            diffX += cloud->points[j].x;
+            diffY += cloud->points[j].y;
+            diffZ += cloud->points[j].z;
+        }
+        for(int j = 0; j < 5 - (i - (cloud->points.size() - 5) + 1); ++j) {
+            diffX += cloud->points[cloud->points.size() - 1 - j].x;
+            diffY += cloud->points[cloud->points.size() - 1 - j].y;
+            diffZ += cloud->points[cloud->points.size() - 1 - j].z;
         }
         curvatures_[i] = diffX * diffX + diffY * diffY + diffZ * diffZ;
         cloud_neighbor_picked_[i] = 0;
@@ -290,6 +311,7 @@ void InterestingDirectionExtractor::ExtractDirectionsFromEdgePoints(){
         // based on the edge points, extract the interesting directions
         // if two adjacent edge points have obstacles on different sides, then the direction between them is interesting
         interesting_pts_2d_.clear();
+        double max_distance = std::min(size_of_cropped_pointcloud_[0], size_of_cropped_pointcloud_[1]) / 2.0;
         for (int i = 0; i < edge_points_with_info_.size(); ++i) {
             int next_index = (i + 1) % edge_points_with_info_.size();
 // std::cout << "i and next: " << i << " " << next_index << std::endl;
@@ -299,8 +321,6 @@ void InterestingDirectionExtractor::ExtractDirectionsFromEdgePoints(){
             // only need to check the right_obstacle of the current point and the left_obstacle of the next point
             if (!edge_points_with_info_[i].right_obstacle && !edge_points_with_info_[next_index].left_obstacle) {
 // std::cout << "Found interesting direction between edge points " << i << " and " << next_index << std::endl;
-                // length of the direction is based on the average distance between the two edge points and the origin
-                double length = (edge_points_with_info_[i].position.head<2>().norm() + edge_points_with_info_[next_index].position.head<2>().norm()) / 2.0;
                 // also need to check the angle between the two edge points
                 double angle1 = atan2(edge_points_with_info_[i].position[1], edge_points_with_info_[i].position[0]);
                 double angle2 = atan2(edge_points_with_info_[next_index].position[1], edge_points_with_info_[next_index].position[0]);
@@ -312,30 +332,33 @@ void InterestingDirectionExtractor::ExtractDirectionsFromEdgePoints(){
                 double angle_diff = angle2 - angle1;
                 double angle_diff_lower_threshold = 0.05;
                 double angle_diff_upper_threshold = 3.14;
-                double angle_bias = 0.15; // to avoid the direction being too close to the edge points
+                double angle_bias = 0.05; // to avoid the direction being too close to the edge points
                 // if the error is too small, then the direction needs a small bias to generate polyhedron in the following step
 // std::cout << "angle1, angle2, angle_diff: " << angle1 << " " << angle2 << " " << angle_diff << std::endl;
                 if (angle_diff < angle_diff_lower_threshold){
                     // the direction is bias towards the direction with longer distance to the origin
+                    // the length is set to the distance of the closer edge point to the origin
                     if (edge_points_with_info_[i].position.head<2>().norm() > edge_points_with_info_[next_index].position.head<2>().norm()){
                         double angle = angle1 - angle_bias;
+                        double length = edge_points_with_info_[next_index].position.head<2>().norm();
                         interesting_pts_2d_.push_back(Eigen::Vector2d(length * cos(angle), length * sin(angle)));
                     } else {
                         double angle = angle2 + angle_bias;
+                        double length = edge_points_with_info_[i].position.head<2>().norm();
                         interesting_pts_2d_.push_back(Eigen::Vector2d(length * cos(angle), length * sin(angle)));
                     } 
                 }
                 else if(angle_diff > angle_diff_upper_threshold){
                     // the error is too large, which means the two edge points are on the opposite sides of the origin
-                    // we consider three directions: the two directions from the origin to the two edge points with additional bias, and the direction opposite to the average direction of the two edge points
+                    // we consider three directions: the two directions from the origin to the two edge points with additional bias, and the average direction of the two edge points
                     double average_angle = (angle1 + angle2) / 2.0;
-                    interesting_pts_2d_.push_back(Eigen::Vector2d(length * cos(angle1 + angle_bias), length * sin(angle1 + angle_bias)));
-                    interesting_pts_2d_.push_back(Eigen::Vector2d(length * cos(angle2 - angle_bias), length * sin(angle2 - angle_bias)));
-                    interesting_pts_2d_.push_back(Eigen::Vector2d(length * cos(average_angle + M_PI), length * sin(average_angle + M_PI)));
+                    interesting_pts_2d_.push_back(Eigen::Vector2d(max_distance * cos(angle1 + angle_bias), max_distance * sin(angle1 + angle_bias)));
+                    interesting_pts_2d_.push_back(Eigen::Vector2d(max_distance * cos(angle2 - angle_bias), max_distance * sin(angle2 - angle_bias)));
+                    interesting_pts_2d_.push_back(Eigen::Vector2d(max_distance * cos(average_angle), max_distance * sin(average_angle)));
                 }
                 else{
                     double average_angle = (angle1 + angle2) / 2.0;
-                    interesting_pts_2d_.push_back(Eigen::Vector2d(length * cos(average_angle), length * sin(average_angle)));
+                    interesting_pts_2d_.push_back(Eigen::Vector2d(max_distance * cos(average_angle), max_distance * sin(average_angle)));
                 }
             }
         }
@@ -357,16 +380,14 @@ void InterestingDirectionExtractor::publishEdgePoints() {
     edge_points_marker.color.b = 0.0;
     edge_points_marker.color.a = 1.0;
 
-    geometry_msgs::Point p1, p2;
-    p1.x = 0.0;
-    p1.y = 0.0;
-    p1.z = 0.0;
+    geometry_msgs::Point p1;
+
     for (const auto &edge_point : edge_points_with_info_) {
-        p2.x = edge_point.position[0];
-        p2.y = edge_point.position[1];
-        p2.z = edge_point.position[2];
-        edge_points_marker.points.push_back(p2);
-        // edge_points_marker.points.push_back(p1); // line from edge point to origin
+        p1.x = edge_point.position[0];
+        p1.y = edge_point.position[1];
+        p1.z = edge_point.position[2];
+        edge_points_marker.points.push_back(p1);
+
     }
 
     edge_pts_pub_.publish(edge_points_marker);
@@ -387,6 +408,11 @@ void InterestingDirectionExtractor::publishInterestingDirections2D() {
     direction_2d_marker.color.g = 1.0;
     direction_2d_marker.color.b = 0.0;
     direction_2d_marker.color.a = 1.0;
+
+    direction_2d_marker.pose.orientation.x = 0.0;
+    direction_2d_marker.pose.orientation.y = 0.0;
+    direction_2d_marker.pose.orientation.z = 0.0;
+    direction_2d_marker.pose.orientation.w = 1.0;
 
     geometry_msgs::Point p_start, p_end;
     p_start.x = 0.0;
