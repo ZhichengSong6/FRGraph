@@ -3,6 +3,7 @@
 
 #include <Eigen/Dense>
 #include <vector>
+#include <numeric>
 
 #include <ros/ros.h>
 
@@ -16,6 +17,11 @@
 #include <sensor_msgs/point_cloud_conversion.h>
 
 #include <visualization_msgs/Marker.h>
+#include <nav_msgs/Odometry.h>
+
+#include <tf/transform_listener.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_eigen/tf2_eigen.h>
 
 struct EdgePoint {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -33,7 +39,6 @@ class InterestingDirectionExtractor {
     InterestingDirectionExtractor() {}
     ~InterestingDirectionExtractor() {}
 
-    
     std::vector<Eigen::Vector2d> interesting_pts_2d_;
     std::vector<Eigen::Vector3d> interesting_pts_3d_;
     
@@ -50,6 +55,7 @@ class InterestingDirectionExtractor {
     void selectEdgePoints(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, int num_points);
     void sortEdgePoints();
     void getInfoOfEdgePoints(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud);
+    void checkGoalPose2D();
 
     void ExtractDirectionsFromEdgePoints();
     
@@ -58,6 +64,13 @@ class InterestingDirectionExtractor {
 
     private:
     ros::NodeHandle node_;
+
+    Eigen::Vector3d goal_pos_;
+    Eigen::Quaterniond goal_ori_;
+    double goal_roll_, goal_pitch_, goal_yaw_;
+    Eigen::Vector3d odom_pos_;
+    Eigen::Quaterniond odom_ori_;
+    double odom_roll_, odom_pitch_, odom_yaw_;
     
     bool env_type_; // 0 for 2D, 1 for 3D environment
     int num_of_edge_pts_;
@@ -76,14 +89,24 @@ class InterestingDirectionExtractor {
     std::vector<int> edge_points_indices_in_cloud_;
     std::vector<EdgePoint> edge_points_with_info_;
 
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_odom_;
+    tf2_ros::Buffer tfBuffer_odom_;
+
+    geometry_msgs::TransformStamped::Ptr lidar_to_base_ptr_, base_to_odom_ptr_;
+    Eigen::Matrix4f T_lidar_base_mat_ = Eigen::Matrix4f::Identity();
+
     /* Callbacks */
     void velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg);
     void scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg);
+    void goalCallback(const geometry_msgs::PoseStampedPtr &msg);
+    void odomCallback(const nav_msgs::OdometryConstPtr &msg);
+    void odomTimerCallback(const ros::TimerEvent &e);
     void visualizationCallback(const ros::TimerEvent &e);
 
     /* Timer */
     ros::Timer direction_extraction_timer_;
     ros::Timer visualization_timer_;
+    ros::Timer odom_timer_;
 
     /* Publisher */
     ros::Publisher edge_pts_pub_;       // for debug
@@ -92,6 +115,10 @@ class InterestingDirectionExtractor {
     /* Subscriber */
     ros::Subscriber velodyne_sub_;   // pointcloud for 3D environment
     ros::Subscriber scan2d_sub_;     // laser scan for 2D environment
+    ros::Subscriber goal_sub_;
+
+    /* Helper Function */
+    void quaternionToRPY(const Eigen::Quaterniond &q, double &roll, double &pitch, double &yaw);
 };
 
 #endif  // _INTERESTING_DIRECTION_EXTRACTOR_H_
