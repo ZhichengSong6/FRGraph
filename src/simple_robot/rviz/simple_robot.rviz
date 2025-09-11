@@ -7,7 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
         - /Marker2
-        - /Marker2/Status1
+        - /InteractiveMarkers1
       Splitter Ratio: 0.5
     Tree Height: 549
   - Class: rviz/Selection
@@ -145,7 +145,7 @@ Visualization Manager:
       Marker Topic: /edge_points
       Name: Marker
       Namespaces:
-        edge_points: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -153,14 +153,23 @@ Visualization Manager:
       Marker Topic: /interesting_directions_2d
       Name: Marker
       Namespaces:
-        interesting_directions_2d: true
+        {}
       Queue Size: 100
+      Value: true
+    - Class: rviz/InteractiveMarkers
+      Enable Transparency: true
+      Enabled: true
+      Name: InteractiveMarkers
+      Show Axes: true
+      Show Descriptions: true
+      Show Visual Aids: false
+      Update Topic: /target_pose/update
       Value: true
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
     Default Light: true
-    Fixed Frame: base_link
+    Fixed Frame: odom
     Frame Rate: 30
   Name: root
   Tools:
@@ -183,20 +192,26 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 0
-      Class: rviz/TopDownOrtho
+      Class: rviz/ThirdPersonFollower
+      Distance: 4.644041061401367
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: 2.073617458343506
+        Y: 2.28375244140625
+        Z: -4.76837158203125e-07
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 136.14801025390625
+      Pitch: 0.43039852380752563
       Target Frame: <Fixed Frame>
-      X: -0.8076605796813965
-      Y: 0.5458453893661499
+      Yaw: 1.0153980255126953
     Saved: ~
 Window Geometry:
   Displays:
@@ -214,5 +229,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1655
-  X: 72
-  Y: 27
+  X: 692
+  Y: 284

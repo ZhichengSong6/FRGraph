@@ -17,4 +17,6 @@
 
     <node pkg="simple_robot" name="simple_robot" type="simple_robot_node" output="screen">
     </node>
+
+    <node pkg="simple_robot" type="navi_goal_3d.py" name="navi_goal_3d" output="screen"/>
 </launch>

@@ -11,6 +11,8 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl_ros/transforms.h>
 
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/LaserScan.h>
@@ -56,6 +58,8 @@ class InterestingDirectionExtractor {
     void sortEdgePoints();
     void getInfoOfEdgePoints(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud);
     void checkGoalPose2D();
+
+    void checkGoalPose3D1();
 
     void ExtractDirectionsFromEdgePoints();
     

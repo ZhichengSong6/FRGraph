@@ -172,6 +172,27 @@ void InterestingDirectionExtractor::extractInterestingDirections3D(const ros::Ti
     {
         return;
     }
+    interesting_pts_3d_.clear();
+    edge_points_with_info_.clear();
+    // convert vec_Vec3f to pcl::PointCloud
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    for (const auto &pt : pointcloud_cropped_scan_frame_)
+    {
+        cloud->points.push_back(pcl::PointXYZ(pt[0], pt[1], pt[2]));
+    }
+    // the cloud are in scan frame, need to transform to base frame
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_base(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::transformPointCloud(*cloud, *cloud_in_base, T_lidar_base_mat_);
+    // extract the pointcloud data that are around the height of the robot
+    pcl::PassThrough<pcl::PointXYZ> pass;
+    pass.setInputCloud(cloud_in_base);
+    pass.setFilterFieldName("z");
+    pass.setFilterLimits(-0.1, 0.1);
+    pass.filter(*cloud_in_base);
+    // base on the projected 2D point cloud, extract edge points
+    extractEdgePoints(cloud_in_base, num_of_edge_pts_);
+    getInfoOfEdgePoints(cloud_in_base);
+    sortEdgePoints();
 }
 
 void InterestingDirectionExtractor::extractEdgePoints(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, int num_edges)
@@ -417,7 +438,6 @@ void InterestingDirectionExtractor::sortEdgePoints()
 
 void InterestingDirectionExtractor::checkGoalPose2D()
 {
-    // the goal is in odom frame, need to convert it to scan frame
     if (base_to_odom_ptr_ == nullptr)
     {
         ROS_WARN("[InterestingDirectionExtractor] base_to_odom_ptr_ is null");
@@ -428,9 +448,9 @@ void InterestingDirectionExtractor::checkGoalPose2D()
     }
     if (goal_pos_ == Eigen::Vector3d(0.0, 0.0, 0.0))
     {
-        // ROS_WARN("[InterestingDirectionExtractor] Goal position is not set");
         return;
     }
+    // the goal is in odom frame, need to convert it to scan frame
     const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
     Eigen::Matrix4d T_base_odom_mat = T_base_odom.matrix().cast<double>();
     Eigen::Matrix4d T_odom_base_mat = T_base_odom_mat.inverse();
@@ -486,6 +506,28 @@ void InterestingDirectionExtractor::checkGoalPose2D()
             edge_points_with_info_.insert(edge_points_with_info_.begin() + index, goal_edge_point);
         }
     }
+}
+
+void InterestingDirectionExtractor::checkGoalPose3D1(){
+    if (base_to_odom_ptr_ == nullptr)
+    {
+        ROS_WARN("[InterestingDirectionExtractor] base_to_odom_ptr_ is null");
+        return;
+    }
+    if (edge_points_with_info_.size() == 0){
+        ROS_WARN("[InterestingDirectionExtractor] No Edge Point");
+    }
+    if (goal_pos_ == Eigen::Vector3d(0.0, 0.0, 0.0))
+    {
+        return;
+    }
+    // the goal is in odom frame, need to convert it to base frame
+    const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
+    Eigen::Matrix4d T_base_odom_mat = T_base_odom.matrix().cast<double>();
+    Eigen::Matrix4d T_odom_base_mat = T_base_odom_mat.inverse();
+    Eigen::Vector4d goal_pos_homogeneous(goal_pos_[0], goal_pos_[1], goal_pos_[2], 1.0);
+    Eigen::Vector4d goal_pos_in_base_homogeneous = T_odom_base_mat * goal_pos_homogeneous;
+    Eigen::Vector3d goal_in_base_frame = goal_pos_in_base_homogeneous.head<3>() / goal_pos_in_base_homogeneous[3];
 }
 
 void InterestingDirectionExtractor::ExtractDirectionsFromEdgePoints()
