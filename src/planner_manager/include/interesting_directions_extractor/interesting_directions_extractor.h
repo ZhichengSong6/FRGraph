@@ -13,6 +13,7 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl_ros/transforms.h>
+#include <pcl_conversions/pcl_conversions.h>
 
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/LaserScan.h>
@@ -31,6 +32,12 @@ struct EdgePoint {
     int index_in_cloud;
     bool left_obstacle; // true if obstacle on the left side
     bool right_obstacle; // true if obstacle on the right side
+};
+
+struct PotentialDirectionIn3D{
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    std::vector<Eigen::Vector3d> direction_to_free_space;
+    std::vector<Eigen::Vector3d> direction_to_obstacle;
 };
 
 class InterestingDirectionExtractor {
@@ -58,13 +65,21 @@ class InterestingDirectionExtractor {
     void sortEdgePoints();
     void getInfoOfEdgePoints(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud);
     void checkGoalPose2D();
+    void extractDirectionsToFreeSpace();
 
+    void processPointCloudTo2D(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_base);
     void checkGoalPose3D1();
+    void extractDirectionsToObstacles();
 
     void ExtractDirectionsFromEdgePoints();
-    
+
+    /* Visualization */
     void publishEdgePoints();
     void publishInterestingDirections2D();
+    void publishTempMap();
+    void publishPoints();
+
+    boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> temp_map_;
 
     private:
     ros::NodeHandle node_;
@@ -93,6 +108,9 @@ class InterestingDirectionExtractor {
     std::vector<int> edge_points_indices_in_cloud_;
     std::vector<EdgePoint> edge_points_with_info_;
 
+    PotentialDirectionIn3D potential_directions_3d_;
+    bool goal_added_ = false;
+
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_odom_;
     tf2_ros::Buffer tfBuffer_odom_;
 
@@ -113,8 +131,10 @@ class InterestingDirectionExtractor {
     ros::Timer odom_timer_;
 
     /* Publisher */
-    ros::Publisher edge_pts_pub_;       // for debug
     ros::Publisher direction_2d_pub_;   // interesting directions in 2D
+    ros::Publisher edge_pts_pub_;       // for debug
+    ros::Publisher temp_map_pub_;       // for debug
+    ros::Publisher point_pub_;          // for debug
 
     /* Subscriber */
     ros::Subscriber velodyne_sub_;   // pointcloud for 3D environment

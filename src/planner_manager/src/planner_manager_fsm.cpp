@@ -6,7 +6,7 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     have_odom_ = false;
     have_goal_ = false;
 
-    node_.param<int>("env_type", env_type_, 1); 
+    node_.param<int>("env_type", env_type_, 1); // 0 for 2D, 1 for 3D environment
     ROS_INFO("[PlannerManagerFSM] env_type: %d", env_type_);
     std::vector<double> crop_size_vec;
     node_.param<std::vector<double>>("size_of_cropped_pointcloud", crop_size_vec, {3, 3, 2});
@@ -27,7 +27,12 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
 
     /* ROS subscribers */
     odom_sub_ = node_.subscribe("/odom", 1, &PlannerManagerFSM::odomCallback, this);
-    goal_sub_ = node_.subscribe("/goal", 1, &PlannerManagerFSM::goalCallback, this);
+    if (env_type_){
+        goal_sub_ = node_.subscribe("/navigation_goal_3d", 1, &PlannerManagerFSM::goalCallback, this);
+    }
+    else{
+        goal_sub_ = node_.subscribe("/goal", 1, &PlannerManagerFSM::goalCallback, this);
+    }
 
     cmd_vel_pub_ = node_.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
 }
