@@ -9,7 +9,7 @@
 
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="world_name" value="$(find simple_robot)/worlds/sixboxes.world"/>
-        <arg name="gui" value="true"/>
+        <arg name="gui" value="false"/>
     </include>
 
     <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" clear_params="true"
@@ -19,6 +19,7 @@
     </node>
 
     <group if="$(eval int(arg('if_3D_Lidar')) != 0)">
-        <node pkg="simple_robot" type="navi_goal_3d.py" name="navi_goal_3d" output="screen"/>
+        <!-- <node pkg="simple_robot" type="navi_goal_3d.py" name="navi_goal_3d" output="screen"/> -->
+        <node pkg="simple_robot" type="interactive_marker_node" name="interactive_marker_node" output="screen"/>
     </group>
 </launch>

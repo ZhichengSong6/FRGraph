@@ -24,6 +24,7 @@ void InterestingDirectionExtractor::initialize(ros::NodeHandle &nh, bool env_typ
     {
         velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &InterestingDirectionExtractor::velodyneCallback, this);
         direction_extraction_timer_ = node_.createTimer(ros::Duration(0.05), &InterestingDirectionExtractor::extractInterestingDirections3D, this);
+        // goal_sub_ = node_.subscribe("/goal", 1, &InterestingDirectionExtractor::goalCallback, this);
         goal_sub_ = node_.subscribe("/navigation_goal_3d", 1, &InterestingDirectionExtractor::goalCallback, this);
     }
     else
@@ -56,7 +57,7 @@ void InterestingDirectionExtractor::initialize(ros::NodeHandle &nh, bool env_typ
     direction_2d_pub_ = node_.advertise<visualization_msgs::Marker>("/interesting_directions_2d", 10);
 
     temp_map_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/temp_map", 10);
-    point_pub_ = node_.advertise<visualization_msgs::Marker>("/point", 10);
+    point_pub_ = node_.advertise<visualization_msgs::Marker>("/point_for_debug", 10);
 
     visualization_timer_ = node_.createTimer(ros::Duration(0.05), &InterestingDirectionExtractor::visualizationCallback, this);
 }
@@ -237,6 +238,7 @@ void InterestingDirectionExtractor::extractInterestingDirections3D(const ros::Ti
     }
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_base(new pcl::PointCloud<pcl::PointXYZ>());
     processPointCloudTo2D(cloud_in_base);
+    
     if (cloud_in_base->empty())
     {
         potential_directions_3d_.direction_to_free_space.clear();
@@ -971,41 +973,42 @@ void InterestingDirectionExtractor::publishTempMap()
 
 void InterestingDirectionExtractor::publishPoints()
 {
-    if( potential_directions_3d_.direction_to_free_space.size() == 0){
-        return;
-    }
-    visualization_msgs::Marker points;
-    points.header.frame_id = "base_link";
-    points.header.stamp = ros::Time::now();
-    points.ns = "points_for_debug";
-    points.id = 0;
-    points.type = visualization_msgs::Marker::LINE_LIST;
-    points.action = visualization_msgs::Marker::ADD;
-    points.scale.x = 0.02; // shaft diameter
+    visualization_msgs::Marker tmp_points;
 
-    points.color.r = 0.0;
-    points.color.g = 0.0;
-    points.color.b = 1.0;
-    points.color.a = 1.0;
+    std::vector<Eigen::Vector3d> debug_points(potential_directions_3d_.direction_to_free_space);
+    tmp_points.header.frame_id = "base_link";
+    tmp_points.header.stamp = ros::Time::now();
+    tmp_points.ns = "debug_points";
+    tmp_points.id = 0;
+    tmp_points.type = visualization_msgs::Marker::LINE_LIST;
+    tmp_points.action = visualization_msgs::Marker::ADD;
+    tmp_points.scale.x = 0.05; // shaft diameter
 
-    points.pose.orientation.x = 0.0;
-    points.pose.orientation.y = 0.0;
-    points.pose.orientation.z = 0.0;
-    points.pose.orientation.w = 1.0;
+    tmp_points.color.r = 0.0;
+    tmp_points.color.g = 0.0;
+    tmp_points.color.b = 1.0;
+    tmp_points.color.a = 1.0;
+
+    tmp_points.pose.orientation.x = 0.0;
+    tmp_points.pose.orientation.y = 0.0;
+    tmp_points.pose.orientation.z = 0.0;
+    tmp_points.pose.orientation.w = 1.0;
 
     geometry_msgs::Point p_start, p_end;
     p_start.x = 0.0;
     p_start.y = 0.0;
     p_start.z = 0.0;
-    for (const auto &dir : potential_directions_3d_.direction_to_free_space)
+
+    for (const auto &dir : debug_points)
     {
         p_end.x = dir[0];
         p_end.y = dir[1];
         p_end.z = dir[2];
-        points.points.push_back(p_start);
-        points.points.push_back(p_end);
+        tmp_points.points.push_back(p_start);
+        tmp_points.points.push_back(p_end);
     }
-    point_pub_.publish(points);
+
+    point_pub_.publish(tmp_points);
 }
 
 void InterestingDirectionExtractor::visualizationCallback(const ros::TimerEvent &e)
