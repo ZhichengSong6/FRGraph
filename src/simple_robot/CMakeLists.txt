@@ -12,15 +12,13 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   roscpp
   nav_msgs
-  interactive_markers
-  visualization_msgs
   tf
 )
 
 catkin_package(
  INCLUDE_DIRS include
  LIBRARIES simple_robot
- CATKIN_DEPENDS geometry_msgs rospy sensor_msgs std_msgs interactive_markers visualization_msgs tf
+ CATKIN_DEPENDS geometry_msgs rospy sensor_msgs std_msgs tf
 )
 
 include_directories(
@@ -29,12 +27,7 @@ include_directories(
 )
 
 add_executable(${PROJECT_NAME}_node src/simple_robot.cpp)
-add_executable(interactive_marker_node src/interactive_marker.cpp)
 
 target_link_libraries(${PROJECT_NAME}_node
-  ${catkin_LIBRARIES}
-)
-
-target_link_libraries(interactive_marker_node
   ${catkin_LIBRARIES}
 )

@@ -68,6 +68,7 @@ class InterestingDirectionExtractor {
     void extractDirectionsToFreeSpace();
 
     void processPointCloudTo2D(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_base);
+    void processPointCloudToxzPlane(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_plane, const Eigen::Vector3d direction);
     void checkGoalPose3D1();
     void extractDirectionsToObstacles();
 
@@ -87,6 +88,7 @@ class InterestingDirectionExtractor {
     Eigen::Vector3d goal_pos_;
     Eigen::Quaterniond goal_ori_;
     double goal_roll_, goal_pitch_, goal_yaw_;
+    double goal_z_3d_, goal_roll_3d_, goal_pitch_3d_; // for 3D goal, get from config file
     Eigen::Vector3d odom_pos_;
     Eigen::Quaterniond odom_ori_;
     double odom_roll_, odom_pitch_, odom_yaw_;
@@ -121,6 +123,7 @@ class InterestingDirectionExtractor {
     void velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg);
     void scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg);
     void goalCallback(const geometry_msgs::PoseStampedPtr &msg);
+    void goalCallback3d(const geometry_msgs::PoseStampedPtr &msg);
     void odomCallback(const nav_msgs::OdometryConstPtr &msg);
     void odomTimerCallback(const ros::TimerEvent &e);
     void visualizationCallback(const ros::TimerEvent &e);

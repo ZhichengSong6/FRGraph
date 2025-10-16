@@ -13,6 +13,12 @@ void InterestingDirectionExtractor::initialize(ros::NodeHandle &nh, bool env_typ
     ROS_INFO("Number of neighbors to cluster: %d", num_of_neighbors_to_cluster_);
     node_.param<double>("direction_extractor/clustering_distance_threshold_", clustering_distance_threshold_, 0.05); // default 0.05
     ROS_INFO("Clustering distance threshold: %f", clustering_distance_threshold_);
+    node_.param<double>("direction_extractor/goal_z_", goal_z_3d_, 0.0); // default 0.0
+    ROS_INFO("Goal z for 3D: %f", goal_z_3d_);
+    node_.param<double>("direction_extractor/goal_roll_", goal_roll_3d_, 0.0); // default 0.0
+    ROS_INFO("Goal roll for 3D: %f", goal_roll_3d_);
+    node_.param<double>("direction_extractor/goal_pitch_", goal_pitch_3d_, 0.0); // default 0.0
+    ROS_INFO("Goal pitch for 3D: %f", goal_pitch_3d_);
 
     ROS_INFO("InterestingDirectionExtractor initialized, env_type: %d", env_type_);
 
@@ -24,8 +30,8 @@ void InterestingDirectionExtractor::initialize(ros::NodeHandle &nh, bool env_typ
     {
         velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &InterestingDirectionExtractor::velodyneCallback, this);
         direction_extraction_timer_ = node_.createTimer(ros::Duration(0.05), &InterestingDirectionExtractor::extractInterestingDirections3D, this);
-        // goal_sub_ = node_.subscribe("/goal", 1, &InterestingDirectionExtractor::goalCallback, this);
-        goal_sub_ = node_.subscribe("/navigation_goal_3d", 1, &InterestingDirectionExtractor::goalCallback, this);
+        goal_sub_ = node_.subscribe("/goal", 1, &InterestingDirectionExtractor::goalCallback3d, this);
+        // goal_sub_ = node_.subscribe("/navigation_goal_3d", 1, &InterestingDirectionExtractor::goalCallback, this);
     }
     else
     {
@@ -132,6 +138,17 @@ void InterestingDirectionExtractor::goalCallback(const geometry_msgs::PoseStampe
     goal_pos_ = Eigen::Vector3d(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
     goal_ori_ = Eigen::Quaterniond(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
     quaternionToRPY(goal_ori_, goal_roll_, goal_pitch_, goal_yaw_);
+}
+
+void InterestingDirectionExtractor::goalCallback3d(const geometry_msgs::PoseStampedPtr &msg)
+{
+    goal_pos_ = Eigen::Vector3d(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
+    goal_ori_ = Eigen::Quaterniond(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
+    quaternionToRPY(goal_ori_, goal_roll_, goal_pitch_, goal_yaw_);
+    // since directily use 2D_Nav_Goal, we need to get goal_z_ and goal_roll_ and goal_pitch_ from config file
+    goal_pos_[2] = goal_z_3d_;
+    goal_roll_ = goal_roll_3d_;
+    goal_pitch_ = goal_pitch_3d_;
 }
 
 void InterestingDirectionExtractor::odomTimerCallback(const ros::TimerEvent &event)
@@ -303,7 +320,6 @@ ROS_INFO("Number of interesting directions in 3D after filtering: %lu", interest
         extractEdgePoints(cloud_in_base, num_of_edge_pts_);
         getInfoOfEdgePoints(cloud_in_base);
         sortEdgePoints();
-// ROS_INFO("Number of edge points extracted: %lu", edge_points_with_info_.size());
         checkGoalPose3D1();
         ExtractDirectionsFromEdgePoints();
     }
@@ -679,7 +695,66 @@ void InterestingDirectionExtractor::processPointCloudTo2D(pcl::PointCloud<pcl::P
     cloud_in_base_sorted->is_dense = true;
     cloud_in_base = cloud_in_base_sorted;
     // store the temp map for visualization
-    temp_map_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>(*cloud_in_base);    
+//     temp_map_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>(*cloud_in_base);    
+}
+
+void InterestingDirectionExtractor::processPointCloudToxzPlane(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_plane, const Eigen::Vector3d direction)
+{
+    // convert vec_Vec3f to pcl::PointCloud
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    for (const auto &pt : pointcloud_cropped_scan_frame_)
+    {
+        cloud->points.push_back(pcl::PointXYZ(pt[0], pt[1], pt[2]));
+    }
+    // the cloud are in scan frame, need to transform to base frame
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_base(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::transformPointCloud(*cloud, *cloud_in_base, T_lidar_base_mat_);
+    // rotate the point cloud to make the direction align with x axis
+    Eigen::Vector3d dir_normalized = direction.normalized();
+    double yaw = atan2(dir_normalized[1], dir_normalized[0]);
+    Eigen::AngleAxisf rotation(yaw, Eigen::Vector3f::UnitZ());
+    Eigen::Matrix4f rotation_mat = Eigen::Matrix4f::Identity();
+    rotation_mat.block<3, 3>(0, 0) = rotation.toRotationMatrix().cast<float>();
+    pcl::transformPointCloud(*cloud_in_base, *cloud_in_plane, rotation_mat.inverse());
+    // project the pointcloud onto the xz plane (only x positive axis)
+    pcl::PassThrough<pcl::PointXYZ> pass;
+    pass.setInputCloud(cloud_in_plane);
+    pass.setFilterFieldName("x");
+    pass.setFilterLimits(0.0, size_of_cropped_pointcloud_[0]/2);
+    pass.filter(*cloud_in_plane);
+    pass.setFilterFieldName("y");
+    pass.setFilterLimits(-0.06, 0.06);
+    pass.filter(*cloud_in_plane);
+    // set all y to 0
+    for (auto &pt : cloud_in_plane->points)
+    {
+        pt.y = 0;
+    }
+    // the projection change the order of the points, so we need to re-organize the point cloud based on the angle to the origin
+    std::vector<std::pair<double, int>> angle_index_pairs;
+    for (int i = 0; i < cloud_in_plane->points.size(); ++i)
+    {
+        double angle = atan2(cloud_in_plane->points[i].z, cloud_in_plane->points[i].x);
+        if (angle < 0){
+            angle += 2 * M_PI;
+        }
+        angle_index_pairs.push_back(std::make_pair(angle, i));
+    }
+    std::sort(angle_index_pairs.begin(), angle_index_pairs.end());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_plane_sorted(new pcl::PointCloud<pcl::PointXYZ>());
+    for (const auto &pair : angle_index_pairs)
+    {
+        cloud_in_plane_sorted->points.push_back(cloud_in_plane->points[pair.second]);
+    }
+    cloud_in_plane_sorted->width = cloud_in_plane_sorted->points.size();
+    cloud_in_plane_sorted->height = 1;
+    cloud_in_plane_sorted->is_dense = true;
+    cloud_in_plane = cloud_in_plane_sorted;
+    // store the temp map for visualization
+    // need to transform back to base frame
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_base_back(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::transformPointCloud(*cloud_in_plane, *cloud_in_base_back, rotation_mat);
+    temp_map_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>(*cloud_in_base_back);
 }
 
 void InterestingDirectionExtractor::checkGoalPose3D1(){
@@ -766,18 +841,27 @@ void InterestingDirectionExtractor::ExtractDirectionsFromEdgePoints()
         }
         interesting_pts_2d_.clear();
         // also need to extract the direction that lead towards to obstacles
+        extractDirectionsToObstacles();
+        for(auto &pt_2d: interesting_pts_2d_){
+            potential_directions_3d_.direction_to_obstacle.push_back(Eigen::Vector3d(pt_2d[0], pt_2d[1], 0.0));
+        }
+        interesting_pts_2d_.clear();
+        // now in every direction(to free space and to obstacle), first project the pointcloud onto a plane perpendicular to the ground which contains the direction
+        // then extract the edge points in this plane, and use the edge points to generate the interesting directions in 3D
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in_plane_(new pcl::PointCloud<pcl::PointXYZ>());
+        processPointCloudToxzPlane(cloud_in_plane_, potential_directions_3d_.direction_to_free_space[0]);
+        for (const auto &direction : potential_directions_3d_.direction_to_free_space)
+        {
 
+        }
+        for (const auto &direction : potential_directions_3d_.direction_to_obstacle)
+        {
+
+        }
     }
     else
     {
-        if (edge_points_with_info_.size() == 0)
-        {
-            ROS_INFO("No edge points detected");
-            /* code */
-        }
-        else{
-            extractDirectionsToFreeSpace();
-        }
+        extractDirectionsToFreeSpace();
     }
 }
 
@@ -791,9 +875,6 @@ void InterestingDirectionExtractor::extractDirectionsToFreeSpace()
     for (int i = 0; i < edge_points_with_info_.size(); ++i)
     {
         int next_index = (i + 1) % edge_points_with_info_.size();
-// std::cout << "i and next: " << i << " " << next_index << std::endl;
-// std::cout << "right and left: " << edge_points_with_info_[i].right_obstacle << " " << edge_points_with_info_[next_index].left_obstacle << std::endl;
-// std::cout << std::endl;
         // the edge points are sorted based on the index in the original cloud, which means they are sorted counter-clockwise
         // only need to check the right_obstacle of the current point and the left_obstacle of the next point
         // need to pay attention to goal_point, whose index_in_cloud is -1
@@ -873,7 +954,56 @@ void InterestingDirectionExtractor::extractDirectionsToFreeSpace()
 
 void InterestingDirectionExtractor::extractDirectionsToObstacles()
 {
-    // Implement the logic to extract directions to obstacles in 3D
+    // based on the edge points, extract the directions that lead towards to obstacles
+    // if two adjacent edge points have obstacles on the same side, then the direction leads to the obstacle
+    interesting_pts_2d_.clear();
+
+    for (int i = 0; i < edge_points_with_info_.size(); ++i)
+    {
+        int next_index = (i + 1) % edge_points_with_info_.size();
+        // the edge points are sorted based on the index in the original cloud, which means they are sorted counter-clockwise
+        // only need to check the right_obstacle of the current point and the left_obstacle of the next point
+        // need to pay attention to goal_point, whose index_in_cloud is -1
+        if (edge_points_with_info_[i].index_in_cloud == -1 || edge_points_with_info_[next_index].index_in_cloud == -1)
+        {
+            // if one of the two edge points is the goal point, skip it
+            // this direction has already been considered in extractDirectionsToFreeSpace() because the goal point is added as an interesting direction
+            continue;
+        }
+        else{
+            if (edge_points_with_info_[i].right_obstacle && edge_points_with_info_[next_index].left_obstacle)
+            {
+                // also need to check the angle between the two edge points
+                double angle1 = atan2(edge_points_with_info_[i].position[1], edge_points_with_info_[i].position[0]);
+                double angle2 = atan2(edge_points_with_info_[next_index].position[1], edge_points_with_info_[next_index].position[0]);
+                double distance = (edge_points_with_info_[i].position.head<2>() + edge_points_with_info_[next_index].position.head<2>()).norm() / 2.0;
+
+                // currently the angle are in [-pi, pi], need to convert them to [0, 2pi]
+                if (angle1 < 0)
+                    angle1 += 2 * M_PI;
+                if (angle2 < 0)
+                    angle2 += 2 * M_PI;
+                double angle_diff = angle2 - angle1;
+                bool reverse_check = false;
+                if (angle_diff < 0){
+                    angle_diff += 2 * M_PI;
+                    reverse_check = true;
+                }
+                double angle_diff_lower_threshold = 0.349;
+                // set 20 degrees as the threshold, if the angle difference is too small, then the obstacle is considered to be too small
+                if (angle_diff > angle_diff_lower_threshold)
+                {
+                    double average_angle = (angle1 + angle2) / 2.0;
+                    if (reverse_check){
+                        interesting_pts_2d_.push_back(Eigen::Vector2d(-distance * cos(average_angle), -distance * sin(average_angle)));
+                    }
+                    else{
+                        interesting_pts_2d_.push_back(Eigen::Vector2d(distance * cos(average_angle), distance * sin(average_angle)));
+                    }
+                }
+            }
+        }
+    }
 }
 
 void InterestingDirectionExtractor::publishEdgePoints()
@@ -976,6 +1106,7 @@ void InterestingDirectionExtractor::publishPoints()
     visualization_msgs::Marker tmp_points;
 
     std::vector<Eigen::Vector3d> debug_points(potential_directions_3d_.direction_to_free_space);
+    // std::vector<Eigen::Vector3d> debug_points(potential_directions_3d_.direction_to_obstacle);
     tmp_points.header.frame_id = "base_link";
     tmp_points.header.stamp = ros::Time::now();
     tmp_points.ns = "debug_points";
@@ -999,14 +1130,20 @@ void InterestingDirectionExtractor::publishPoints()
     p_start.y = 0.0;
     p_start.z = 0.0;
 
-    for (const auto &dir : debug_points)
-    {
-        p_end.x = dir[0];
-        p_end.y = dir[1];
-        p_end.z = dir[2];
+    // for (const auto &dir : debug_points)
+    // {
+    //     p_end.x = dir[0];
+    //     p_end.y = dir[1];
+    //     p_end.z = dir[2];
+    //     tmp_points.points.push_back(p_start);
+    //     tmp_points.points.push_back(p_end);
+    // }
+
+        p_end.x = debug_points[0][0];
+        p_end.y = debug_points[0][1];
+        p_end.z = debug_points[0][2];
         tmp_points.points.push_back(p_start);
         tmp_points.points.push_back(p_end);
-    }
 
     point_pub_.publish(tmp_points);
 }

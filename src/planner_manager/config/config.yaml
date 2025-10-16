@@ -7,3 +7,8 @@ planner:
   direction_extractor/curvature_threshold_: 0.8
   direction_extractor/num_of_neighbors_to_cluster_: 10 # better to be even number, since we will search half on each side
   direction_extractor/clustering_distance_threshold_: 0.2 # meters
+
+  # Parameters for goal in 3D
+  direction_extractor/goal_z_: 0.0
+  direction_extractor/goal_roll_: 0.0
+  direction_extractor/goal_pitch_: 0.0
