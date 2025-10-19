@@ -1,5 +1,24 @@
 #include "gap_extractor/gap_extractor.h"
  
+static inline void fillRowSpanWrap(std::vector<std::vector<uint8_t>>& M, int v, int uL, int uR, int W)
+{
+    if (W <= 0) return;
+    uL = (uL % W + W) % W;
+    uR = (uR % W + W) % W;
+    if (uR > uL) {
+        for (int u = uL + 1; u <= uR; ++u) M[v][u] = 1;
+    } else if (uR < uL) {
+        for (int u = uL + 1; u < W; ++u) M[v][u] = 1;
+        for (int u = 0; u <= uR; ++u)     M[v][u] = 1;
+    }
+}
+
+static inline void fillColSpan(std::vector<std::vector<uint8_t>>& M, int u, int vU, int vD)
+{
+    if (vD <= vU) return;
+    for (int v = vU + 1; v <= vD; ++v) M[v][u] = 1;
+}
+
 void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
 {
     node_ = nh;
@@ -86,7 +105,7 @@ void GapExtractor::pointCloudToRangeMap()
         }
     }
 
-for (const auto& pt : cloud_ground_ptr->points) {
+    for (const auto& pt : cloud_ground_ptr->points) {
         const float r = std::sqrt(pt.x*pt.x + pt.y*pt.y + pt.z*pt.z);
         if (r < 1e-3f) continue;
         const float az  = std::atan2(pt.y, pt.x);  // [-pi, pi]
@@ -236,13 +255,128 @@ void GapExtractor::detectEdges()
     }
 
     // size of horizontal and vertical edges
-    size_t h_edge_count = 0;
-    size_t v_edge_count = 0;
-    for (const auto& edge : edges) {
-        if (edge.type == 0) h_edge_count++;
-        else if (edge.type == 1) v_edge_count++;
+    // size_t h_edge_count = 0;
+    // size_t v_edge_count = 0;
+    // for (const auto& edge : edges) {
+    //     if (edge.type == 0) h_edge_count++;
+    //     else if (edge.type == 1) v_edge_count++;
+    // }
+    // ROS_INFO("[GapExtractor] Detected %lu horizontal edges, %lu vertical edges", h_edge_count, v_edge_count);
+    selected_edges_.clear();
+    selected_edges_ = edges;
+}
+
+void GapExtractor::buildGapMasks()
+{
+    GapMasks gap_masks;
+    const int H = range_map_height_;
+    const int W = range_map_width_;
+    gap_masks.open.resize(H, std::vector<uint8_t>(W, 0));
+    gap_masks.limited.resize(H, std::vector<uint8_t>(W, 0));
+
+    // horizontal scan
+    std::vector<std::vector<std::tuple<int,EdgeClass,HEdgeType>>> rows(H);
+    for (const auto& e : selected_edges_) {
+        if (e.type != 0) continue;
+        if (e.h_edge_type == HEdgeType::NONE) continue;
+        rows[e.v].emplace_back(e.u, e.edge_class, e.h_edge_type);
     }
-    ROS_INFO("[GapExtractor] Detected %lu horizontal edges, %lu vertical edges", h_edge_count, v_edge_count);
+
+    for (int v = 0; v < H; ++v){
+        auto& edge_list = rows[v];
+        if (edge_list.empty()) continue;
+        std::sort(edge_list.begin(), edge_list.end(),
+                  [](const auto& a, const auto& b){
+                      return std::get<0>(a) < std::get<0>(b);
+                  });
+
+        const int n = (int)edge_list.size();
+        std::vector<uint8_t> used(n, 0);
+
+        auto scan_and_pair = [&](EdgeClass cls, HEdgeType left_tag, HEdgeType right_tag, std::vector<std::vector<uint8_t>>& mask){
+            for (int i = 0; i < n; ++i){
+                if (used[i]) continue;
+                const int u_i = std::get<0>(edge_list[i]);
+                const EdgeClass cls_i = std::get<1>(edge_list[i]);
+                const HEdgeType tag_i = std::get<2>(edge_list[i]);
+                if (cls_i != cls || tag_i != left_tag) continue;
+
+                int j = (i + 1) % n;
+                bool found_pair = false;
+                for (int step = 0; step < n - 1; ++step){
+                    if (!used[j]){
+                        const EdgeClass cls_j = std::get<1>(edge_list[j]);
+                        const HEdgeType tag_j = std::get<2>(edge_list[j]);
+                        if (cls_j == cls && tag_j == right_tag){
+                            found_pair = true;
+                            break;
+                        }
+                    }
+                    j = (j + 1) % n;
+                }
+                if(!found_pair) continue;
+
+                const int u_j = std::get<0>(edge_list[j]);
+                fillRowSpanWrap(mask, v, u_i, u_j, W);
+                used[i] = 1;
+                used[j] = 1;
+            }
+        };
+        // open gaps: FF-L and FF-R
+        scan_and_pair(EdgeClass::FF, HEdgeType::L, HEdgeType::R, gap_masks.open);
+        // limited gaps: FU-L and FU-R
+        scan_and_pair(EdgeClass::FU, HEdgeType::L, HEdgeType::R, gap_masks.limited);
+    }
+
+    // vertical scan
+    std::vector<std::vector<std::tuple<int,EdgeClass,VEdgeType>>> cols(W);
+    for (const auto& e : selected_edges_) {
+        if (e.type != 1) continue;
+        if (e.v_edge_type == VEdgeType::NONE) continue;
+        cols[e.u].emplace_back(e.v, e.edge_class, e.v_edge_type);
+    }
+
+    for (int u = 0; u < W; ++u){
+        auto& C = cols[u];
+        if (C.empty()) continue;
+        std::sort(C.begin(), C.end(),
+                  [](const auto& a, const auto& b){
+                      return std::get<0>(a) < std::get<0>(b);
+                  });
+        const int n = (int)C.size();
+        std::vector<uint8_t> used(n, 0);
+
+        auto scan_and_pair_col = [&](EdgeClass cls, VEdgeType up_tag, VEdgeType down_tag, std::vector<std::vector<uint8_t>>& mask){
+            for (int i = 0; i < n; ++i){
+                if (used[i]) continue;
+                const int v_i = std::get<0>(C[i]);
+                const EdgeClass cls_i = std::get<1>(C[i]);
+                const VEdgeType tag_i = std::get<2>(C[i]);
+                if (cls_i != cls || tag_i != up_tag) continue;
+
+                int j = i + 1;
+                while (j < n){
+                    if (!used[j]){
+                        const EdgeClass cls_j = std::get<1>(C[j]);
+                        const VEdgeType tag_j = std::get<2>(C[j]);
+                        if (cls_j == cls && tag_j == down_tag){
+                            break;
+                        }
+                    }
+                    ++j;
+                }
+                if (j >= n) return;
+                const int v_j = std::get<0>(C[j]);
+                fillColSpan(mask, u, v_i, v_j);
+                used[i] = 1;
+                used[j] = 1;
+            }
+        };
+        // open gaps: FF-U and FF-D
+        scan_and_pair_col(EdgeClass::FF, VEdgeType::U, VEdgeType::D, gap_masks.open);
+        // limited gaps: FU-U and FU-D
+        scan_and_pair_col(EdgeClass::FU, VEdgeType::U, VEdgeType::D, gap_masks.limited);
+    }
 }
 
 void GapExtractor::extractGapCallback(const ros::TimerEvent &e){

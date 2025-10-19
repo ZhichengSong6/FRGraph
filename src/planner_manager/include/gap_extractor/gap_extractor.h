@@ -40,6 +40,11 @@ struct Edge{
     VEdgeType v_edge_type;
 };
 
+struct GapMasks{
+    std::vector<std::vector<uint8_t>> open;
+    std::vector<std::vector<uint8_t>> limited;
+};
+
 class GapExtractor {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -54,6 +59,7 @@ public:
     void medianFilter();
     void fillTinyHoles();
     void detectEdges();
+    void buildGapMasks();
 
     /* Helper functions */
     inline float angDist(float th1, float ph1, float th2, float ph2);
@@ -68,7 +74,8 @@ private:
     // range map parameters
     int range_map_width_, range_map_height_;
     RangeMap range_map_;
-    
+    std::vector<Edge> selected_edges_;
+
     // get tf
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_odom_;
     tf2_ros::Buffer tf_buffer_odom_;
