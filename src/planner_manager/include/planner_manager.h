@@ -18,6 +18,7 @@
 
 #include "free_regions_graph/free_regions_graph.h"
 #include "interesting_directions_extractor/interesting_directions_extractor.h"
+#include "gap_extractor/gap_extractor.h"
 
 class PlannerManager {
     private:
@@ -49,7 +50,7 @@ class PlannerManager {
     ros::Timer odom_timer_;
 
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_odom_;
-    tf2_ros::Buffer tfBuffer_odom_;
+    tf2_ros::Buffer tf_buffer_odom_;
 
     geometry_msgs::TransformStamped::Ptr lidar_to_base_ptr_, base_to_odom_ptr_;
     Eigen::Matrix4f T_lidar_base_mat = Eigen::Matrix4f::Identity();
@@ -61,6 +62,7 @@ class PlannerManager {
     GraphNode *current_node_;
 
     InterestingDirectionExtractor::Ptr interesting_direction_extractor_ptr_;
+    GapExtractor::Ptr gap_extractor_ptr_;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

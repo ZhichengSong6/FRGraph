@@ -41,6 +41,7 @@ add_executable(${PROJECT_NAME}_node
   src/planner_manager_fsm.cpp
   src/free_regions_graph/free_regions_graph.cpp
   src/interesting_directions_extractor/interesting_directions_extractor.cpp
+  src/gap_extractor/gap_extractor.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_node

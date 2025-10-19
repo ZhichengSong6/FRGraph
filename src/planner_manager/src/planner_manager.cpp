@@ -26,14 +26,16 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     T_lidar_base_mat = T_lidar_base.matrix().cast<float>();
 
     base_to_odom_ptr_ = geometry_msgs::TransformStamped::Ptr(new geometry_msgs::TransformStamped);
-    tf_listener_odom_ = std::make_shared<tf2_ros::TransformListener>(tfBuffer_odom_);
+    tf_listener_odom_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_odom_);
 
     odom_timer_ = node_.createTimer(ros::Duration(0.1), &PlannerManager::odomTimerCallback, this);
 
     free_regions_graph_ptr_.reset(new FreeRegionsGraph());
-    interesting_direction_extractor_ptr_.reset(new InterestingDirectionExtractor());
-    interesting_direction_extractor_ptr_->initialize(node_, env_type_);
-    interesting_direction_extractor_ptr_->setSizeOfCroppedPointcloud(size_of_cropped_pointcloud_);
+    // interesting_direction_extractor_ptr_.reset(new InterestingDirectionExtractor());
+    // interesting_direction_extractor_ptr_->initialize(node_, env_type_);
+    // interesting_direction_extractor_ptr_->setSizeOfCroppedPointcloud(size_of_cropped_pointcloud_);
+    gap_extractor_ptr_.reset(new GapExtractor());
+    gap_extractor_ptr_->initialize(node_, env_type_);
 }
 
 void PlannerManager::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg) {
@@ -115,7 +117,7 @@ void PlannerManager::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg) {
 
 void PlannerManager::odomTimerCallback(const ros::TimerEvent &event) {
     try{
-        *base_to_odom_ptr_ = tfBuffer_odom_.lookupTransform("odom", "base_link", ros::Time(0));
+        *base_to_odom_ptr_ = tf_buffer_odom_.lookupTransform("odom", "base_link", ros::Time(0));
     }
     catch (tf2::TransformException &ex)
     {
