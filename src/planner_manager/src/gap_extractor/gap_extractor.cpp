@@ -32,6 +32,9 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
     range_map_.azimuth.resize(range_map_height_, std::vector<float>(range_map_width_, std::numeric_limits<float>::max()));
     range_map_.elevation.resize(range_map_height_, std::vector<float>(range_map_width_, std::numeric_limits<float>::max()));
     range_map_.range.resize(range_map_height_, std::vector<float>(range_map_width_, std::numeric_limits<float>::max()));
+    // initialize gap masks
+    gap_masks_.open.resize(range_map_height_, std::vector<uint8_t>(range_map_width_, 0));
+    gap_masks_.limited.resize(range_map_height_, std::vector<uint8_t>(range_map_width_, 0));
 
     lidar_to_base_ptr_ = geometry_msgs::TransformStamped::Ptr(new geometry_msgs::TransformStamped);
     tf2_ros::Buffer tfBuffer_lidar;
@@ -55,6 +58,8 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
     velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &GapExtractor::velodyneCallback, this);
 
     image_pub_ = node_.advertise<sensor_msgs::Image>("/range_map_image", 1);
+    edge_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/detected_edges", 1);
+    mask_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/gap_masks", 1);
 
     gap_extractor_timer_ = node_.createTimer(ros::Duration(0.1), &GapExtractor::extractGapCallback, this);
     
@@ -63,23 +68,31 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
 
 void GapExtractor::pointCloudToRangeMap()
 {
-    range_map_.azimuth.assign(range_map_height_, std::vector<float>(range_map_width_, 0.f));
-    range_map_.elevation.assign(range_map_height_, std::vector<float>(range_map_width_, 0.f));
+    const int H = range_map_height_;
+    const int W = range_map_width_;
     const float NaN = std::numeric_limits<float>::quiet_NaN();
     range_map_.range.assign(range_map_height_, std::vector<float>(range_map_width_, NaN));
+    range_map_.azimuth.assign(range_map_height_, std::vector<float>(range_map_width_, 0.f));
+    range_map_.elevation.assign(range_map_height_, std::vector<float>(range_map_width_, 0.f));
 
-    if (!cloud_ptr_)
+    if (!cloud_ptr_ || cloud_ptr_->empty())
     {
         ROS_WARN("[GapExtractor] Point cloud is not initialized");
         return;
     }
 
+    // Angular bounds (sensor FoV, in the LIDAR frame)
     const float min_azimuth = -M_PI;
-    const float max_azimuth = M_PI;
+    const float max_azimuth =  M_PI;
     const float min_elev = -30.67f * M_PI / 180.0f;
-    const float max_elev = 20.67f * M_PI / 180.0f;
-    const float azimuth_res = (max_azimuth - min_azimuth) / range_map_width_;
-    const float elev_res = (max_elev - min_elev) / range_map_height_;
+    const float max_elev =  20.67f * M_PI / 180.0f;
+
+    // Angular resolution and helpers
+    const float azimuth_res = (max_azimuth - min_azimuth) / static_cast<float>(W);
+    const float elev_res    = (max_elev    - min_elev)    / static_cast<float>(H);
+    const float inv_az_res  = 1.f / azimuth_res;
+    const float inv_el_res  = 1.f / elev_res;
+    const float EPS = 1e-6f;
 
     for (int v = 0; v < range_map_height_; ++v) {
         const float phi_v = min_elev + (v + 0.5f) * elev_res;
@@ -91,65 +104,92 @@ void GapExtractor::pointCloudToRangeMap()
     }
 
     // points are in scan frame, first transform to base frame then to odom frame
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_odom_ptr(new pcl::PointCloud<pcl::PointXYZ>);
-    const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
-    const Eigen::Matrix4f T_base_odom_mat = T_base_odom.matrix().cast<float>();
-    pcl::transformPointCloud(*cloud_ptr_, *cloud_odom_ptr, T_lidar_base_mat_ * T_base_odom_mat);
-    // pop out all the points on the ground (z < 0.01)
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ground_ptr(new pcl::PointCloud<pcl::PointXYZ>);
-    for (const auto& point : cloud_odom_ptr->points)
-    {
-        if (point.z > 0.01)
-        {
-            cloud_ground_ptr->points.push_back(point);
+    // pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_odom_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    // const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
+    // const Eigen::Matrix4f T_base_odom_mat = T_base_odom.matrix().cast<float>();
+    // pcl::transformPointCloud(*cloud_ptr_, *cloud_odom_ptr, T_base_odom_mat * T_lidar_base_mat_);
+
+    auto write_cell = [&](int v, int u, float r, float th, float ph) {
+        float &cell = range_map_.range[v][u];
+        if (!std::isfinite(cell) || r < cell) {
+            cell = r;
+            range_map_.azimuth[v][u]   = th;
+            range_map_.elevation[v][u] = ph;
         }
-    }
+    };
 
-    for (const auto& pt : cloud_ground_ptr->points) {
-        const float r = std::sqrt(pt.x*pt.x + pt.y*pt.y + pt.z*pt.z);
-        if (r < 1e-3f) continue;
-        const float az  = std::atan2(pt.y, pt.x);  // [-pi, pi]
-        const float elv = std::asin(pt.z / r);     // [-pi/2, pi/2]
 
-        if (elv < min_elev || elv > max_elev) continue;
+    for (const auto& pt : cloud_ptr_->points) {
+        const float x = pt.x, y = pt.y, z = pt.z;
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
 
-        int u = static_cast<int>(std::floor((az  - min_azimuth) / azimuth_res));
-        int v = static_cast<int>(std::floor((elv - min_elev)    / elev_res));
-        // clamp & seam wrap
-        if (u < 0) u = 0; if (u >= range_map_width_)  u = range_map_width_ - 1;
-        if (v < 0) v = 0; if (v >= range_map_height_) v = range_map_height_ - 1;
+        const float r = std::sqrt(x*x + y*y + z*z);
+        if (!std::isfinite(r) || r <= 1e-3f) continue;
 
-        float& cell = range_map_.range[v][u];
-        if (!std::isfinite(cell) || r < cell) cell = r; // 选择最近距离
+        // Spherical angles in sensor frame
+        float th = std::atan2(y, x);                         // [-pi, pi]
+        float ph = std::atan2(z, std::sqrt(x*x + y*y));      
+
+        // FoV gating with safe clamp on the top edge
+        if (ph < min_elev || ph > max_elev) continue;
+        if (ph >= max_elev) ph = max_elev - EPS;             // avoid v == H
+
+        // Column index with robust wrap-around
+        int u = static_cast<int>(std::floor((th - min_azimuth) * inv_az_res));
+        u = (u % W + W) % W;                                 // force into [0, W)
+
+        // Row index;
+        int v = static_cast<int>(std::floor((ph - min_elev) * inv_el_res));
+        if (static_cast<unsigned>(v) >= static_cast<unsigned>(H)) continue;
+
+        write_cell(v, u, r, th, ph);
     }
 }
 
 void GapExtractor::medianFilter()
 {
-        RangeMap filtered_map = range_map_; 
+    RangeMap filtered_map = range_map_; 
     const int H = range_map_height_;
     const int W = range_map_width_;
-    for(int v=1; v<H-1; ++v){
-        for(int u=0; u<W; ++u){
-            float xs[9];
-            int n=0;
-            auto push = [&](int vv,int uu){
-                float r = range_map_.range[vv][uu];
-                if (std::isfinite(r)) xs[n++]=r;
-            };
-            push(v,u);
-            for(int dv=-1; dv<=1; ++dv){
-                for(int du=-1; du<=1; ++du){
-                    if(!dv && !du) continue;
-                    int vv=v+dv, uu=(u+du+W)%W;
-                    if(vv<0||vv>=H) continue;
-                    push(vv,uu);
+
+    for (int v = 0; v < H; ++v){
+        for (int u = 0; u < W; ++u){
+            const int uL = (u - 1 + W) % W;
+            const int uR = (u + 1) % W;
+
+            const float rC = range_map_.range[v][u];
+            const float rL = range_map_.range[v][uL];
+            const float rR = range_map_.range[v][uR];
+
+            // If Center is NaN, leave it to hole-fill stage
+            if (!std::isfinite(rC)) continue;
+
+            // Need at least two finite among {L, C, R} to median
+            int n = 0;
+            float buf[3];
+            if (std::isfinite(rL)) buf[n++] = rL;
+            if (std::isfinite(rC)) buf[n++] = rC;
+            if (std::isfinite(rR)) buf[n++] = rR;
+
+            if (n < 2) continue; // not enough data to median
+
+            float dpsi = angDist(range_map_.azimuth[v][uL], range_map_.elevation[v][uL], range_map_.azimuth[v][uR], range_map_.elevation[v][uR]);
+            float rnear = std::min(std::isfinite(rL)?rL:INFINITY, std::isfinite(rR)?rR:INFINITY);
+            if (!std::isfinite(rnear)){
+                rnear = rC;
+            }
+            const float gate = edge_params_.a_h + edge_params_.b_h * rnear * std::sin(std::max(0.f, dpsi));
+
+            if (std::isfinite(rL) && std::isfinite(rR)){
+                if (std::fabs(rL - rR) > gate){
+                    continue;
                 }
             }
-            if(n>=3){ std::nth_element(xs, xs+n/2, xs+n); filtered_map.range[v][u]=xs[n/2]; }
+            std::nth_element(buf, buf + n/2, buf + n);
+            filtered_map.range[v][u] = buf[n/2];
         }
     }
-    range_map_.range.swap(filtered_map.range);
+    range_map_.range.swap(filtered_map.range); 
 }
 
 void GapExtractor::fillTinyHoles()
@@ -157,18 +197,31 @@ void GapExtractor::fillTinyHoles()
     RangeMap filtered_map = range_map_; 
     const int H = range_map_height_;
     const int W = range_map_width_;
-    for(int v=1; v<H-1; ++v){
-        for(int u=0; u<W; ++u){
-            if(std::isfinite(range_map_.range[v][u])) continue;
-            float sum=0; int cnt=0;
-            for(int dv=-1; dv<=1; ++dv){
-                for(int du=-1; du<=1; ++du){
-                    if(!dv && !du) continue;
-                    int vv=v+dv, uu=(u+du+W)%W; if(vv<0||vv>=H) continue;
-                    float r=range_map_.range[vv][uu]; if(std::isfinite(r)){ sum+=r; ++cnt; }
-                }
+
+    const float abs_gate = 0.05f;           // absolute tolerance in meters
+    const float rel_gate = 0.02f;           // relative tolerance vs near range (e.g., 2%)
+    const float step_scale = 1.0f;          // scale for angular step contribution (can use edge_params_.b_h)
+
+    for (int v = 0; v < H; ++v){
+        for (int u = 0; u < W; ++u){
+            if (std::isfinite(range_map_.range[v][u])) continue;
+
+            const int uL = (u - 1 + W) % W;
+            const int uR = (u + 1) % W;
+
+            const float rL = range_map_.range[v][uL];
+            const float rR = range_map_.range[v][uR];
+
+            if (!std::isfinite(rL) || !std::isfinite(rR)) continue;
+
+            // Angular span between L and R
+            float dpsi = angDist(range_map_.azimuth[v][uL], range_map_.elevation[v][uL], range_map_.azimuth[v][uR], range_map_.elevation[v][uR]);
+            float rnear = std::min(rL, rR);
+            const float gate = abs_gate + rel_gate * rnear + step_scale * rnear * std::sin(std::max(0.f, dpsi));
+
+            if (std::fabs(rL - rR) <= gate){
+                filtered_map.range[v][u] = 0.5f * (rL + rR);
             }
-            if(cnt>=6) filtered_map.range[v][u]=sum/cnt; // 小孔补洞，大孔保持 NaN
         }
     }
     range_map_.range.swap(filtered_map.range);
@@ -191,50 +244,97 @@ void GapExtractor::detectEdges()
     std::vector<Edge> edges;
     const int H = range_map_height_;
     const int W = range_map_width_;
-    const float a = 0.08f;
-    const float b = 0.02f;
-    const float lambda = 0.5f;
-    const float eps_diff = 1e-3f;
+
+    const float R_MAX = 100.0f;
+
+    const float z_band_ground = 0.05f; 
+    const float z_gate_v      = 0.05f; 
+    const float curv_gate     = 0.20f; 
+
+    auto z_of = [&](int v, int u)->float{
+        const float r   = range_map_.range[v][u];
+        if (!std::isfinite(r)) return std::numeric_limits<float>::quiet_NaN();
+        const float phi = range_map_.elevation[v][u];
+        return r * std::sin(phi);
+    };
 
     auto try_pair = [&](int v1, int u1, int v2, int u2, int type){
-        float r1_fetched, r2_fetched;
-        bool is_unknown1, is_unknown2;
-        fetchRangeForCompare(v1, u1, 100.0f, r1_fetched, is_unknown1);
-        fetchRangeForCompare(v2, u2, 100.0f, r2_fetched, is_unknown2);
-        if (is_unknown1 && is_unknown2) return; // both unknown, no edge
+
+        const bool horizontal = (type == 0);
+        const float a = horizontal ? edge_params_.a_h : edge_params_.a_v;
+        const float b = horizontal ? edge_params_.b_h : edge_params_.b_v;
+        const float lambda = horizontal ? edge_params_.lambda_h : edge_params_.lambda_v;
+        const float eps_diff = horizontal ? edge_params_.eps_h : edge_params_.eps_v;
+
+        float r1c, r2c; bool unk1, unk2;
+        fetchRangeForCompare(v1, u1, R_MAX, r1c, unk1);
+        fetchRangeForCompare(v2, u2, R_MAX, r2c, unk2);
+        if (unk1 && unk2) return; // both unknown, no edge
 
         HEdgeType htype = HEdgeType::NONE;
         VEdgeType vtype = VEdgeType::NONE;
-        const float dr = r1_fetched - r2_fetched;
-        if (type == 0) {                                    // horizontal edge
-            if      (dr < -eps_diff) htype = HEdgeType::L;  // 
-            else if (dr >  eps_diff) htype = HEdgeType::R;  // 
-            // else NONE
-        } else {                                            // vertical edge
-            if      (dr < -eps_diff) vtype = VEdgeType::U;  // 
-            else if (dr >  eps_diff) vtype = VEdgeType::D;  // 
-            // else NONE
+        const float dr = r1c - r2c;
+        if (horizontal){
+            if      (dr < -eps_diff) htype = HEdgeType::L;
+            else if (dr >  eps_diff) htype = HEdgeType::R;
+        } else {
+            if      (dr < -eps_diff) vtype = VEdgeType::U;
+            else if (dr >  eps_diff) vtype = VEdgeType::D;
+        }
+
+        if ((horizontal && htype == HEdgeType::NONE) || (!horizontal && vtype == VEdgeType::NONE)) {
+            return; // no significant difference
         }
 
         // both have finite ranges
-        if (!is_unknown1 && !is_unknown2){
-            const float angle_dist = angDist(range_map_.azimuth[v1][u1], range_map_.elevation[v1][u1],
-                                            range_map_.azimuth[v2][u2], range_map_.elevation[v2][u2]);
-            const float r_min = std::min(r1_fetched, r2_fetched);
-            const float threshold = a + b * r_min * std::sin(angle_dist);
-    
-            if (std::fabs(r1_fetched - r2_fetched) <= threshold) return;
-    
-            const float r_near = r_min;
-            const float r_far = std::max(r1_fetched, r2_fetched);
-    
-            if (r_far * std::cos(angle_dist) <= r_near + lambda*r_near*std::sin(angle_dist)) return;
-            
-            edges.push_back(Edge{v1, u1, type, EdgeClass::FF, htype, vtype});
+        if (!unk1 && !unk2){
+            if (!horizontal){
+                // vertical edge, check z difference
+                const float z1 = z_of(v1, u1);
+                const float z2 = z_of(v2, u2);
+                if (std::isfinite(z1) && std::isfinite(z2)){
+                    if (std::fabs(z1) < z_band_ground && std::fabs(z2) < z_band_ground) return; // both on ground
+                    if (std::fabs(z1 - z2) < z_gate_v) {
+                        bool smooth = false;
+                        // check curvature
+                        if (v1 - 1 >= 0){
+                            const float r_temp = range_map_.range[v1 - 1][u1];
+                            if (std::isfinite(r_temp)){
+                                const float curv = std::fabs(r2c - 2.f * r1c + r_temp);
+                                if (curv < curv_gate) smooth = true;
+                            }
+                        }
+                        if (!smooth && v2 + 1 < H){
+                            const float r_temp = range_map_.range[v2 + 1][u2];
+                            if (std::isfinite(r_temp)){
+                                const float curv = std::fabs(r_temp - 2.f * r2c + r1c);
+                                if (curv < curv_gate) smooth = true;
+                            }
+                        }
+                        if (smooth) return; // smooth surface, no edge
+                    }
+                }
+            }
+            const float dpsi = angDist(range_map_.azimuth[v1][u1],   range_map_.elevation[v1][u1],
+                                       range_map_.azimuth[v2][u2],   range_map_.elevation[v2][u2]);
+            const float rmin = std::min(r1c, r2c);
+            const float thr  = a + b * rmin * std::sin(dpsi);
+
+            if (std::fabs(dr) <= thr) return;
+
+            const float rnear = rmin, rfar = std::max(r1c, r2c);
+            if (rfar * std::cos(dpsi) <= rnear + lambda * rnear * std::sin(dpsi)) return;
+
+            edges.push_back(Edge{v1, u1, type, range_map_.range[v1][u1], EdgeClass::FF, htype, vtype});
         }
-        else if (is_unknown1 != is_unknown2){
+        else if (unk1 != unk2){
             // one finite, one unknown
-            edges.push_back(Edge{v1, u1, type, EdgeClass::FU, htype, vtype});
+            // push finite point as edge
+            if (unk1) {
+                edges.push_back(Edge{v2, u2, type, range_map_.range[v2][u2], EdgeClass::FU, htype, vtype});
+            } else {
+                edges.push_back(Edge{v1, u1, type, range_map_.range[v1][u1], EdgeClass::FU, htype, vtype});
+            }
         }
     };
 
@@ -248,20 +348,20 @@ void GapExtractor::detectEdges()
 
     // vertical edges
     for(int u=0; u<W; ++u){
-        for(int v=0; v<H-1; ++v){
+        for(int v=v_margin_; v<H-1-v_margin_; ++v){
             int v_next = v+1;
             try_pair(v, u, v_next, u, 1);
         }
     }
 
     // size of horizontal and vertical edges
-    // size_t h_edge_count = 0;
-    // size_t v_edge_count = 0;
-    // for (const auto& edge : edges) {
-    //     if (edge.type == 0) h_edge_count++;
-    //     else if (edge.type == 1) v_edge_count++;
-    // }
-    // ROS_INFO("[GapExtractor] Detected %lu horizontal edges, %lu vertical edges", h_edge_count, v_edge_count);
+    size_t h_edge_count = 0;
+    size_t v_edge_count = 0;
+    for (const auto& edge : edges) {
+        if (edge.type == 0) h_edge_count++;
+        else if (edge.type == 1) v_edge_count++;
+    }
+    ROS_INFO("[GapExtractor] Detected %lu horizontal edges, %lu vertical edges", h_edge_count, v_edge_count);
     selected_edges_.clear();
     selected_edges_ = edges;
 }
@@ -323,9 +423,9 @@ void GapExtractor::buildGapMasks()
             }
         };
         // open gaps: FF-L and FF-R
-        scan_and_pair(EdgeClass::FF, HEdgeType::L, HEdgeType::R, gap_masks.open);
+        scan_and_pair(EdgeClass::FU, HEdgeType::L, HEdgeType::R, gap_masks.open);
         // limited gaps: FU-L and FU-R
-        scan_and_pair(EdgeClass::FU, HEdgeType::L, HEdgeType::R, gap_masks.limited);
+        // scan_and_pair(EdgeClass::FF, HEdgeType::L, HEdgeType::R, gap_masks.limited);
     }
 
     // vertical scan
@@ -333,6 +433,7 @@ void GapExtractor::buildGapMasks()
     for (const auto& e : selected_edges_) {
         if (e.type != 1) continue;
         if (e.v_edge_type == VEdgeType::NONE) continue;
+        if (e.v < v_margin_ || e.v >= H - v_margin_) continue;
         cols[e.u].emplace_back(e.v, e.edge_class, e.v_edge_type);
     }
 
@@ -373,9 +474,125 @@ void GapExtractor::buildGapMasks()
             }
         };
         // open gaps: FF-U and FF-D
-        scan_and_pair_col(EdgeClass::FF, VEdgeType::U, VEdgeType::D, gap_masks.open);
+        scan_and_pair_col(EdgeClass::FU, VEdgeType::U, VEdgeType::D, gap_masks.open);
         // limited gaps: FU-U and FU-D
-        scan_and_pair_col(EdgeClass::FU, VEdgeType::U, VEdgeType::D, gap_masks.limited);
+        // scan_and_pair_col(EdgeClass::FF, VEdgeType::U, VEdgeType::D, gap_masks.limited);
+    }
+
+    buildGapMasks_FromSingleFFEdge(gap_masks.limited);
+
+    gap_masks_.open.clear();
+    gap_masks_.limited.clear();
+    gap_masks_.open = gap_masks.open;
+    gap_masks_.limited = gap_masks.limited;
+}
+
+void GapExtractor::buildGapMasks_FromSingleFFEdge(std::vector<std::vector<uint8_t>>& mask_limited){
+    const int H = range_map_height_;
+    const int W = range_map_width_;
+    const float a = 0.08f;
+    const float b = 0.02f;
+    const float lambda = 0.5f;
+    const float eps_diff = 0.03f;
+
+    auto sweep_row = [&](int v, int u_start, int step, int u_near, float r_near){
+        std::vector<int> path;
+        path.reserve(12);
+        int u = u_start;
+        float r_prev = r_near;
+        const float azN = range_map_.azimuth[v][u_near];
+        const float phN = range_map_.elevation[v][u_near];
+
+        for (int k = 0; k < 12; ++k){
+            if (u < 0)
+                u += W;
+            else if (u >= W)
+                u -= W;
+            const float r = range_map_.range[v][u];
+            if (!std::isfinite(r)) break;
+
+            const float dpsi = angDist(azN, phN, range_map_.azimuth[v][u], range_map_.elevation[v][u]);
+            const float threshold = a + b * r_near * std::sin(dpsi);
+            const bool pass_geom = (r >= r_near + threshold);
+            const bool pass_mono = (r >= r_prev - eps_diff);
+
+            if (!pass_geom || !pass_mono) break;
+            path.push_back(u);
+            r_prev = r;
+            u += step;
+        }
+        if (path.size() >= 3){
+            int mid = path[(int)path.size()/2];
+            mask_limited[v][mid] = 1;
+        }
+    };
+
+    auto sweep_col = [&](int u, int v_start, int step, int v_near, float r_near){
+        std::vector<int> path;
+        path.reserve(12);
+
+        int v = v_start;
+        float r_prev = r_near;
+        const float azN = range_map_.azimuth[v_near][u];
+        const float phN = range_map_.elevation[v_near][u];
+
+        for (int k = 0; k < 12; ++k){
+            if (v < v_margin_ || v >= H - v_margin_) break;
+            const float r = range_map_.range[v][u];
+            if (!std::isfinite(r)) break;
+
+            const float dpsi = angDist(azN, phN, range_map_.azimuth[v][u], range_map_.elevation[v][u]);
+            const float threshold = a + b * r_near * std::sin(dpsi);
+            const bool pass_geom = (r >= r_near + threshold);
+            const bool pass_mono = (r >= r_prev - eps_diff);
+            if (!pass_geom || !pass_mono) break;
+            path.push_back(v);
+            r_prev = r;
+            v += step;
+        }
+        if (path.size() >= 3){
+            int mid = path[(int)path.size()/2];
+            mask_limited[mid][u] = 1;
+        }
+    };
+
+    for (const auto& e : selected_edges_){
+        if (e.edge_class != EdgeClass::FF) continue;
+        const int v = e.v, u = e.u;
+
+        if (e.type == 0){
+            // horizontal edge
+            if (e.h_edge_type == HEdgeType::NONE) continue;
+            const int uR = (u + 1) % W;
+            float rL = range_map_.range[v][u];
+            float rR = range_map_.range[v][uR];
+
+            if (e.h_edge_type == HEdgeType::L){
+                const float r_near = std::isfinite(rL) ? rL : rR;
+                sweep_row(v, uR, +1, u, r_near);
+            }
+            else{
+                const float r_near = std::isfinite(rR) ? rR : rL;
+                sweep_row(v, u, -1, uR, r_near);
+            }
+        }
+        else if (e.type == 1){
+            // vertical edge
+            if (e.v_edge_type == VEdgeType::NONE) continue;
+            const int vD = v + 1;
+            if (vD >= H) continue;
+            float rU = range_map_.range[v][u];
+            float rD = range_map_.range[vD][u];
+
+            if (e.v_edge_type == VEdgeType::U){
+                const float r_near = std::isfinite(rU) ? rU : rD;
+                sweep_col(u, vD, +1, v, r_near);
+            }
+            else{
+                const float r_near = std::isfinite(rD) ? rD : rU;
+                sweep_col(u, v, -1, vD, r_near);
+            }
+        }
     }
 }
 
@@ -391,15 +608,18 @@ void GapExtractor::extractGapCallback(const ros::TimerEvent &e){
     fillTinyHoles();
     // detect edges
     detectEdges();
+    // build gap masks
+    buildGapMasks();
 }
 
 inline float GapExtractor::angDist(float th1, float ph1, float th2, float ph2)
 {
-    float dth = th1 - th2;
-    // wrap to [-pi, pi]
-    if (dth > M_PI) dth -= 2 * M_PI;
-    if (dth < -M_PI) dth += 2 * M_PI;
-    return std::acos(std::sin(ph1)*std::sin(ph2) + std::cos(ph1)*std::cos(ph2)*std::cos(dth));
+    const float s1 = std::sin(ph1), c1 = std::cos(ph1);
+    const float s2 = std::sin(ph2), c2 = std::cos(ph2);
+    const float dth = th1 - th2;
+    float c = s1*s2 + c1*c2*std::cos(dth);
+    c = std::max(-1.0f, std::min(1.0f, c));
+    return std::acos(c);
 }
 
 void GapExtractor::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg)
@@ -442,7 +662,6 @@ void GapExtractor::publishRangeMapAsImage()
     img_msg.step = range_map_width_;
     img_msg.data.resize(range_map_height_ * range_map_width_);
 
-    // 找到最小和最大距离用于归一化
     float min_val = std::numeric_limits<float>::max();
     float max_val = 0;
     for (int v = 0; v < range_map_height_; ++v)
@@ -453,7 +672,6 @@ void GapExtractor::publishRangeMapAsImage()
             }
     if (min_val >= max_val) min_val = 0, max_val = min_val + 1.0f;
 
-    // 填充图像数据
     for (int v = 0; v < range_map_height_; ++v)
     {
         for (int u = 0; u < range_map_width_; ++u)
@@ -468,7 +686,97 @@ void GapExtractor::publishRangeMapAsImage()
     image_pub_.publish(img_msg);
 }
 
+void GapExtractor::publishEdges(){
+    // publish edges as a single marker (points) to avoid duplicate/accumulating markers
+    visualization_msgs::Marker marker;
+    visualization_msgs::MarkerArray marker_array;
+    marker.header.frame_id = "scan";
+    marker.header.stamp = ros::Time::now();
+    marker.ns = "detected_edges";
+    marker.id = 0;
+    marker.type = visualization_msgs::Marker::POINTS;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.scale.x = 0.02;
+    marker.scale.y = 0.02;
+    marker.color.r = 1.0;
+    marker.color.g = 0.5;
+    marker.color.b = 1.0;
+    marker.color.a = 1.0;
+
+    marker.points.clear();
+    for (const auto& edge : selected_edges_){
+        // only visualize vertical edges
+        // if (edge.type != 1) continue;
+        // only visualize horizontal edges
+        if (edge.type != 0) continue;
+
+        float r = edge.r;
+        // skip edges with invalid range (could be NaN for unknown)
+        if (!std::isfinite(r)) continue;
+
+        geometry_msgs::Point p;
+        const float th = range_map_.azimuth[edge.v][edge.u];
+        const float ph = range_map_.elevation[edge.v][edge.u];
+        p.x = r * std::cos(ph) * std::cos(th);
+        p.y = r * std::cos(ph) * std::sin(th);
+        p.z = r * std::sin(ph);
+        marker.points.push_back(p);
+    }
+
+    // push the single marker containing all points
+    marker_array.markers.push_back(marker);
+    ROS_INFO("[GapExtractor] Publishing %lu edges", marker.points.size());
+    edge_pub_.publish(marker_array);
+}
+
+visualization_msgs::Marker GapExtractor::maskToMarkerPoints(const std::vector<std::vector<uint8_t>>& mask, 
+                                const RangeMap& range_map, float radius,
+                            float r, float g, float b, int id)
+{
+    visualization_msgs::Marker mask_marker;
+    mask_marker.header.frame_id = "scan";
+    mask_marker.ns = "gap_masks";
+    mask_marker.id = id;
+    mask_marker.type = visualization_msgs::Marker::POINTS;
+    mask_marker.scale.x = 0.01;
+    mask_marker.scale.y = 0.01;
+    mask_marker.color.r = r;
+    mask_marker.color.g = g;
+    mask_marker.color.b = b;
+    mask_marker.color.a = 1.0;
+
+    const int H = mask.size();
+    const int W = mask[0].size();
+    for (int v = 0; v < H; ++v){
+        for (int u = 0; u < W; ++u){
+            if (!mask[v][u]) continue;
+            float th = range_map.azimuth[v][u];
+            float ph = range_map.elevation[v][u];
+            geometry_msgs::Point p;
+            p.x = radius * std::cos(ph) * std::cos(th);
+            p.y = radius * std::cos(ph) * std::sin(th);
+            p.z = radius * std::sin(ph);
+            mask_marker.points.push_back(p);
+        }
+    }
+    return mask_marker;
+}
+
+void GapExtractor::publishMasks()
+{
+    visualization_msgs::MarkerArray marker_array;
+    marker_array.markers.push_back(
+        maskToMarkerPoints(gap_masks_.open, range_map_, 3.0f, 0.0f, 1.0f, 0.0f, 0)
+    );
+    marker_array.markers.push_back(
+        maskToMarkerPoints(gap_masks_.limited, range_map_, 1.5f, 0.0f, 0.5f, 0.5f, 1)
+    );
+    mask_pub_.publish(marker_array);
+}
+
 void GapExtractor::visualizationCallback(const ros::TimerEvent &e)
 {
     publishRangeMapAsImage();
+    publishEdges();
+    publishMasks();
 }

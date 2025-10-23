@@ -21,6 +21,8 @@
 #include <tf2_eigen/tf2_eigen.h>
 
 #include <nav_msgs/Odometry.h>
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 
 struct RangeMap{
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -35,6 +37,7 @@ enum class VEdgeType{NONE, U, D}; // U: near obstacle on the up, D: near obstacl
 
 struct Edge{
     int v, u, type; // type: 0-horizontal edge, 1-vertical edge
+    double r;
     EdgeClass edge_class;
     HEdgeType h_edge_type;
     VEdgeType v_edge_type;
@@ -43,6 +46,17 @@ struct Edge{
 struct GapMasks{
     std::vector<std::vector<uint8_t>> open;
     std::vector<std::vector<uint8_t>> limited;
+};
+
+struct EdgeParameters{
+    float a_h = 0.05f; // horizontal edge detection parameter
+    float b_h = 0.02f;
+    float lambda_h = 0.5f;
+    float eps_h = 1e-3f;
+    float a_v = 0.50f; // vertical edge detection parameter
+    float b_v = 0.02f;
+    float lambda_v = 0.5f;
+    float eps_v = 2e-3f;
 };
 
 class GapExtractor {
@@ -60,6 +74,7 @@ public:
     void fillTinyHoles();
     void detectEdges();
     void buildGapMasks();
+    void buildGapMasks_FromSingleFFEdge(std::vector<std::vector<uint8_t>>& mask_limited);
 
     /* Helper functions */
     inline float angDist(float th1, float ph1, float th2, float ph2);
@@ -73,8 +88,11 @@ private:
     
     // range map parameters
     int range_map_width_, range_map_height_;
+    int v_margin_ = 0;
     RangeMap range_map_;
     std::vector<Edge> selected_edges_;
+    GapMasks gap_masks_;
+    EdgeParameters edge_params_;
 
     // get tf
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_odom_;
@@ -91,12 +109,19 @@ private:
 
     /* Publish topics */
     void publishRangeMapAsImage();
-    
+    void publishEdges();
+    visualization_msgs::Marker maskToMarkerPoints(const std::vector<std::vector<uint8_t>>& mask, 
+                                const RangeMap& range_map, float radius,
+                            float r, float g, float b, int id);
+    void publishMasks();
+
     /* Subscribers */
     ros::Subscriber velodyne_sub_;
 
     /* Publishers */
     ros::Publisher image_pub_;
+    ros::Publisher edge_pub_;
+    ros::Publisher mask_pub_;
 
     /* Timers */
     ros::Timer gap_extractor_timer_;
