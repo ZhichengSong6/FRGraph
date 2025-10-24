@@ -71,9 +71,10 @@ void GapExtractor::pointCloudToRangeMap()
     const int H = range_map_height_;
     const int W = range_map_width_;
     const float NaN = std::numeric_limits<float>::quiet_NaN();
-    range_map_.range.assign(range_map_height_, std::vector<float>(range_map_width_, NaN));
-    range_map_.azimuth.assign(range_map_height_, std::vector<float>(range_map_width_, 0.f));
-    range_map_.elevation.assign(range_map_height_, std::vector<float>(range_map_width_, 0.f));
+
+    range_map_.range.assign(H, std::vector<float>(W, NaN));
+    range_map_.azimuth.assign(H, std::vector<float>(W, 0.f));
+    range_map_.elevation.assign(H, std::vector<float>(W, 0.f));
 
     if (!cloud_ptr_ || cloud_ptr_->empty())
     {
@@ -81,33 +82,30 @@ void GapExtractor::pointCloudToRangeMap()
         return;
     }
 
-    // Angular bounds (sensor FoV, in the LIDAR frame)
+
+    // Field of view (radians)
     const float min_azimuth = -M_PI;
     const float max_azimuth =  M_PI;
     const float min_elev = -30.67f * M_PI / 180.0f;
     const float max_elev =  20.67f * M_PI / 180.0f;
 
-    // Angular resolution and helpers
+    // Angular resolutions
     const float azimuth_res = (max_azimuth - min_azimuth) / static_cast<float>(W);
     const float elev_res    = (max_elev    - min_elev)    / static_cast<float>(H);
     const float inv_az_res  = 1.f / azimuth_res;
     const float inv_el_res  = 1.f / elev_res;
-    const float EPS = 1e-6f;
+    const float EPS = 1e-6f;                 // tiny epsilon for clamping
+    const float two_pi = 2.f * M_PI;
 
-    for (int v = 0; v < range_map_height_; ++v) {
+    // Initialize pixel-center angles (for reference/visualization)
+    for (int v = 0; v < H; ++v) {
         const float phi_v = min_elev + (v + 0.5f) * elev_res;
-        for (int u = 0; u < range_map_width_; ++u) {
+        for (int u = 0; u < W; ++u) {
             const float th_u = min_azimuth + (u + 0.5f) * azimuth_res;
             range_map_.azimuth[v][u]   = th_u;
             range_map_.elevation[v][u] = phi_v;
         }
     }
-
-    // points are in scan frame, first transform to base frame then to odom frame
-    // pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_odom_ptr(new pcl::PointCloud<pcl::PointXYZ>);
-    // const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
-    // const Eigen::Matrix4f T_base_odom_mat = T_base_odom.matrix().cast<float>();
-    // pcl::transformPointCloud(*cloud_ptr_, *cloud_odom_ptr, T_base_odom_mat * T_lidar_base_mat_);
 
     auto write_cell = [&](int v, int u, float r, float th, float ph) {
         float &cell = range_map_.range[v][u];
@@ -118,7 +116,7 @@ void GapExtractor::pointCloudToRangeMap()
         }
     };
 
-
+    float ph_min_obs =  1e9f, ph_max_obs = -1e9f;
     for (const auto& pt : cloud_ptr_->points) {
         const float x = pt.x, y = pt.y, z = pt.z;
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
@@ -126,22 +124,35 @@ void GapExtractor::pointCloudToRangeMap()
         const float r = std::sqrt(x*x + y*y + z*z);
         if (!std::isfinite(r) || r <= 1e-3f) continue;
 
-        // Spherical angles in sensor frame
-        float th = std::atan2(y, x);                         // [-pi, pi]
-        float ph = std::atan2(z, std::sqrt(x*x + y*y));      
+        // Spherical coordinates in the sensor frame
+        float th = std::atan2(y, x);                       // [-pi, pi]
+        float ph = std::atan2(z, std::sqrt(x*x + y*y));    // [-pi/2, pi/2]
+        ph_min_obs = std::min(ph_min_obs, ph);
+        ph_max_obs = std::max(ph_max_obs, ph);
 
-        // FoV gating with safe clamp on the top edge
-        if (ph < min_elev || ph > max_elev) continue;
-        if (ph >= max_elev) ph = max_elev - EPS;             // avoid v == H
+        // ---- Clamp to (min, max) BEFORE binning (avoid half-open interval leak) ----
+        // Elevation: clamp to (min_elev, max_elev)
+        float ph_c = std::min(std::max(ph, min_elev + EPS), max_elev - EPS);
 
-        // Column index with robust wrap-around
-        int u = static_cast<int>(std::floor((th - min_azimuth) * inv_az_res));
-        u = (u % W + W) % W;                                 // force into [0, W)
+        // Azimuth: wrap into [min,max), then clamp slightly inside, then round-to-center
+        float th_w = th;
+        while (th_w <  min_azimuth) th_w += two_pi;
+        while (th_w >= max_azimuth) th_w -= two_pi;
+        th_w = std::min(std::max(th_w, min_azimuth + EPS), max_azimuth - EPS);
 
-        // Row index;
-        int v = static_cast<int>(std::floor((ph - min_elev) * inv_el_res));
-        if (static_cast<unsigned>(v) >= static_cast<unsigned>(H)) continue;
+        // ---- Row/column indices: round to pixel centers (round-to-center) ----
+        // Row centers at min_elev + (v+0.5)*elev_res
+        const float v_float = (ph_c - (min_elev + 0.5f * elev_res)) * inv_el_res;
+        int v = static_cast<int>(std::floor(v_float + 0.5f));   // round
+        if (v < 0) v = 0; else if (v >= H) v = H - 1;
 
+        // Column centers at min_azimuth + (u+0.5)*azimuth_res
+        const float u_float = (th_w - (min_azimuth + 0.5f * azimuth_res)) * inv_az_res;
+        int u = static_cast<int>(std::floor(u_float + 0.5f));   // round
+        // Wrap around horizontally
+        u = (u % W + W) % W;
+
+        // Store original (unclamped) angles for downstream geometry if needed
         write_cell(v, u, r, th, ph);
     }
 }
@@ -220,7 +231,7 @@ void GapExtractor::fillTinyHoles()
             const float gate = abs_gate + rel_gate * rnear + step_scale * rnear * std::sin(std::max(0.f, dpsi));
 
             if (std::fabs(rL - rR) <= gate){
-                filtered_map.range[v][u] = 0.5f * (rL + rR);
+                filtered_map.range[v][u] = std::min(rL, rR);
             }
         }
     }
@@ -245,17 +256,35 @@ void GapExtractor::detectEdges()
     const int H = range_map_height_;
     const int W = range_map_width_;
 
-    const float R_MAX = 100.0f;
+    const float R_MAX = 10.0f;
 
-    const float z_band_ground = 0.05f; 
-    const float z_gate_v      = 0.05f; 
-    const float curv_gate     = 0.20f; 
+    static constexpr float z_curv_gate = 30.0f;
 
-    auto z_of = [&](int v, int u)->float{
-        const float r   = range_map_.range[v][u];
-        if (!std::isfinite(r)) return std::numeric_limits<float>::quiet_NaN();
-        const float phi = range_map_.elevation[v][u];
-        return r * std::sin(phi);
+    auto kappaZTriplet = [&](int vc, int uc)->float {
+        if (vc - 1 < 0 || vc + 1 >= H) return std::numeric_limits<float>::infinity();
+
+        const float r_up  = range_map_.range[vc - 1][uc];
+        const float r_mid = range_map_.range[vc][uc];
+        const float r_dn  = range_map_.range[vc + 1][uc];
+
+        const float ph_up  = range_map_.elevation[vc - 1][uc];
+        const float ph_mid = range_map_.elevation[vc][uc];
+        const float ph_dn  = range_map_.elevation[vc + 1][uc];
+
+        if (!std::isfinite(r_up)  || !std::isfinite(r_mid) || !std::isfinite(r_dn) ||
+            !std::isfinite(ph_up) || !std::isfinite(ph_mid)|| !std::isfinite(ph_dn))
+            return std::numeric_limits<float>::infinity();
+
+        const float z_up  = r_up  * std::sin(ph_up);
+        const float z_mid = r_mid * std::sin(ph_mid);
+        const float z_dn  = r_dn  * std::sin(ph_dn);
+
+        const float dphi1 = std::fabs(ph_mid - ph_up);
+        const float dphi2 = std::fabs(ph_dn  - ph_mid);
+        const float dphi  = 0.5f * (dphi1 + dphi2);
+        const float denom = std::max(1e-3f, dphi * dphi);   // 角步长归一
+
+        return std::fabs(z_up - 2.0f * z_mid + z_dn) / denom;
     };
 
     auto try_pair = [&](int v1, int u1, int v2, int u2, int type){
@@ -264,78 +293,67 @@ void GapExtractor::detectEdges()
         const float a = horizontal ? edge_params_.a_h : edge_params_.a_v;
         const float b = horizontal ? edge_params_.b_h : edge_params_.b_v;
         const float lambda = horizontal ? edge_params_.lambda_h : edge_params_.lambda_v;
-        const float eps_diff = horizontal ? edge_params_.eps_h : edge_params_.eps_v;
+        // const float eps_diff = horizontal ? edge_params_.eps_h : edge_params_.eps_v;
 
         float r1c, r2c; bool unk1, unk2;
         fetchRangeForCompare(v1, u1, R_MAX, r1c, unk1);
         fetchRangeForCompare(v2, u2, R_MAX, r2c, unk2);
+
         if (unk1 && unk2) return; // both unknown, no edge
+
+        const float dr = r1c - r2c;
+
+        if (unk1 ^ unk2){
+            // one finite, one unknown
+            const int vv = unk1 ? v2 : v1;
+            const int uu = unk1 ? u2 : u1;
+            const bool dr_pos = (dr > 0.f);
+
+            HEdgeType htype = HEdgeType::NONE;
+            VEdgeType vtype = VEdgeType::NONE;
+            if (horizontal) { htype = dr_pos ? HEdgeType::R : HEdgeType::L; }
+            else            { vtype = dr_pos ? VEdgeType::D : VEdgeType::U; }
+
+            edges.push_back(Edge{vv, uu, type, range_map_.range[vv][uu], EdgeClass::FU, htype, vtype});
+            return;
+        }
+
+        // both finite
+        const float th1 = range_map_.azimuth  [v1][u1];
+        const float ph1 = range_map_.elevation[v1][u1];
+        const float th2 = range_map_.azimuth  [v2][u2];
+        const float ph2 = range_map_.elevation[v2][u2];
+        if (!std::isfinite(th1) || !std::isfinite(ph1) || !std::isfinite(th2) || !std::isfinite(ph2)) return;
+
+        const float dpsi  = angDist(th1, ph1, th2, ph2);
+        const float rnear = std::min(r1c, r2c);
+        const float rfar  = std::max(r1c, r2c);
+
+        const float thr  = a + b * rnear * std::sin(std::max(0.f, dpsi));
+        if (std::fabs(dr) <= thr) return;
+        if (rfar * std::cos(dpsi) <= rnear + lambda * rnear * std::sin(std::max(0.f, dpsi))) return;
+
+        if (!horizontal) {
+
+            const int vm_near = (r1c <= r2c) ? v1 : v2;
+            const int um_near = (r1c <= r2c) ? u1 : u2; 
+
+            const float k1 = kappaZTriplet(v1,     um_near);
+            const float k2 = kappaZTriplet(v2,     um_near);
+            const float k3 = kappaZTriplet(vm_near,um_near);
+            const float kappa_z = std::min(k1, std::min(k2, k3));
+
+            if (kappa_z < z_curv_gate) return;  // same surface
+        }
 
         HEdgeType htype = HEdgeType::NONE;
         VEdgeType vtype = VEdgeType::NONE;
-        const float dr = r1c - r2c;
-        if (horizontal){
-            if      (dr < -eps_diff) htype = HEdgeType::L;
-            else if (dr >  eps_diff) htype = HEdgeType::R;
-        } else {
-            if      (dr < -eps_diff) vtype = VEdgeType::U;
-            else if (dr >  eps_diff) vtype = VEdgeType::D;
-        }
+        if (horizontal) { htype = (dr > 0.f) ? HEdgeType::R : HEdgeType::L; }
+        else            { vtype = (dr > 0.f) ? VEdgeType::D : VEdgeType::U; }
 
-        if ((horizontal && htype == HEdgeType::NONE) || (!horizontal && vtype == VEdgeType::NONE)) {
-            return; // no significant difference
-        }
-
-        // both have finite ranges
-        if (!unk1 && !unk2){
-            if (!horizontal){
-                // vertical edge, check z difference
-                const float z1 = z_of(v1, u1);
-                const float z2 = z_of(v2, u2);
-                if (std::isfinite(z1) && std::isfinite(z2)){
-                    if (std::fabs(z1) < z_band_ground && std::fabs(z2) < z_band_ground) return; // both on ground
-                    if (std::fabs(z1 - z2) < z_gate_v) {
-                        bool smooth = false;
-                        // check curvature
-                        if (v1 - 1 >= 0){
-                            const float r_temp = range_map_.range[v1 - 1][u1];
-                            if (std::isfinite(r_temp)){
-                                const float curv = std::fabs(r2c - 2.f * r1c + r_temp);
-                                if (curv < curv_gate) smooth = true;
-                            }
-                        }
-                        if (!smooth && v2 + 1 < H){
-                            const float r_temp = range_map_.range[v2 + 1][u2];
-                            if (std::isfinite(r_temp)){
-                                const float curv = std::fabs(r_temp - 2.f * r2c + r1c);
-                                if (curv < curv_gate) smooth = true;
-                            }
-                        }
-                        if (smooth) return; // smooth surface, no edge
-                    }
-                }
-            }
-            const float dpsi = angDist(range_map_.azimuth[v1][u1],   range_map_.elevation[v1][u1],
-                                       range_map_.azimuth[v2][u2],   range_map_.elevation[v2][u2]);
-            const float rmin = std::min(r1c, r2c);
-            const float thr  = a + b * rmin * std::sin(dpsi);
-
-            if (std::fabs(dr) <= thr) return;
-
-            const float rnear = rmin, rfar = std::max(r1c, r2c);
-            if (rfar * std::cos(dpsi) <= rnear + lambda * rnear * std::sin(dpsi)) return;
-
-            edges.push_back(Edge{v1, u1, type, range_map_.range[v1][u1], EdgeClass::FF, htype, vtype});
-        }
-        else if (unk1 != unk2){
-            // one finite, one unknown
-            // push finite point as edge
-            if (unk1) {
-                edges.push_back(Edge{v2, u2, type, range_map_.range[v2][u2], EdgeClass::FU, htype, vtype});
-            } else {
-                edges.push_back(Edge{v1, u1, type, range_map_.range[v1][u1], EdgeClass::FU, htype, vtype});
-            }
-        }
+        const int va = (r1c <= r2c) ? v1 : v2;
+        const int ua = (r1c <= r2c) ? u1 : u2;
+        edges.push_back(Edge{va, ua, type, range_map_.range[va][ua], EdgeClass::FF, htype, vtype});
     };
 
     // horizontal edges
@@ -355,13 +373,13 @@ void GapExtractor::detectEdges()
     }
 
     // size of horizontal and vertical edges
-    size_t h_edge_count = 0;
-    size_t v_edge_count = 0;
-    for (const auto& edge : edges) {
-        if (edge.type == 0) h_edge_count++;
-        else if (edge.type == 1) v_edge_count++;
-    }
-    ROS_INFO("[GapExtractor] Detected %lu horizontal edges, %lu vertical edges", h_edge_count, v_edge_count);
+    // size_t h_edge_count = 0;
+    // size_t v_edge_count = 0;
+    // for (const auto& edge : edges) {
+    //     if (edge.type == 0) h_edge_count++;
+    //     else if (edge.type == 1) v_edge_count++;
+    // }
+    // ROS_INFO("[GapExtractor] Detected %lu horizontal edges, %lu vertical edges", h_edge_count, v_edge_count);
     selected_edges_.clear();
     selected_edges_ = edges;
 }
@@ -698,18 +716,11 @@ void GapExtractor::publishEdges(){
     marker.action = visualization_msgs::Marker::ADD;
     marker.scale.x = 0.02;
     marker.scale.y = 0.02;
-    marker.color.r = 1.0;
-    marker.color.g = 0.5;
-    marker.color.b = 1.0;
-    marker.color.a = 1.0;
-
     marker.points.clear();
-    for (const auto& edge : selected_edges_){
-        // only visualize vertical edges
-        // if (edge.type != 1) continue;
-        // only visualize horizontal edges
-        if (edge.type != 0) continue;
+    marker.colors.clear();
 
+    for (const auto& edge : selected_edges_){
+        // compute 3D point in scan frame
         float r = edge.r;
         // skip edges with invalid range (could be NaN for unknown)
         if (!std::isfinite(r)) continue;
@@ -720,12 +731,37 @@ void GapExtractor::publishEdges(){
         p.x = r * std::cos(ph) * std::cos(th);
         p.y = r * std::cos(ph) * std::sin(th);
         p.z = r * std::sin(ph);
-        marker.points.push_back(p);
-    }
 
+        // choose color for four categories:
+        // horizontal FF -> red
+        // horizontal FU -> green
+        // vertical   FF -> blue
+        // vertical   FU -> yellow
+        std_msgs::ColorRGBA col;
+        col.a = 1.0f;
+        if (edge.type == 0) { // horizontal
+            if (edge.edge_class == EdgeClass::FF) {
+                col.r = 1.0f; col.g = 0.0f; col.b = 0.0f;
+            } else { // FU
+                col.r = 0.0f; col.g = 1.0f; col.b = 0.0f;
+            }
+        } else if (edge.type == 1) { // vertical
+            if (edge.edge_class == EdgeClass::FF) {
+                col.r = 0.0f; col.g = 0.0f; col.b = 1.0f;
+            } else { // FU
+                col.r = 1.0f; col.g = 1.0f; col.b = 0.0f;
+            }
+        } else {
+            // fallback color (white)
+            col.r = col.g = col.b = 1.0f;
+        }
+
+        marker.points.push_back(p);
+        marker.colors.push_back(col);
+    }
     // push the single marker containing all points
     marker_array.markers.push_back(marker);
-    ROS_INFO("[GapExtractor] Publishing %lu edges", marker.points.size());
+    // ROS_INFO("[GapExtractor] Publishing %lu edges", marker.points.size());
     edge_pub_.publish(marker_array);
 }
 

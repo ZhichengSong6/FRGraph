@@ -53,8 +53,8 @@ struct EdgeParameters{
     float b_h = 0.02f;
     float lambda_h = 0.5f;
     float eps_h = 1e-3f;
-    float a_v = 0.50f; // vertical edge detection parameter
-    float b_v = 0.02f;
+    float a_v = 0.30f; // vertical edge detection parameter
+    float b_v = 0.05f;
     float lambda_v = 0.5f;
     float eps_v = 2e-3f;
 };
