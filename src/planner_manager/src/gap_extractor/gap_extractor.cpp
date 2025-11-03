@@ -19,6 +19,51 @@ static inline void fillColSpan(std::vector<std::vector<uint8_t>>& M, int u, int 
     for (int v = vU + 1; v <= vD; ++v) M[v][u] = 1;
 }
 
+float circularSpanRad(const std::vector<float>& angles) {
+    const size_t n = angles.size();
+    if (n < 2) return 0.f;
+
+    const float TWO_PI = 2.f * static_cast<float>(M_PI);
+
+    // 1) Normalize all angles into [0, 2π)
+    std::vector<float> a;
+    a.reserve(n);
+    for (float t : angles) {
+        float w = std::fmod(t, TWO_PI);  // w in (-2π, 2π)
+        if (w < 0.f) w += TWO_PI;        // now in [0, 2π)
+        a.push_back(w);
+    }
+
+    // 2) Sort on the circle
+    std::sort(a.begin(), a.end());
+
+    // 3) Find the largest gap between consecutive angles (including wrap-around)
+    float max_gap = 0.f;
+    for (size_t i = 1; i < a.size(); ++i) {
+        float gap = a[i] - a[i - 1];     // float
+        if (gap > max_gap) max_gap = gap;
+    }
+    // Wrap-around gap between last and first (through 2π)
+    float wrap_gap = (a.front() + TWO_PI) - a.back();
+    if (wrap_gap > max_gap) max_gap = wrap_gap;
+
+    // 4) The minimal arc covering all angles = 2π - largest gap
+    float span = TWO_PI - max_gap;
+    if (span < 0.f)      span = 0.f;
+    else if (span > TWO_PI) span = TWO_PI;
+
+    return span;
+}
+
+// Linear span (max - min) for elevation
+static float linearSpanRad(const std::vector<float> &vals) {
+    if (vals.empty()) return 0.f;
+    float vmin = vals[0], vmax = vals[0];
+    for (float v : vals) { vmin = std::min(vmin, v); vmax = std::max(vmax, v); }
+    return (vmax - vmin);
+}
+
+
 void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
 {
     node_ = nh;
@@ -32,9 +77,11 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
     range_map_.azimuth.resize(range_map_height_, std::vector<float>(range_map_width_, std::numeric_limits<float>::max()));
     range_map_.elevation.resize(range_map_height_, std::vector<float>(range_map_width_, std::numeric_limits<float>::max()));
     range_map_.range.resize(range_map_height_, std::vector<float>(range_map_width_, std::numeric_limits<float>::max()));
+    range_map_.z_world.resize(range_map_height_, std::vector<float>(range_map_width_, std::numeric_limits<float>::max()));
     // initialize gap masks
     gap_masks_.open.resize(range_map_height_, std::vector<uint8_t>(range_map_width_, 0));
     gap_masks_.limited.resize(range_map_height_, std::vector<uint8_t>(range_map_width_, 0));
+    gap_regions_.clear();
 
     lidar_to_base_ptr_ = geometry_msgs::TransformStamped::Ptr(new geometry_msgs::TransformStamped);
     tf2_ros::Buffer tfBuffer_lidar;
@@ -75,13 +122,13 @@ void GapExtractor::pointCloudToRangeMap()
     range_map_.range.assign(H, std::vector<float>(W, NaN));
     range_map_.azimuth.assign(H, std::vector<float>(W, 0.f));
     range_map_.elevation.assign(H, std::vector<float>(W, 0.f));
+    range_map_.z_world.assign(H, std::vector<float>(W, NaN));
 
     if (!cloud_ptr_ || cloud_ptr_->empty())
     {
         ROS_WARN("[GapExtractor] Point cloud is not initialized");
         return;
     }
-
 
     // Field of view (radians)
     const float min_azimuth = -M_PI;
@@ -107,12 +154,21 @@ void GapExtractor::pointCloudToRangeMap()
         }
     }
 
-    auto write_cell = [&](int v, int u, float r, float th, float ph) {
+    // Build LiDAR->odom transform once (points are in LiDAR frame)
+    Eigen::Matrix4f T_lidar_odom = Eigen::Matrix4f::Identity();
+    {
+        const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
+        const Eigen::Matrix4f T_base_odom_mat = T_base_odom.matrix().cast<float>();
+        T_lidar_odom = T_base_odom_mat * T_lidar_base_mat_; // LiDAR -> base -> odom
+    }
+
+    auto write_cell = [&](int v, int u, float r, float th, float ph, float z_world) {
         float &cell = range_map_.range[v][u];
         if (!std::isfinite(cell) || r < cell) {
             cell = r;
             range_map_.azimuth[v][u]   = th;
             range_map_.elevation[v][u] = ph;
+            range_map_.z_world[v][u] = z_world;
         }
     };
 
@@ -152,8 +208,12 @@ void GapExtractor::pointCloudToRangeMap()
         // Wrap around horizontally
         u = (u % W + W) % W;
 
+        // odom z
+        Eigen::Vector4f p_lidar(x, y, z, 1.f);
+        const float z_world = (T_lidar_odom * p_lidar).z();
+
         // Store original (unclamped) angles for downstream geometry if needed
-        write_cell(v, u, r, th, ph);
+        write_cell(v, u, r, th, ph, z_world);
     }
 }
 
@@ -411,39 +471,69 @@ void GapExtractor::buildGapMasks()
         const int n = (int)edge_list.size();
         std::vector<uint8_t> used(n, 0);
 
-        auto scan_and_pair = [&](EdgeClass cls, HEdgeType left_tag, HEdgeType right_tag, std::vector<std::vector<uint8_t>>& mask){
+        // helper function: find a "safe" start, to deal with with wrap-around(LRRL)
+        auto find_safe_start = [&](EdgeClass cls)->int{
             for (int i = 0; i < n; ++i){
-                if (used[i]) continue;
-                const int u_i = std::get<0>(edge_list[i]);
-                const EdgeClass cls_i = std::get<1>(edge_list[i]);
-                const HEdgeType tag_i = std::get<2>(edge_list[i]);
-                if (cls_i != cls || tag_i != left_tag) continue;
-
-                int j = (i + 1) % n;
-                bool found_pair = false;
-                for (int step = 0; step < n - 1; ++step){
-                    if (!used[j]){
-                        const EdgeClass cls_j = std::get<1>(edge_list[j]);
-                        const HEdgeType tag_j = std::get<2>(edge_list[j]);
-                        if (cls_j == cls && tag_j == right_tag){
-                            found_pair = true;
-                            break;
-                        }
-                    }
-                    j = (j + 1) % n;
+                int prev = (i - 1 + n) % n;
+                const auto& ep = edge_list[prev];
+                const auto& ei = edge_list[i];
+                if (std::get<1>(ep) == cls && std::get<2>(ep) == HEdgeType::R &&
+                    std::get<1>(ei) == cls && std::get<2>(ei) == HEdgeType::L){
+                    return i; // 
                 }
-                if(!found_pair) continue;
+            }
+            return 0;
+        };
 
-                const int u_j = std::get<0>(edge_list[j]);
-                fillRowSpanWrap(mask, v, u_i, u_j, W);
-                used[i] = 1;
-                used[j] = 1;
+        // ---- helper: stack-based pairing on a circular row (no crossing) ----
+        auto pair_row_stack = [&](EdgeClass cls, std::vector<std::vector<uint8_t>>& mask){
+            if (edge_list.empty()) return;
+            const int s = find_safe_start(cls);
+
+            auto idx = [&](int k){ return (s + k) % n; };
+
+            std::vector<int> Lstack;
+            Lstack.reserve(n);
+
+            for (int kk = 0; kk < n; ++kk) {
+                const int i = idx(kk);
+                if (used[i]) continue;
+
+                const auto& ei = edge_list[i];
+                const int        u_i  = std::get<0>(ei);
+                const EdgeClass  c_i  = std::get<1>(ei);
+                const HEdgeType  t_i  = std::get<2>(ei);
+                if (c_i != cls) continue;
+
+                if (t_i == HEdgeType::L) {
+                    // push this L (unmatched so far)
+                    Lstack.push_back(i);
+                } else if (t_i == HEdgeType::R) {
+                    // pop the nearest unmatched L
+                    while (!Lstack.empty() && used[Lstack.back()]) Lstack.pop_back();
+                    if (Lstack.empty()) {
+                        // stray R; ignore
+                        continue;
+                    }
+                    const int il = Lstack.back();
+                    Lstack.pop_back();
+
+                    if (used[il]) continue; // double check
+
+                    const int u_l = std::get<0>(edge_list[il]);
+                    const int u_r = u_i;
+
+                    // fill span on a circular row (wrap-aware)
+                    fillRowSpanWrap(mask, v, u_l, u_r, W);
+
+                    used[il] = 1;
+                    used[i]  = 1;
+                }
             }
         };
-        // open gaps: FF-L and FF-R
-        scan_and_pair(EdgeClass::FU, HEdgeType::L, HEdgeType::R, gap_masks.open);
-        // limited gaps: FU-L and FU-R
-        // scan_and_pair(EdgeClass::FF, HEdgeType::L, HEdgeType::R, gap_masks.limited);
+
+        // ---- OPEN gaps use FU with L→R only (your current semantics) ----
+        pair_row_stack(EdgeClass::FU, gap_masks.open);
     }
 
     // vertical scan
@@ -484,7 +574,7 @@ void GapExtractor::buildGapMasks()
                     }
                     ++j;
                 }
-                if (j >= n) return;
+                if (j >= n) continue;
                 const int v_j = std::get<0>(C[j]);
                 fillColSpan(mask, u, v_i, v_j);
                 used[i] = 1;
@@ -508,110 +598,135 @@ void GapExtractor::buildGapMasks()
 void GapExtractor::buildGapMasks_FromSingleFFEdge(std::vector<std::vector<uint8_t>>& mask_limited){
     const int H = range_map_height_;
     const int W = range_map_width_;
-    const float a = 0.08f;
-    const float b = 0.02f;
-    const float lambda = 0.5f;
-    const float eps_diff = 0.03f;
 
-    auto sweep_row = [&](int v, int u_start, int step, int u_near, float r_near){
-        std::vector<int> path;
-        path.reserve(12);
-        int u = u_start;
-        float r_prev = r_near;
-        const float azN = range_map_.azimuth[v][u_near];
-        const float phN = range_map_.elevation[v][u_near];
-
-        for (int k = 0; k < 12; ++k){
-            if (u < 0)
-                u += W;
-            else if (u >= W)
-                u -= W;
-            const float r = range_map_.range[v][u];
-            if (!std::isfinite(r)) break;
-
-            const float dpsi = angDist(azN, phN, range_map_.azimuth[v][u], range_map_.elevation[v][u]);
-            const float threshold = a + b * r_near * std::sin(dpsi);
-            const bool pass_geom = (r >= r_near + threshold);
-            const bool pass_mono = (r >= r_prev - eps_diff);
-
-            if (!pass_geom || !pass_mono) break;
-            path.push_back(u);
-            r_prev = r;
-            u += step;
+    // Ensure mask size and clear to zeros
+    if ((int)mask_limited.size() != H) {
+        mask_limited.assign(H, std::vector<uint8_t>(W, 0));
+    } else {
+        for (int v = 0; v < H; ++v) {
+            std::fill(mask_limited[v].begin(), mask_limited[v].end(), 0);
         }
-        if (path.size() >= 3){
-            int mid = path[(int)path.size()/2];
-            mask_limited[v][mid] = 1;
-        }
-    };
+    }
 
-    auto sweep_col = [&](int u, int v_start, int step, int v_near, float r_near){
-        std::vector<int> path;
-        path.reserve(12);
-
-        int v = v_start;
-        float r_prev = r_near;
-        const float azN = range_map_.azimuth[v_near][u];
-        const float phN = range_map_.elevation[v_near][u];
-
-        for (int k = 0; k < 12; ++k){
-            if (v < v_margin_ || v >= H - v_margin_) break;
-            const float r = range_map_.range[v][u];
-            if (!std::isfinite(r)) break;
-
-            const float dpsi = angDist(azN, phN, range_map_.azimuth[v][u], range_map_.elevation[v][u]);
-            const float threshold = a + b * r_near * std::sin(dpsi);
-            const bool pass_geom = (r >= r_near + threshold);
-            const bool pass_mono = (r >= r_prev - eps_diff);
-            if (!pass_geom || !pass_mono) break;
-            path.push_back(v);
-            r_prev = r;
-            v += step;
-        }
-        if (path.size() >= 3){
-            int mid = path[(int)path.size()/2];
-            mask_limited[mid][u] = 1;
-        }
-    };
-
-    for (const auto& e : selected_edges_){
+    // Set seeds at near-side pixels of all FF edges
+    for (const auto& e : selected_edges_) {
         if (e.edge_class != EdgeClass::FF) continue;
-        const int v = e.v, u = e.u;
 
-        if (e.type == 0){
-            // horizontal edge
-            if (e.h_edge_type == HEdgeType::NONE) continue;
-            const int uR = (u + 1) % W;
-            float rL = range_map_.range[v][u];
-            float rR = range_map_.range[v][uR];
+        int v = e.v;
+        int u = e.u;
 
-            if (e.h_edge_type == HEdgeType::L){
-                const float r_near = std::isfinite(rL) ? rL : rR;
-                sweep_row(v, uR, +1, u, r_near);
-            }
-            else{
-                const float r_near = std::isfinite(rR) ? rR : rL;
-                sweep_row(v, u, -1, uR, r_near);
-            }
-        }
-        else if (e.type == 1){
-            // vertical edge
-            if (e.v_edge_type == VEdgeType::NONE) continue;
-            const int vD = v + 1;
-            if (vD >= H) continue;
-            float rU = range_map_.range[v][u];
-            float rD = range_map_.range[vD][u];
+        // Bounds/wrap checks
+        if (v < 0 || v >= H) continue;
+        u %= W; if (u < 0) u += W;
 
-            if (e.v_edge_type == VEdgeType::U){
-                const float r_near = std::isfinite(rU) ? rU : rD;
-                sweep_col(u, vD, +1, v, r_near);
-            }
-            else{
-                const float r_near = std::isfinite(rD) ? rD : rU;
-                sweep_col(u, v, -1, vD, r_near);
+        mask_limited[v][u] = 1;
+    }
+}
+
+void GapExtractor::extractGapRegions(int min_pixels)
+{
+    gap_regions_.clear();
+    const int H = range_map_height_;
+    const int W = range_map_width_;
+
+    // first only process open gaps
+    if (gap_masks_.open.empty() || (int)gap_masks_.open.size() != H) return;
+
+    // get a visited map
+    std::vector<std::vector<uint8_t>> visited(H, std::vector<uint8_t>(W, 0));
+
+    // scan all cells
+    for (int v = 0; v < H; ++v){
+        for (int u = 0; u < W; ++u){
+            if (!gap_masks_.open[v][u]) continue; // not a gap cell
+            if (visited[v][u]) continue;          // already visited
+
+            GapRegion region;
+            // BFS queue
+            bfsOpenGapRegion(v, u, visited, region);
+
+            if (region.size >= min_pixels){
+                gap_regions_.emplace_back(std::move(region));
             }
         }
     }
+    ROS_INFO("[GapExtractor] Extracted %lu open gap regions", gap_regions_.size());
+}
+
+void GapExtractor::bfsOpenGapRegion(int v0, int u0, std::vector<std::vector<uint8_t>>& visited, GapRegion& region){
+    const int H = range_map_height_;
+    const int W = range_map_width_;
+
+    std::queue<std::pair<int,int>> q;
+
+    visited[v0][u0] = 1;
+    q.emplace(v0, u0);
+
+    // Accumulators for spherical mean and angle spans
+    float sum_x = 0.f, sum_y = 0.f, sum_z = 0.f;
+    std::vector<float> az_list;
+    std::vector<float> el_list;
+    az_list.reserve(128);
+    el_list.reserve(128);
+
+    while (!q.empty()){
+        std::pair<int,int> p = q.front();
+        int v = p.first;
+        int u = p.second;
+        q.pop();
+
+        region.pixels.emplace_back(v, u);
+        region.size++;
+        region.v_min = std::min(region.v_min, v);
+        region.v_max = std::max(region.v_max, v);
+
+        const float yaw = range_map_.azimuth[v][u];
+        const float elev = range_map_.elevation[v][u];
+
+        float x, y, z;
+        x = std::cos(elev) * std::cos(yaw);
+        y = std::cos(elev) * std::sin(yaw);
+        z = std::sin(elev);
+        sum_x += x;
+        sum_y += y;
+        sum_z += z;
+        az_list.push_back(yaw);
+        el_list.push_back(elev);
+
+        // visit neighbors (8-connectivity)
+        for (int dv = -1; dv <= 1; ++dv){
+            for (int du = -1; du <= 1; ++du){
+                if (dv == 0 && du == 0) continue;
+                int vv = v + dv;
+                if (vv < 0 || vv >= H) continue;
+                int uu = (u + du + W) % W; // wrap around
+                if (!gap_masks_.open[vv][uu]) continue; // not a gap cell
+                if (visited[vv][uu]) continue;          // already visited
+                visited[vv][uu] = 1;
+                q.emplace(vv, uu);
+            }
+        }
+    }
+
+    // Spherical mean direction
+    const float norm = std::sqrt(sum_x*sum_x + sum_y*sum_y + sum_z*sum_z);
+    if (norm > 1e-6f){
+        region.dir_x = sum_x / norm;
+        region.dir_y = sum_y / norm;
+        region.dir_z = sum_z / norm;
+        region.center_yaw = std::atan2(region.dir_y, region.dir_x);
+        region.center_elev = std::atan2(region.dir_z, std::sqrt(region.dir_x*region.dir_x + region.dir_y*region.dir_y));
+    }else{
+        region.dir_x = 0.f;
+        region.dir_y = 0.f;
+        region.dir_z = 1.f;
+        region.center_yaw = 0.f;
+        region.center_elev = 0.f;
+    }
+
+    // Angular spans
+    region.yaw_span = circularSpanRad(az_list);
+    region.elev_span = linearSpanRad(el_list);
 }
 
 void GapExtractor::extractGapCallback(const ros::TimerEvent &e){
@@ -628,6 +743,8 @@ void GapExtractor::extractGapCallback(const ros::TimerEvent &e){
     detectEdges();
     // build gap masks
     buildGapMasks();
+    // from gap masks, extract gap regions
+    extractGapRegions(6);
 }
 
 inline float GapExtractor::angDist(float th1, float ph1, float th2, float ph2)
@@ -805,7 +922,7 @@ void GapExtractor::publishMasks()
         maskToMarkerPoints(gap_masks_.open, range_map_, 3.0f, 0.0f, 1.0f, 0.0f, 0)
     );
     marker_array.markers.push_back(
-        maskToMarkerPoints(gap_masks_.limited, range_map_, 1.5f, 0.0f, 0.5f, 0.5f, 1)
+        maskToMarkerPoints(gap_masks_.limited, range_map_, 0.5f, 0.0f, 0.5f, 0.5f, 1)
     );
     mask_pub_.publish(marker_array);
 }

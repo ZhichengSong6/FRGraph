@@ -6,6 +6,11 @@
 #include <Eigen/Dense>
 #include <vector>
 
+#include <queue>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/passthrough.h>
@@ -29,6 +34,7 @@ struct RangeMap{
     std::vector<std::vector<float>> azimuth;
     std::vector<std::vector<float>> elevation;
     std::vector<std::vector<float>> range;
+    std::vector<std::vector<float>> z_world;
 };
 
 enum class EdgeClass{FF, FU}; // FF: finite-finite, FU: finite-unlimited
@@ -59,6 +65,24 @@ struct EdgeParameters{
     float eps_v = 2e-3f;
 };
 
+struct GapRegion{
+    std::vector<std::pair<int,int>> pixels; // (v,u) pixel coordinates
+    int size = 0;
+    int v_min = std::numeric_limits<int>::max();
+    int v_max = std::numeric_limits<int>::min();
+
+    // Spherical mean direction of pixels in this gap region
+    float dir_x = 0.f;
+    float dir_y = 0.f;
+    float dir_z = 0.f;
+    float center_yaw = 0.f;
+    float center_elev = 0.f;
+
+    // Angular extents of the component
+    float yaw_span = 0.f;
+    float elev_span = 0.f;
+};
+
 class GapExtractor {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -75,6 +99,8 @@ public:
     void detectEdges();
     void buildGapMasks();
     void buildGapMasks_FromSingleFFEdge(std::vector<std::vector<uint8_t>>& mask_limited);
+    void extractGapRegions(int min_pixels);
+    void bfsOpenGapRegion(int v0, int u0, std::vector<std::vector<uint8_t>>& visited, GapRegion& region);
 
     /* Helper functions */
     inline float angDist(float th1, float ph1, float th2, float ph2);
@@ -93,6 +119,7 @@ private:
     std::vector<Edge> selected_edges_;
     GapMasks gap_masks_;
     EdgeParameters edge_params_;
+    std::vector<GapRegion> gap_regions_;
 
     // get tf
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_odom_;

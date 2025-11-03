@@ -9,6 +9,7 @@ Panels:
         - /Marker2
         - /InteractiveMarkers1
         - /MarkerArray1
+        - /MarkerArray1/Status1
       Splitter Ratio: 0.5
     Tree Height: 549
   - Class: rviz/Selection
@@ -183,7 +184,15 @@ Visualization Manager:
       Marker Topic: /gap_masks
       Name: MarkerArray
       Namespaces:
-        {}
+        gap_masks: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /detected_edges
+      Name: MarkerArray
+      Namespaces:
+        detected_edges: true
       Queue Size: 100
       Value: true
   Enabled: true
@@ -253,4 +262,4 @@ Window Geometry:
     collapsed: false
   Width: 1655
   X: 692
-  Y: 173
+  Y: 136
