@@ -102,10 +102,9 @@ struct GapSubRegion{
 struct Parameters{
     // gap extraction parameters
     int min_pixels_in_open_gap_region = 30;
-    float yaw_split_threshold = M_PI / 4; // 45 degrees
-    float elev_split_threshold = M_PI / 9; // 20 degrees
     float open_gap_yaw_span = M_PI / 4; // 45 degrees
     float open_gap_elev_span = M_PI / 9; // 20 degrees
+
     int min_pixels_in_subregion = 40;
     int range_map_width = 1600;  // lidar horizontal resolution
     int range_map_height = 32;  // lidar vertical resolution
@@ -114,7 +113,6 @@ struct Parameters{
     float yaw_split_threshold_in_limited_gap_region = M_PI / 6; // 30 degrees
     float elev_split_threshold_in_limited_gap_region = M_PI / 9; // 20 degrees
     int min_pixels_in_limited_gap_region = 48;
-
     float limited_gap_yaw_span = M_PI / 6; // 30 degrees
     float limited_gap_elev_span = M_PI / 6; // 30 degrees
     float min_pixels_in_limited_subregion = 32;

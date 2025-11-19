@@ -31,3 +31,11 @@ add_executable(${PROJECT_NAME}_node src/simple_robot.cpp)
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
 )
+
+add_executable(simple_robot_controller
+  src/simple_robot_controller.cpp
+)
+
+target_link_libraries(simple_robot_controller
+  ${catkin_LIBRARIES}
+)

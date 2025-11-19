@@ -23,6 +23,10 @@
     </collision>
   </link>
 
+  <gazebo reference="base_link">
+    <gravity>false</gravity>
+    <kinematic>true</kinematic>
+  </gazebo>
 
   <xacro:if value="$(arg if_3D_Lidar)">
     <xacro:Velodyne-HDL-32E connected_to="base_link" scan_name="scan" xyz="0. 0. 0.2" rpy="0. 0. 0."/>

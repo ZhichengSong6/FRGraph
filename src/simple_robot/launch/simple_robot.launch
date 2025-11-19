@@ -7,6 +7,8 @@
 
     <node pkg="rviz" type="rviz" name="rviz" output="screen" args="-d $(find simple_robot)/rviz/simple_robot.rviz"/>
 
+    <node pkg="simple_robot" type="simple_robot_controller" name="simple_robot_controller"/>
+
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="world_name" value="$(find simple_robot)/worlds/sixboxes.world"/>
         <arg name="gui" value="true"/>
