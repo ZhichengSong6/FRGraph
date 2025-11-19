@@ -9,7 +9,6 @@ Panels:
         - /Marker2
         - /InteractiveMarkers1
         - /MarkerArray1
-        - /MarkerArray1/Status1
       Splitter Ratio: 0.5
     Tree Height: 549
   - Class: rviz/Selection
@@ -195,6 +194,14 @@ Visualization Manager:
         detected_edges: true
       Queue Size: 100
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /gap_subregions
+      Name: MarkerArray
+      Namespaces:
+        gap_subregions: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -223,7 +230,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 9.661587715148926
+      Distance: 7.354245662689209
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -231,17 +238,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 1.6066161394119263
-        Y: 1.941622018814087
-        Z: -1.430511474609375e-06
+        X: -0.27104175090789795
+        Y: 1.1995904445648193
+        Z: -1.3113021850585938e-06
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.3247965574264526
+      Pitch: 0.7297971844673157
       Target Frame: <Fixed Frame>
-      Yaw: 1.5641777515411377
+      Yaw: 2.6391730308532715
     Saved: ~
 Window Geometry:
   Displays:
@@ -262,4 +269,4 @@ Window Geometry:
     collapsed: false
   Width: 1655
   X: 692
-  Y: 136
+  Y: 99

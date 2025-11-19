@@ -12,3 +12,11 @@ planner:
   direction_extractor/goal_z_: 0.0
   direction_extractor/goal_roll_: 0.0
   direction_extractor/goal_pitch_: 0.0
+
+  # Parameters for gap extractor
+  gap_extractor/yaw_split_threshold: 0.5235987756 # 30
+  gap_extractor/elev_split_threshold: 0.2617993878 # 15
+  gap_extractor/min_pixels_in_open_gap_region: 20
+  gap_extractor/range_map_width: 1600  # lidar horizontal resolution
+  gap_extractor/range_map_height: 32  # lidar vertical resolution
+  gap_extractor/map_size: 5 # meters

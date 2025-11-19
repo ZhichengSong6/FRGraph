@@ -34,7 +34,6 @@ struct RangeMap{
     std::vector<std::vector<float>> azimuth;
     std::vector<std::vector<float>> elevation;
     std::vector<std::vector<float>> range;
-    std::vector<std::vector<float>> z_world;
 };
 
 enum class EdgeClass{FF, FU}; // FF: finite-finite, FU: finite-unlimited
@@ -52,10 +51,11 @@ struct Edge{
 struct GapMasks{
     std::vector<std::vector<uint8_t>> open;
     std::vector<std::vector<uint8_t>> limited;
+    std::vector<std::vector<uint8_t>> free; // when no obstacle detected (each layer)
 };
 
 struct EdgeParameters{
-    float a_h = 0.05f; // horizontal edge detection parameter
+    float a_h = 0.20f; // horizontal edge detection parameter
     float b_h = 0.02f;
     float lambda_h = 0.5f;
     float eps_h = 1e-3f;
@@ -83,6 +83,43 @@ struct GapRegion{
     float elev_span = 0.f;
 };
 
+struct GapSubRegion{
+    std::vector<std::pair<int,int>> pixels; // (v,u) pixel coordinates
+    int size = 0;
+    int v_min = std::numeric_limits<int>::max();
+    int v_max = std::numeric_limits<int>::min();
+    
+    // representative direction
+    float center_yaw = 0.f;
+    float center_elev = 0.f;
+
+    // representative pixel on the grid
+    float yaw_span = 0.f;
+    float elev_span = 0.f;
+    float range_mean = 0.f;
+};
+
+struct Parameters{
+    // gap extraction parameters
+    int min_pixels_in_open_gap_region = 30;
+    float yaw_split_threshold = M_PI / 4; // 45 degrees
+    float elev_split_threshold = M_PI / 9; // 20 degrees
+    float open_gap_yaw_span = M_PI / 4; // 45 degrees
+    float open_gap_elev_span = M_PI / 9; // 20 degrees
+    int min_pixels_in_subregion = 40;
+    int range_map_width = 1600;  // lidar horizontal resolution
+    int range_map_height = 32;  // lidar vertical resolution
+    int map_size = 5; // meters
+
+    float yaw_split_threshold_in_limited_gap_region = M_PI / 6; // 30 degrees
+    float elev_split_threshold_in_limited_gap_region = M_PI / 9; // 20 degrees
+    int min_pixels_in_limited_gap_region = 24;
+
+    float limited_gap_yaw_span = M_PI / 6; // 30 degrees
+    float limited_gap_elev_span = M_PI / 6; // 30 degrees
+    float min_pixels_in_limited_subregion = 32;
+};
+
 class GapExtractor {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -99,12 +136,29 @@ public:
     void detectEdges();
     void buildGapMasks();
     void buildGapMasks_FromSingleFFEdge(std::vector<std::vector<uint8_t>>& mask_limited);
-    void extractGapRegions(int min_pixels);
-    void bfsOpenGapRegion(int v0, int u0, std::vector<std::vector<uint8_t>>& visited, GapRegion& region);
+    void extractGapRegions();
+    void bfsGapRegion(int v0, int u0, const std::vector<std::vector<uint8_t>>& mask, std::vector<std::vector<uint8_t>>& visited, GapRegion& region);
+    void splitAllGapRegions();
+    void splitOpenGapRegion(const GapRegion& region, float yaw_sub_span, float elev_sub_span, int min_pixels, std::vector<std::vector<GapSubRegion>>& subregions);
+    void collectShiftedAnglesAndBBox(const GapRegion& region, float yaw_offset,
+                                    std::vector<float>& yaw_s, std::vector<float>& elev_s,
+                                    float& yaw_min, float& yaw_max,
+                                    float& elev_min, float& elev_max) const;
+    void assignPixelsToSubregions(const GapRegion& region, 
+                                  const std::vector<float>& yaw_s, const std::vector<float>& elev_s,
+                                  float center_yaw_shifted, float center_elev,
+                                  float yaw_threshold, float elev_threshold,
+                                  int Ny, int Ne,
+                                  std::vector<std::vector<GapSubRegion>>& subregions) const;
+    void mergeSmallSubregions(std::vector<std::vector<GapSubRegion>>& subregions, int Ny, int Ne, int min_pixels) const;
+    void computeStateForCell(GapSubRegion& cell) const;
+    void computeStateForSubregions(std::vector<std::vector<GapSubRegion>>& subregions) const;
+    void splitLimitedGapRegion(const GapRegion& region, float yaw_sub_span, float elev_sub_span, int min_pixels, std::vector<std::vector<GapSubRegion>>& subregions);
+    void splitFreeGapRegion(const GapRegion& region, float yaw_sub_span, float elev_sub_span, int min_pixels, std::vector<std::vector<GapSubRegion>>& subregions);
 
     /* Helper functions */
     inline float angDist(float th1, float ph1, float th2, float ph2);
-    void fetchRangeForCompare(int v, int u, float r_max, float& r, bool& is_unknown);
+    void fetchRangeForCompare(int v, int u, float& r, bool& is_free);
 
 private:
     ros::NodeHandle node_;
@@ -115,11 +169,17 @@ private:
     // range map parameters
     int range_map_width_, range_map_height_;
     int v_margin_ = 0;
+    Parameters params_;
     RangeMap range_map_;
     std::vector<Edge> selected_edges_;
     GapMasks gap_masks_;
     EdgeParameters edge_params_;
-    std::vector<GapRegion> gap_regions_;
+    std::vector<GapRegion> gap_regions_open_;
+    std::vector<GapRegion> gap_regions_limited_;
+    std::vector<GapRegion> gap_regions_free_;
+    std::vector<std::vector<std::vector<GapSubRegion>>> open_gap_subregions_;
+    std::vector<std::vector<std::vector<GapSubRegion>>> limited_gap_subregions_;
+    std::vector<std::vector<std::vector<GapSubRegion>>> free_gap_subregions_;
 
     // get tf
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_odom_;
@@ -141,6 +201,7 @@ private:
                                 const RangeMap& range_map, float radius,
                             float r, float g, float b, int id);
     void publishMasks();
+    void publishSubGapRegions();
 
     /* Subscribers */
     ros::Subscriber velodyne_sub_;
@@ -149,6 +210,7 @@ private:
     ros::Publisher image_pub_;
     ros::Publisher edge_pub_;
     ros::Publisher mask_pub_;
+    ros::Publisher subregion_pub_;
 
     /* Timers */
     ros::Timer gap_extractor_timer_;
