@@ -19,4 +19,4 @@ planner:
   gap_extractor/min_pixels_in_open_gap_region: 20
   gap_extractor/range_map_width: 1600  # lidar horizontal resolution
   gap_extractor/range_map_height: 32  # lidar vertical resolution
-  gap_extractor/map_size: 5 # meters
+  gap_extractor/map_size: 3 # meters

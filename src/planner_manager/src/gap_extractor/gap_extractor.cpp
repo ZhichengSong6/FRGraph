@@ -218,14 +218,6 @@ void GapExtractor::pointCloudToRangeMap()
         }
     }
 
-    // Build LiDAR->odom transform once (points are in LiDAR frame)
-    Eigen::Matrix4f T_lidar_odom = Eigen::Matrix4f::Identity();
-    {
-        const Eigen::Affine3d T_base_odom = tf2::transformToEigen(*base_to_odom_ptr_);
-        const Eigen::Matrix4f T_base_odom_mat = T_base_odom.matrix().cast<float>();
-        T_lidar_odom = T_base_odom_mat * T_lidar_base_mat_; // LiDAR -> base -> odom
-    }
-
     auto write_cell = [&](int v, int u, float r, float th, float ph) {
         float &cell = range_map_.range[v][u];
         if (!std::isfinite(cell) || r < cell) {
@@ -749,12 +741,13 @@ void GapExtractor::extractGapRegions()
             
             // print elev_span and yaw_span for debug
             // ROS_INFO("Limited gap region: size=%d, yaw_span=%.2f, elev_span=%.2f", region.size, region.yaw_span, region.elev_span);
+            // std::cout << std::endl;
 
             const bool pass_yaw  = (region.yaw_span  >= params_.yaw_split_threshold_in_limited_gap_region);
             const bool pass_elev = (region.elev_span >= params_.elev_split_threshold_in_limited_gap_region);
             const bool pass_pix  = (region.size      >= params_.min_pixels_in_limited_gap_region);
             // make sure serveral pixels and at least one angular span condition is met
-            if ((pass_yaw || pass_elev) && pass_pix){
+            if ((pass_yaw || pass_elev) || pass_pix){
                 gap_regions_limited_.emplace_back(std::move(region));
             }
         }
@@ -762,7 +755,7 @@ void GapExtractor::extractGapRegions()
     // ROS_INFO("[GapExtractor] Extracted %lu limited gap components", gap_regions_limited_.size());
 
     // Third, process free space regions
-    // first check the size of gap_masks_.free, only process when > H/2
+    // first check the size of gap_masks_.free, only process when > certain ratio
     if (gap_masks_.free.empty() || (int)gap_masks_.free.size() != H) return;
     // check how many free layers' pixels are setted
     int free_layer_count = 0;
@@ -1231,7 +1224,7 @@ void GapExtractor::computeStateForCell(GapSubRegion& cell) const {
         const int u = pv.second;
         float r = range_map_.range[v][u];
         if (!std::isfinite(r)){
-            r = 3.0f; // max range
+            r = params_.map_size; // max range
         }
         r_sum += (double) r;
 
@@ -1431,7 +1424,7 @@ void GapExtractor::publishEdges(){
         col.a = 1.0f;
         if (edge.type == 0) { // horizontal
             if (edge.edge_class == EdgeClass::FF) {
-                col.r = 0.0f; col.g = 0.0f; col.b = 1.0f;
+                col.r = 1.0f; col.g = 0.0f; col.b = 0.0f;
             } else { // FU
                 col.r = 0.0f; col.g = 1.0f; col.b = 0.0f;
             }

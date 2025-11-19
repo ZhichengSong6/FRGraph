@@ -113,7 +113,7 @@ struct Parameters{
 
     float yaw_split_threshold_in_limited_gap_region = M_PI / 6; // 30 degrees
     float elev_split_threshold_in_limited_gap_region = M_PI / 9; // 20 degrees
-    int min_pixels_in_limited_gap_region = 24;
+    int min_pixels_in_limited_gap_region = 48;
 
     float limited_gap_yaw_span = M_PI / 6; // 30 degrees
     float limited_gap_elev_span = M_PI / 6; // 30 degrees
