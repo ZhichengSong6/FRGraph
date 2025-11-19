@@ -123,12 +123,20 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
     env_type_ = env_type;
 
     node_.param<int>("gap_extractor/min_pixels_in_open_gap_region", params_.min_pixels_in_open_gap_region, 30);
-    node_.param<float>("gap_extractor/yaw_split_threshold", params_.yaw_split_threshold, M_PI / 6); // 30 degrees
-    node_.param<float>("gap_extractor/elev_split_threshold", params_.elev_split_threshold, M_PI / 12); // 15 degrees
+    node_.param<float>("gap_extractor/open_gap_yaw_span", params_.open_gap_yaw_span, M_PI / 4); // 45 degrees
+    node_.param<float>("gap_extractor/open_gap_elev_span", params_.open_gap_elev_span, M_PI / 9); // 20 degrees
+
     node_.param<int>("gap_extractor/min_pixels_in_subregion", params_.min_pixels_in_subregion, 20);
     node_.param<int>("gap_extractor/range_map_width", params_.range_map_width, 1600);  // lidar horizontal resolution
     node_.param<int>("gap_extractor/range_map_height", params_.range_map_height, 32);  // lidar vertical resolution
     node_.param<int>("gap_extractor/map_size", params_.map_size, 5); // meters
+
+    node_.param<float>("gap_extractor/yaw_split_threshold_in_limited_gap_region", params_.yaw_split_threshold_in_limited_gap_region, M_PI / 6); // 30 degrees
+    node_.param<float>("gap_extractor/elev_split_threshold_in_limited_gap_region", params_.elev_split_threshold_in_limited_gap_region, M_PI / 9); // 20 degrees
+    node_.param<int>("gap_extractor/min_pixels_in_limited_gap_region", params_.min_pixels_in_limited_gap_region, 48);
+    node_.param<float>("gap_extractor/limited_gap_yaw_span", params_.limited_gap_yaw_span, M_PI / 6); // 30 degrees
+    node_.param<float>("gap_extractor/limited_gap_elev_span", params_.limited_gap_elev_span, M_PI / 6); // 30 degrees
+    node_.param<float>("gap_extractor/min_pixels_in_limited_subregion", params_.min_pixels_in_limited_subregion, 32);
 
     cloud_ptr_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
 
