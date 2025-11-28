@@ -15,18 +15,28 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   decomp_ros_msgs
   decomp_ros_utils
+  message_generation
 )
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.7 REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 
+add_message_files(
+  FILES
+  GapCandidate.msg
+  GapCandidates.msg
+)
+
+generate_messages(
+  DEPENDENCIES std_msgs geometry_msgs
+)
+
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES planner_manager
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy sensor_msgs std_msgs
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy sensor_msgs std_msgs message_runtime
 )
-
 
 include_directories(
   include
@@ -42,6 +52,11 @@ add_executable(${PROJECT_NAME}_node
   src/free_regions_graph/free_regions_graph.cpp
   src/interesting_directions_extractor/interesting_directions_extractor.cpp
   src/gap_extractor/gap_extractor.cpp
+)
+
+add_dependencies(${PROJECT_NAME}_node
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
 )
 
 target_link_libraries(${PROJECT_NAME}_node

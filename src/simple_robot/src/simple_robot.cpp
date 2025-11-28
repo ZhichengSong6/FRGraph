@@ -128,7 +128,7 @@ int main(int argc, char** argv)
 
     // Subscriber for 3D velocity commands: Vx, Vy, Vz, yaw rate
     ros::Subscriber cmd_vel_3d_sub =
-        nh.subscribe("/cmd_vel_3d", 10, cmdVel3DCallback);
+        nh.subscribe("/cmd_vel", 10, cmdVel3DCallback);
 
     // Odometry publisher
     g_odom_pub = nh.advertise<nav_msgs::Odometry>("/odom", 10);

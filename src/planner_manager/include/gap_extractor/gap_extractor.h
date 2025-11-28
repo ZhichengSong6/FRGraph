@@ -29,6 +29,9 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
+#include <planner_manager/GapCandidates.h>
+#include <planner_manager/GapCandidate.h>
+
 struct RangeMap{
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     std::vector<std::vector<float>> azimuth;
@@ -99,7 +102,20 @@ struct GapSubRegion{
     float range_mean = 0.f;
 };
 
+enum class GoalStatus{
+    FREE,           // no obstacle between robot and goal
+    LIMITED,        // goal is not inside any open/free gap
+    BLOCKED,        // obstacle detected between robot and goal
+    OUT_OF_VIEW     // goal direction is out of the sensor's field of view
+};
+
 struct Parameters{
+    // lidar
+    float min_azimuth = -M_PI;
+    float max_azimuth =  M_PI;
+    float min_elev = -30.67f;
+    float max_elev =  20.67f;
+    
     // gap extraction parameters
     int min_pixels_in_open_gap_region = 30;
     float open_gap_yaw_span = M_PI / 4; // 45 degrees
@@ -108,14 +124,14 @@ struct Parameters{
     int min_pixels_in_subregion = 40;
     int range_map_width = 1600;  // lidar horizontal resolution
     int range_map_height = 32;  // lidar vertical resolution
-    int map_size = 5; // meters
+    int map_size = 5; // meters (max range)
 
     float yaw_split_threshold_in_limited_gap_region = M_PI / 6; // 30 degrees
     float elev_split_threshold_in_limited_gap_region = M_PI / 9; // 20 degrees
     int min_pixels_in_limited_gap_region = 48;
     float limited_gap_yaw_span = M_PI / 6; // 30 degrees
     float limited_gap_elev_span = M_PI / 6; // 30 degrees
-    float min_pixels_in_limited_subregion = 32;
+    int min_pixels_in_limited_subregion = 32;
 };
 
 class GapExtractor {
@@ -154,6 +170,9 @@ public:
     void splitLimitedGapRegion(const GapRegion& region, float yaw_sub_span, float elev_sub_span, int min_pixels, std::vector<std::vector<GapSubRegion>>& subregions);
     void splitFreeGapRegion(const GapRegion& region, float yaw_sub_span, float elev_sub_span, int min_pixels, std::vector<std::vector<GapSubRegion>>& subregions);
 
+    void checkGoalStatus(Eigen::Vector3d goal_pos);
+    GoalStatus getGoalStatus() const { return goal_status_; }
+
     /* Helper functions */
     inline float angDist(float th1, float ph1, float th2, float ph2);
     void fetchRangeForCompare(int v, int u, float& r, bool& is_free);
@@ -179,6 +198,8 @@ private:
     std::vector<std::vector<std::vector<GapSubRegion>>> limited_gap_subregions_;
     std::vector<std::vector<std::vector<GapSubRegion>>> free_gap_subregions_;
 
+    GoalStatus goal_status_ = GoalStatus::OUT_OF_VIEW;
+
     // get tf
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_odom_;
     tf2_ros::Buffer tf_buffer_odom_;
@@ -188,7 +209,9 @@ private:
     
     /* Callbacks */
     void velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg);
+    void scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg);
     void odomCallback(const ros::TimerEvent &e);
+    void goalCallback(const geometry_msgs::PoseStampedConstPtr &msg);
     void visualizationCallback(const ros::TimerEvent &e);
     void extractGapCallback(const ros::TimerEvent &e);
 
@@ -200,15 +223,18 @@ private:
                             float r, float g, float b, int id);
     void publishMasks();
     void publishSubGapRegions();
+    void publishGapCandidates();
 
     /* Subscribers */
     ros::Subscriber velodyne_sub_;
+    ros::Subscriber scan2d_sub_;
 
     /* Publishers */
     ros::Publisher image_pub_;
     ros::Publisher edge_pub_;
     ros::Publisher mask_pub_;
     ros::Publisher subregion_pub_;
+    ros::Publisher gap_candidates_pub_;
 
     /* Timers */
     ros::Timer gap_extractor_timer_;

@@ -117,28 +117,79 @@ static inline float yawShiftedByOffset(float yaw, float offset) {
     return t;
 }
 
+static inline void quaternionToRPY(const Eigen::Quaterniond &q, double &roll, double &pitch, double &yaw) {
+    // roll (x-axis rotation)
+    double sinr_cosp = +2.0 * (q.w() * q.x() + q.y() * q.z());
+    double cosr_cosp = +1.0 - 2.0 * (q.x() * q.x() + q.y() * q.y());
+    roll = atan2(sinr_cosp, cosr_cosp);
+
+    // pitch (y-axis rotation)
+    double sinp = +2.0 * (q.w() * q.y() - q.z() * q.x());
+    if (fabs(sinp) >= 1)
+        pitch = std::copysign(M_PI / 2, sinp); // use 90 degrees if out of range
+    else
+        pitch = std::asin(sinp);
+
+    // yaw (z-axis rotation)
+    double siny_cosp = +2.0 * (q.w() * q.z() + q.x() * q.y());
+    double cosy_cosp = +1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z());
+    yaw = atan2(siny_cosp, cosy_cosp);
+}
+
 void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
 {
     node_ = nh;
     env_type_ = env_type;
 
-    node_.param<int>("gap_extractor/min_pixels_in_open_gap_region", params_.min_pixels_in_open_gap_region, 30);
-    node_.param<float>("gap_extractor/open_gap_yaw_span", params_.open_gap_yaw_span, M_PI / 4); // 45 degrees
-    node_.param<float>("gap_extractor/open_gap_elev_span", params_.open_gap_elev_span, M_PI / 9); // 20 degrees
+    node_.param<float>("lidar/min_elev_angle",                                          params_.min_elev, -30.67f);    // degrees
+    node_.param<float>("lidar/max_elev_angle",                                          params_.max_elev, 20.67f);     // degrees
+    if(env_type){
+        node_.param<int>  ("gap_extractor/3D/min_pixels_in_open_gap_region",                params_.min_pixels_in_open_gap_region, 30);
+        node_.param<float>("gap_extractor/3D/open_gap_yaw_span",                            params_.open_gap_yaw_span, M_PI / 4); // 45 degrees
+        node_.param<float>("gap_extractor/3D/open_gap_elev_span",                           params_.open_gap_elev_span, M_PI / 9); // 20 degrees
 
-    node_.param<int>("gap_extractor/min_pixels_in_subregion", params_.min_pixels_in_subregion, 20);
-    node_.param<int>("gap_extractor/range_map_width", params_.range_map_width, 1600);  // lidar horizontal resolution
-    node_.param<int>("gap_extractor/range_map_height", params_.range_map_height, 32);  // lidar vertical resolution
-    node_.param<int>("gap_extractor/map_size", params_.map_size, 5); // meters
+        node_.param<int>  ("gap_extractor/3D/min_pixels_in_subregion",                      params_.min_pixels_in_subregion, 20);
+        node_.param<int>  ("gap_extractor/3D/range_map_width",                              params_.range_map_width, 1600);  // lidar horizontal resolution
+        node_.param<int>  ("gap_extractor/3D/range_map_height",                             params_.range_map_height, 32);  // lidar vertical resolution
+        node_.param<int>  ("gap_extractor/3D/map_size",                                     params_.map_size, 5); // meters
 
-    node_.param<float>("gap_extractor/yaw_split_threshold_in_limited_gap_region", params_.yaw_split_threshold_in_limited_gap_region, M_PI / 6); // 30 degrees
-    node_.param<float>("gap_extractor/elev_split_threshold_in_limited_gap_region", params_.elev_split_threshold_in_limited_gap_region, M_PI / 9); // 20 degrees
-    node_.param<int>("gap_extractor/min_pixels_in_limited_gap_region", params_.min_pixels_in_limited_gap_region, 48);
-    node_.param<float>("gap_extractor/limited_gap_yaw_span", params_.limited_gap_yaw_span, M_PI / 6); // 30 degrees
-    node_.param<float>("gap_extractor/limited_gap_elev_span", params_.limited_gap_elev_span, M_PI / 6); // 30 degrees
-    node_.param<float>("gap_extractor/min_pixels_in_limited_subregion", params_.min_pixels_in_limited_subregion, 32);
+        node_.param<float>("gap_extractor/3D/yaw_split_threshold_in_limited_gap_region",    params_.yaw_split_threshold_in_limited_gap_region, M_PI / 6); // 30 degrees
+        node_.param<float>("gap_extractor/3D/elev_split_threshold_in_limited_gap_region",   params_.elev_split_threshold_in_limited_gap_region, M_PI / 9); // 20 degrees
+        node_.param<int>  ("gap_extractor/3D/min_pixels_in_limited_gap_region",             params_.min_pixels_in_limited_gap_region, 48);
+        node_.param<float>("gap_extractor/3D/limited_gap_yaw_span",                         params_.limited_gap_yaw_span, M_PI / 6); // 30 degrees
+        node_.param<float>("gap_extractor/3D/limited_gap_elev_span",                        params_.limited_gap_elev_span, M_PI / 6); // 30 degrees
+        node_.param<int>  ("gap_extractor/3D/min_pixels_in_limited_subregion",              params_.min_pixels_in_limited_subregion, 32);
+    }
+    else{
+        node_.param<int>  ("gap_extractor/2D/min_pixels_in_open_gap_region",                params_.min_pixels_in_open_gap_region, 15);
+        node_.param<float>("gap_extractor/2D/open_gap_yaw_span",                            params_.open_gap_yaw_span, M_PI / 4); // 45 degrees
+        node_.param<float>("gap_extractor/2D/open_gap_elev_span",                           params_.open_gap_elev_span, M_PI / 9); // 20 degrees
+
+        node_.param<int>  ("gap_extractor/2D/min_pixels_in_subregion",                      params_.min_pixels_in_subregion, 20);
+        node_.param<int>  ("gap_extractor/2D/range_map_width",                              params_.range_map_width, 1600);  // lidar horizontal resolution
+        node_.param<int>  ("gap_extractor/2D/range_map_height",                             params_.range_map_height, 1);  // only one row for 2D lidar
+        node_.param<int>  ("gap_extractor/2D/map_size",                                     params_.map_size, 5); // meters
+
+        node_.param<float>("gap_extractor/2D/yaw_split_threshold_in_limited_gap_region",    params_.yaw_split_threshold_in_limited_gap_region, M_PI / 6); // 30 degrees
+        node_.param<float>("gap_extractor/2D/elev_split_threshold_in_limited_gap_region",   params_.elev_split_threshold_in_limited_gap_region, M_PI / 9); // 20 degrees
+        node_.param<int>  ("gap_extractor/2D/min_pixels_in_limited_gap_region",             params_.min_pixels_in_limited_gap_region, 2);
+        node_.param<float>("gap_extractor/2D/limited_gap_yaw_span",                         params_.limited_gap_yaw_span, M_PI / 6); // 30 degrees
+        node_.param<float>("gap_extractor/2D/limited_gap_elev_span",                        params_.limited_gap_elev_span, M_PI / 6); // 30 degrees
+        node_.param<int>  ("gap_extractor/2D/min_pixels_in_limited_subregion",              params_.min_pixels_in_limited_subregion, 2);
+    }
 
     cloud_ptr_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+
+    if (env_type_){
+        ROS_INFO("[GapExtractor] Initializing for 3D environment (Velodyne pointcloud)...");
+        velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &GapExtractor::velodyneCallback, this);
+    } else{
+        ROS_INFO("[GapExtractor] Initializing for 2D environment (LaserScan)...");
+        scan2d_sub_ = node_.subscribe("/scan", 1, &GapExtractor::scan2dCallback, this);
+        params_.range_map_height = 1; // only one row for 2D lidar
+        params_.min_elev = -1.f;
+        params_.max_elev =  1.f;
+    }
 
     // initialize range map
     range_map_.azimuth.resize(params_.range_map_height, std::vector<float>(params_.range_map_width, std::numeric_limits<float>::max()));
@@ -173,13 +224,12 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
     tf_listener_odom_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_odom_);
     
     odom_timer_ = node_.createTimer(ros::Duration(0.1), &GapExtractor::odomCallback, this);
-    
-    velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &GapExtractor::velodyneCallback, this);
 
     image_pub_ = node_.advertise<sensor_msgs::Image>("/range_map_image", 1);
     edge_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/detected_edges", 1);
     mask_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/gap_masks", 1);
     subregion_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/gap_subregions", 1);
+    gap_candidates_pub_ = node_.advertise<planner_manager::GapCandidates>("/gap_candidates", 1);
 
     gap_extractor_timer_ = node_.createTimer(ros::Duration(0.1), &GapExtractor::extractGapCallback, this);
     
@@ -205,8 +255,8 @@ void GapExtractor::pointCloudToRangeMap()
     // Field of view (radians)
     const float min_azimuth = -M_PI;
     const float max_azimuth =  M_PI;
-    const float min_elev = -30.67f * M_PI / 180.0f;
-    const float max_elev =  20.67f * M_PI / 180.0f;
+    const float min_elev = params_.min_elev * M_PI / 180.0f;
+    const float max_elev = params_.max_elev * M_PI / 180.0f;
 
     // Angular resolutions
     const float azimuth_res = (max_azimuth - min_azimuth) / static_cast<float>(W);
@@ -1301,6 +1351,154 @@ void GapExtractor::computeStateForSubregions(std::vector<std::vector<GapSubRegio
     }
 }
 
+void GapExtractor::checkGoalStatus(Eigen::Vector3d goal_pos){
+    const int H = params_.range_map_height;
+    const int W = params_.range_map_width;
+    if (range_map_.range.empty() || (int)range_map_.range.size() != H || (int)range_map_.range[0].size() != W){
+        goal_status_ = GoalStatus::OUT_OF_VIEW;
+        return;
+        // range map not ready
+    }
+    if (!base_to_odom_ptr_) {
+        goal_status_ = GoalStatus::OUT_OF_VIEW;
+        return;
+    }
+    if (!lidar_to_base_ptr_) {
+        goal_status_ = GoalStatus::OUT_OF_VIEW;
+        return;
+    }
+    // transferm goal pos from odom to scan frame
+    Eigen::Affine3d T_odom_base = tf2::transformToEigen(*base_to_odom_ptr_);
+    Eigen::Affine3d T_base_scan = tf2::transformToEigen(*lidar_to_base_ptr_);
+    Eigen::Affine3d T_odom_scan = T_odom_base * T_base_scan;
+    Eigen::Affine3d T_scan_odom = T_odom_scan.inverse();
+
+    Eigen::Vector4d goal_odom_h(goal_pos[0], goal_pos[1], goal_pos[2], 1.0);
+    Eigen::Vector4d goal_scan_h = T_scan_odom.matrix() * goal_odom_h;
+    Eigen::Vector3d goal_scan = goal_scan_h.head<3>();
+
+    const double x = goal_scan.x();
+    const double y = goal_scan.y();
+    const double z = goal_scan.z();
+    const double r_goal = std::sqrt(x*x + y*y + z*z);
+    const double eps_range = 1e-32;
+    
+    if (!std::isfinite(r_goal) || r_goal < 1e-3){
+        goal_status_ = GoalStatus::FREE;
+        return;
+    }
+    if (r_goal > (double) params_.map_size + eps_range){
+        goal_status_ = GoalStatus::OUT_OF_VIEW;
+        return;
+    } 
+
+    // Field of view (radians)
+    const float min_azimuth = -M_PI;
+    const float max_azimuth =  M_PI;
+    const float min_elev = params_.min_elev * M_PI / 180.0f;
+    const float max_elev = params_.max_elev * M_PI / 180.0f;
+
+    const float azimuth_res = (max_azimuth - min_azimuth) / static_cast<float>(W);
+    const float elev_res    = (max_elev    - min_elev)    / static_cast<float>(H);
+    const float inv_az_res  = 1.f / azimuth_res;
+    const float inv_el_res  = 1.f / elev_res;
+    const float EPS = 1e-6f;
+    const float two_pi = 2.f * M_PI;
+
+    float th = std::atan2((float)y, (float)x);                     // [-pi, pi]
+    float ph = std::atan2((float)z, std::sqrt((float)(x*x + y*y))); // [-pi/2, pi/2]
+
+    float ph_c = std::min(std::max(ph, min_elev + EPS), max_elev - EPS);
+
+    float th_w = th;
+    while (th_w <  min_azimuth) th_w += two_pi;
+    while (th_w >= max_azimuth) th_w -= two_pi;
+    th_w = std::min(std::max(th_w, min_azimuth + EPS), max_azimuth - EPS);
+
+    // Compute floating indices of the "goal pixel center"
+    const float v_float = (ph_c - (min_elev + 0.5f * elev_res)) * inv_el_res;
+    const float u_float = (th_w - (min_azimuth + 0.5f * azimuth_res)) * inv_az_res;
+
+    int v0 = (int)std::floor(v_float);
+    int v1 = v0 + 1;
+    int u0 = (int)std::floor(u_float);
+    int u1 = u0 + 1;
+
+    v0 = std::max(0, std::min(H-1, v0));
+    v1 = std::max(0, std::min(H-1, v1));
+    u0 = (u0 % W + W) % W;
+    u1 = (u1 % W + W) % W;
+
+    struct Pix { int v, u; };
+    std::vector<Pix> neigh;
+    neigh.reserve(4);
+    neigh.push_back({v0, u0});
+    neigh.push_back({v0, u1});
+    neigh.push_back({v1, u0});
+    neigh.push_back({v1, u1});
+
+    bool any_echo = false;
+    bool any_block_before_goal = false;
+    bool all_goal_before_obstacle = true;
+
+    for (const auto& px : neigh) {
+        float r_echo = range_map_.range[px.v][px.u];
+
+        if (!std::isfinite(r_echo)) continue;  // no obstacle echo
+
+        any_echo = true;
+
+        if (r_goal > (double)r_echo + eps_range) {
+            any_block_before_goal = true;
+        }
+        if (!(r_goal < (double)r_echo - eps_range)) {
+            all_goal_before_obstacle = false;
+        }
+    }
+    // check gap membership
+    bool masks_ready = (!gap_masks_.open.empty() &&
+                        (int)gap_masks_.open.size() == H &&
+                        (int)gap_masks_.open[0].size() == W &&
+                        !gap_masks_.free.empty() &&
+                        (int)gap_masks_.free.size() == H &&
+                        (int)gap_masks_.free[0].size() == W);
+
+    bool in_gap_open_free = false;
+    if (masks_ready) {
+        in_gap_open_free = true;  
+        for (const auto& px : neigh) {
+            bool is_gap_pixel =
+                (gap_masks_.open[px.v][px.u] > 0) ||
+                (gap_masks_.free[px.v][px.u] > 0);
+
+            if (!is_gap_pixel) {
+                in_gap_open_free = false;
+                break;
+            }
+        }
+    }
+    if (!any_echo) {
+        // LOS free up to max range along these directions
+        goal_status_ = in_gap_open_free ? GoalStatus::FREE : GoalStatus::LIMITED;
+        return;
+    }
+    if (any_block_before_goal) {
+        // There is at least one ray where an obstacle is closer than the goal
+        goal_status_ = GoalStatus::BLOCKED;
+        return;
+    }
+    if (all_goal_before_obstacle) {
+        // LOS is free (goal in front of obstacles for all rays with echo)
+        goal_status_ = in_gap_open_free ? GoalStatus::FREE : GoalStatus::LIMITED;
+        return;
+    }
+
+    // Mixed / borderline case: some rays ~ on obstacle surface.
+    // Use conservative choice: treat as BLOCKED.
+    goal_status_ = GoalStatus::BLOCKED;
+    return;
+}
+
 void GapExtractor::extractGapCallback(const ros::TimerEvent &e){
     // project 3D point cloud to 2D range map
     pointCloudToRangeMap();
@@ -1341,6 +1539,36 @@ void GapExtractor::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg)
     }
     // process point cloud to pcl::PointCloud<pcl::PointXYZ>::Ptr
     pcl::fromROSMsg(*msg, *cloud_ptr_);
+}
+
+void GapExtractor::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg){
+    // Process the 2D laser scan data
+    if (msg->ranges.empty())
+    {
+        ROS_WARN("[GapExtractor] Received empty laser scan data");
+        return;
+    }
+    // process laser scan to pcl::PointCloud<pcl::PointXYZ>::Ptr
+    if (!cloud_ptr_){
+        cloud_ptr_.reset(new pcl::PointCloud<pcl::PointXYZ>());
+    }
+    cloud_ptr_->clear();
+    double angle = msg->angle_min;
+    for (const float& r : msg->ranges){
+        if (!std::isfinite(r) || r < msg->range_min || r > msg->range_max){
+            angle += msg->angle_increment;
+            continue;
+        }
+        pcl::PointXYZ p;
+        p.x = r * std::cos(angle);
+        p.y = r * std::sin(angle);
+        p.z = 0.0f;
+        cloud_ptr_->points.push_back(p);
+        angle += msg->angle_increment;
+    }
+    cloud_ptr_->width = cloud_ptr_->points.size();
+    cloud_ptr_->height = 1;
+    cloud_ptr_->is_dense = false;
 }
 
 void GapExtractor::odomCallback(const ros::TimerEvent &event)
@@ -1647,10 +1875,55 @@ void GapExtractor::publishSubGapRegions() {
     subregion_pub_.publish(arr);
 }
 
+void GapExtractor::publishGapCandidates(){
+    planner_manager::GapCandidates out;
+    out.header.stamp    = ros::Time::now();
+    out.header.frame_id = "scan";
+
+    auto emit_from = [&](const std::vector<std::vector<std::vector<GapSubRegion>>>& sub3d, int type_tag)
+    {
+        for (size_t i = 0; i < sub3d.size(); ++i) {
+            const auto& rows = sub3d[i];
+            for (size_t j = 0; j < rows.size(); ++j) {
+                const auto& cells = rows[j];
+                for (size_t k = 0; k < cells.size(); ++k) {
+                    const GapSubRegion& cell = cells[k];
+                    if (cell.size == 0) continue;
+
+                    planner_manager::GapCandidate c;
+                    c.type        = type_tag;              // 0=open, 1=limited, 2=free
+                    c.center_yaw  = cell.center_yaw;
+                    c.center_elev = cell.center_elev;
+                    c.yaw_span    = cell.yaw_span;
+                    c.elev_span   = cell.elev_span;
+                    c.size        = cell.size;
+                    c.range_mean  = cell.range_mean;
+
+                    const float cy = std::cos(cell.center_elev);
+                    geometry_msgs::Vector3 v;
+                    v.x = cell.range_mean * cy * std::cos(cell.center_yaw);
+                    v.y = cell.range_mean * cy * std::sin(cell.center_yaw);
+                    v.z = cell.range_mean * std::sin(cell.center_elev);
+                    c.dir = v;
+
+                    out.items.push_back(c);
+                }
+            }
+        }
+    };
+
+    emit_from(open_gap_subregions_,    0);
+    emit_from(limited_gap_subregions_, 1);
+    emit_from(free_gap_subregions_,    2);
+
+    gap_candidates_pub_.publish(out);
+}
+
 void GapExtractor::visualizationCallback(const ros::TimerEvent &e)
 {
     publishRangeMapAsImage();
     publishEdges();
     publishMasks();
     publishSubGapRegions();
+    publishGapCandidates();
 }

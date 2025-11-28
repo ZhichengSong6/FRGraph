@@ -46,7 +46,7 @@ int main(int argc, char **argv)
         nh.subscribe("/gazebo/model_states", 5, modelCallback);
 
     ros::Subscriber sub_cmd =
-        nh.subscribe("/cmd_vel_3d", 5, cmdCallback);
+        nh.subscribe("/cmd_vel", 5, cmdCallback);
 
     ros::ServiceClient set_state =
         nh.serviceClient<gazebo_msgs::SetModelState>("/gazebo/set_model_state");

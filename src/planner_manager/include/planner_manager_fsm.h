@@ -5,6 +5,7 @@
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <visualization_msgs/Marker.h>
 
 #include <Eigen/Dense>
 
@@ -18,6 +19,7 @@ class PlannerManagerFSM {
         INIT,
         WAIT_GOAL,
         PLAN_TRAJECTORY,
+        EXEC_TRAJECTORY
     };
     FSM_EXEC_STATE current_state_;
 
@@ -31,27 +33,37 @@ class PlannerManagerFSM {
     Eigen::Vector3d odom_pos_, odom_vel_;
     Eigen::Quaterniond odom_ori_;
     double odom_roll_, odom_pitch_, odom_yaw_;
-
     Eigen::Vector3d goal_pos_;
     Eigen::Quaterniond goal_ori_;
     double goal_roll_, goal_pitch_, goal_yaw_;
+    double goal_z_pos_;
+
+    Eigen::Vector3d start_pos_;
 
     /* ROS utils */
     ros::NodeHandle node_;
 
     /* ROS publishers */
     ros::Publisher cmd_vel_pub_;
+    ros::Publisher goal_marker_pub_;
+    ros::Publisher global_graph_pub_;
 
     /* ROS subscribers */
     ros::Subscriber odom_sub_;
     ros::Subscriber goal_sub_;
 
     ros::Timer FSM_timer_;
+    ros::Timer cmd_timer_;
+    ros::Timer replan_check_timer_;
+    ros::Timer visualization_timer_;
 
     /* callback functions */
     void odomCallback(const nav_msgs::OdometryConstPtr &msg);
     void goalCallback(const geometry_msgs::PoseStampedPtr &msg);
     void FSMCallback(const ros::TimerEvent &e);
+    void publishCmdCallback(const ros::TimerEvent &e);
+    void replanCheckCallback(const ros::TimerEvent &e);
+    void visualizationCallback(const ros::TimerEvent &e);
 
     /* FSM function */
     void changeFSMState(FSM_EXEC_STATE new_state, std::string pos_call);
@@ -61,6 +73,9 @@ class PlannerManagerFSM {
     void quaternionToRPY(const Eigen::Quaterniond &q, double &roll, double &pitch, double &yaw);
     void stopRobot();
 
+    /* Visualization */
+    void publishGoalMarker();
+    void publishGlobalGraph();
 
     public:
     PlannerManagerFSM(/* args */) {}

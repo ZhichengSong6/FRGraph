@@ -5,4 +5,6 @@ void FreeRegionsGraph::setRootNode(Eigen::Vector3d start_pos) {
     root_->parent = nullptr;
     root_->children.clear();
     root_->replan_pos_ = start_pos;
+    root_->root = true;
+    root_->visited = true;
 }

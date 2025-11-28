@@ -202,6 +202,22 @@ Visualization Manager:
         gap_subregions: true
       Queue Size: 100
       Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /goal_marker
+      Name: Marker
+      Namespaces:
+        goal_marker: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /global_graph
+      Name: Marker
+      Namespaces:
+        global_graph: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -230,7 +246,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 7.354245662689209
+      Distance: 12.960694313049316
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -238,17 +254,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -0.27104175090789795
-        Y: 1.1995904445648193
+        X: -3.3019509315490723
+        Y: 4.4311723709106445
         Z: -1.3113021850585938e-06
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7297971844673157
+      Pitch: 0.9097970128059387
       Target Frame: <Fixed Frame>
-      Yaw: 2.6391730308532715
+      Yaw: 2.46417236328125
     Saved: ~
 Window Geometry:
   Displays:
@@ -269,4 +285,4 @@ Window Geometry:
     collapsed: false
   Width: 1655
   X: 692
-  Y: 99
+  Y: 27

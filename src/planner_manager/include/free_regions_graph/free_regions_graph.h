@@ -14,6 +14,7 @@ struct GraphNode {
     Eigen::Vector3d replan_pos_;
 
     bool root = false;
+    bool visited = false;
 
     GraphNode *parent;
     std::vector<GraphNode*> children;
