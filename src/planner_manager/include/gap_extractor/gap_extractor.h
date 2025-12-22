@@ -87,6 +87,8 @@ struct GapRegion{
 };
 
 struct GapSubRegion{
+    int type = -1; // -1: uninitialized, 0: open, 1: limited, 2: free
+
     std::vector<std::pair<int,int>> pixels; // (v,u) pixel coordinates
     int size = 0;
     int v_min = std::numeric_limits<int>::max();
@@ -95,6 +97,10 @@ struct GapSubRegion{
     // representative direction
     float center_yaw = 0.f;
     float center_elev = 0.f;
+
+    // yaw and elev bias for limited gap adjustment
+    float yaw_bias = 0.f;
+    float elev_bias = 0.f;
 
     // representative pixel on the grid
     float yaw_span = 0.f;
@@ -132,6 +138,10 @@ struct Parameters{
     float limited_gap_yaw_span = M_PI / 6; // 30 degrees
     float limited_gap_elev_span = M_PI / 6; // 30 degrees
     int min_pixels_in_limited_subregion = 32;
+
+    // bias for limited gap adjustment
+    float limited_gap_bias_yaw = M_PI / 36; // 5 degrees
+    float limited_gap_bias_elev = M_PI / 36; // 5 degrees
 };
 
 class GapExtractor {
@@ -197,6 +207,12 @@ private:
     std::vector<std::vector<std::vector<GapSubRegion>>> open_gap_subregions_;
     std::vector<std::vector<std::vector<GapSubRegion>>> limited_gap_subregions_;
     std::vector<std::vector<std::vector<GapSubRegion>>> free_gap_subregions_;
+
+    // side maps for LIMITED only
+    // lr: +1 means "free is to +u direction" (right in u-index), -1 means free to -u
+    // ud: +1 means "free is to +v direction" (towards larger v), -1 means free to -v
+    std::vector<std::vector<int8_t>> limited_side_lr_;
+    std::vector<std::vector<int8_t>> limited_side_ud_;
 
     GoalStatus goal_status_ = GoalStatus::OUT_OF_VIEW;
 

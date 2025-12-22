@@ -1,5 +1,5 @@
 planner:
-  env_type: 0 # 0 for 2D, 1 for 3D
+  env_type: 1 # 0 for 2D, 1 for 3D
   size_of_cropped_pointcloud: [6, 6, 3]
   goal_z_pos: 1.0
 
@@ -46,3 +46,7 @@ planner:
   gap_extractor/2D/limited_gap_yaw_span: 0.5236 # 30 degrees
   gap_extractor/2D/limited_gap_elev_span: 0.5236 # 30 degrees
   gap_extractor/2D/min_pixels_in_limited_subregion: 2
+
+  # Parameters for yaw/elev adjustment in limited gap region
+  gap_extractor/limited_gap_bias_yaw: 0.0350 # 2 degrees
+  gap_extractor/limited_gap_bias_elev: 0.0350 # 2 degrees

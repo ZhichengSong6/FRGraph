@@ -140,6 +140,8 @@ void PlannerManager::candidateGapsCallback(const planner_manager::GapCandidates:
         gap.type = c.type;
         gap.center_yaw = c.center_yaw;
         gap.center_elev = c.center_elev;
+        gap.yaw_bias = c.yaw_bias;
+        gap.elev_bias = c.elev_bias;
         gap.yaw_span = c.yaw_span;
         gap.elev_span = c.elev_span;
         gap.size = c.size;

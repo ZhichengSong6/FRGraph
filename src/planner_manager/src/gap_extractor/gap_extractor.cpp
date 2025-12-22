@@ -141,8 +141,11 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
     node_ = nh;
     env_type_ = env_type;
 
-    node_.param<float>("lidar/min_elev_angle",                                          params_.min_elev, -30.67f);    // degrees
-    node_.param<float>("lidar/max_elev_angle",                                          params_.max_elev, 20.67f);     // degrees
+    node_.param<float>("lidar/min_elev_angle",                                              params_.min_elev, -30.67f);    // degrees
+    node_.param<float>("lidar/max_elev_angle",                                              params_.max_elev, 20.67f);     // degrees
+    node_.param<float>("gap_extractor/limited_gap_bias_yaw",                                params_.limited_gap_bias_yaw, M_PI / 36); // 5 degrees
+    node_.param<float>("gap_extractor/limited_gap_bias_elev",                               params_.limited_gap_bias_elev, M_PI / 36); // 5 degrees
+
     if(env_type){
         node_.param<int>  ("gap_extractor/3D/min_pixels_in_open_gap_region",                params_.min_pixels_in_open_gap_region, 30);
         node_.param<float>("gap_extractor/3D/open_gap_yaw_span",                            params_.open_gap_yaw_span, M_PI / 4); // 45 degrees
@@ -199,6 +202,10 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
     gap_masks_.open.resize(params_.range_map_height, std::vector<uint8_t>(params_.range_map_width, 0));
     gap_masks_.limited.resize(params_.range_map_height, std::vector<uint8_t>(params_.range_map_width, 0));
     gap_masks_.free.resize(params_.range_map_height, std::vector<uint8_t>(params_.range_map_width, 0));
+
+    limited_side_lr_.assign(params_.range_map_height, std::vector<int8_t>(params_.range_map_width, 0));
+    limited_side_ud_.assign(params_.range_map_height, std::vector<int8_t>(params_.range_map_width, 0));
+
     gap_regions_open_.clear();
     gap_regions_limited_.clear();
     gap_regions_free_.clear();
@@ -569,6 +576,10 @@ void GapExtractor::buildGapMasks()
     gap_masks.limited.resize(H, std::vector<uint8_t>(W, 0));
     gap_masks.free.resize(H, std::vector<uint8_t>(W, 0));
 
+    limited_side_lr_.assign(H, std::vector<int8_t>(W, 0));
+    limited_side_ud_.assign(H, std::vector<int8_t>(W, 0));
+
+
     // horizontal scan
     std::vector<std::vector<std::tuple<int,EdgeClass,HEdgeType>>> rows(H);
     for (const auto& e : selected_edges_) {
@@ -741,18 +752,47 @@ void GapExtractor::buildGapMasks_FromSingleFFEdge(std::vector<std::vector<uint8_
         }
     }
 
-    // Set seeds at near-side pixels of all FF edges
+    // clear side maps (limited only)
+    limited_side_lr_.assign(H, std::vector<int8_t>(W, 0));
+    limited_side_ud_.assign(H, std::vector<int8_t>(W, 0));
+
+    auto write_side = [&](std::vector<std::vector<int8_t>>& M, int v, int u, int8_t s){
+        if (s == 0) return;
+        int8_t &old = M[v][u];
+        if (old == 0) old = s;
+        else if (old != s) old = 0; // conflict => unknown (conservative)
+    };
+
     for (const auto& e : selected_edges_) {
         if (e.edge_class != EdgeClass::FF) continue;
 
         int v = e.v;
         int u = e.u;
 
-        // Bounds/wrap checks
         if (v < 0 || v >= H) continue;
         u %= W; if (u < 0) u += W;
 
+        // seed limited mask
         mask_limited[v][u] = 1;
+
+        // write side-map (store where "free" is)
+        if (e.type == 0) {
+            // horizontal FF edge: use h_edge_type
+            // obstacle on LEFT => free on RIGHT => bias toward +u
+            // So: L => +1, R => -1
+            int8_t s = 0;
+            if (e.h_edge_type == HEdgeType::L) s = +1;
+            else if (e.h_edge_type == HEdgeType::R) s = -1;
+            write_side(limited_side_lr_, v, u, s);
+        } else if (e.type == 1) {
+            // vertical FF edge: use v_edge_type
+            // Convention: obstacle UP => free DOWN (toward +v of your indexing) => bias elev to + direction
+            // So: U => +1, D => -1
+            int8_t s = 0;
+            if (e.v_edge_type == VEdgeType::U) s = +1;
+            else if (e.v_edge_type == VEdgeType::D) s = -1;
+            write_side(limited_side_ud_, v, u, s);
+        }
     }
 }
 
@@ -1039,6 +1079,11 @@ void GapExtractor::splitOpenGapRegion(const GapRegion& region, float yaw_sub_spa
         subregions[iy].resize(Ne);
     }
 
+    for (int iy = 0; iy < Ny; ++iy){
+        for (int ie = 0; ie < Ne; ++ie)
+            subregions[iy][ie].type = 0; // open
+    }
+
     // assign pixels to subregions
     assignPixelsToSubregions(region, yaw_s, elev_s, center_yaw_shifted, region.center_elev, yaw_sub_span, elev_sub_span, Ny, Ne, subregions);
  
@@ -1185,6 +1230,11 @@ void GapExtractor::splitLimitedGapRegion(const GapRegion& region, float min_yaw_
         subregions[iy].resize(Ne);
     }
 
+    for (int iy = 0; iy < Ny; ++iy){
+        for (int ie = 0; ie < Ne; ++ie)
+            subregions[iy][ie].type = 1; // limited
+    }
+
     // how many subregions along each axis
     // ROS_INFO("[GapExtractor] split into %lu subregions",  Ny * Ne);
 
@@ -1231,6 +1281,11 @@ void GapExtractor::splitFreeGapRegion(const GapRegion& region, float yaw_sub_spa
 
     subregions.resize(Ny);
     for (int iy = 0; iy < Ny; ++iy) subregions[iy].resize(Ne);
+
+    for (int iy = 0; iy < Ny; ++iy){
+        for (int ie = 0; ie < Ne; ++ie)
+            subregions[iy][ie].type = 2; // free
+    }
 
     const float start_yaw  = 0.0f;    
     const float start_elev = elev_min;
@@ -1338,6 +1393,54 @@ void GapExtractor::computeStateForCell(GapSubRegion& cell) const {
     cell.elev_span = linearSpanRad(el);
 
     cell.range_mean = (cell.size > 0) ? (float)(r_sum / (double)cell.size) : 0.0f;
+
+    // ---------------- LIMITED bias (use side maps) ----------------
+    if (cell.type == 1 && cell.size > 0) {
+
+        int lr_sum = 0, lr_cnt = 0;
+        int ud_sum = 0, ud_cnt = 0;
+
+        for (const auto& pv : cell.pixels){
+            const int v = pv.first;
+            const int u = pv.second;
+
+            if (v < 0 || v >= (int)limited_side_lr_.size()) continue;
+            if (u < 0 || u >= (int)limited_side_lr_[0].size()) continue;
+
+            int8_t lr = limited_side_lr_[v][u];
+            int8_t ud = limited_side_ud_[v][u];
+
+            if (lr != 0) { lr_sum += (int)lr; lr_cnt++; }
+            if (ud != 0) { ud_sum += (int)ud; ud_cnt++; }
+        }
+
+        auto sgn = [&](int x)->int { return (x > 0) - (x < 0); };
+
+        const int lr_dir = sgn(lr_sum);
+        const int ud_dir = sgn(ud_sum);
+
+        const float kYaw  = params_.limited_gap_bias_yaw;
+        const float kElev = params_.limited_gap_bias_elev;
+
+        if (lr_dir != 0 && cell.yaw_span > 1e-6f) {
+            cell.yaw_bias = lr_dir * kYaw;
+            // float dyaw = lr_dir * kYaw;
+            // // wrap back to [-pi, pi]
+            // cell.center_yaw += dyaw;
+            // while (cell.center_yaw >  (float)M_PI) cell.center_yaw -= 2.f * (float)M_PI;
+            // while (cell.center_yaw < -(float)M_PI) cell.center_yaw += 2.f * (float)M_PI;
+        }
+
+        if (ud_dir != 0 && cell.elev_span > 1e-6f) {
+            cell.center_elev += ud_dir * kElev;
+            // float de = ud_dir * kElev;
+
+            // // clamp to lidar elevation range
+            // const float min_e = params_.min_elev * (float)M_PI / 180.f;
+            // const float max_e = params_.max_elev * (float)M_PI / 180.f;
+            // cell.center_elev = std::max(min_e, std::min(max_e, cell.center_elev + de));
+        }
+    }
 }
 
 void GapExtractor::computeStateForSubregions(std::vector<std::vector<GapSubRegion>>& subregions) const{
@@ -1805,8 +1908,14 @@ void GapExtractor::publishSubGapRegions() {
                 if (cell.size == 0) continue;
 
                 const float r  = cell.range_mean;
-                const float th = cell.center_yaw;
-                const float ph = cell.center_elev;
+                float th = cell.center_yaw + cell.yaw_bias;
+                float ph = cell.center_elev + cell.elev_bias;
+
+                while (th >  (float)M_PI) th -= 2.f * (float)M_PI;
+                while (th < -(float)M_PI) th += 2.f * (float)M_PI;
+                const float min_e = params_.min_elev * (float)M_PI / 180.f;
+                const float max_e = params_.max_elev * (float)M_PI / 180.f;
+                ph = std::max(min_e, std::min(max_e, ph));
 
                 geometry_msgs::Point p;
                 p.x = r * std::cos(ph) * std::cos(th);
@@ -1880,7 +1989,7 @@ void GapExtractor::publishGapCandidates(){
     out.header.stamp    = ros::Time::now();
     out.header.frame_id = "scan";
 
-    auto emit_from = [&](const std::vector<std::vector<std::vector<GapSubRegion>>>& sub3d, int type_tag)
+    auto emit_from = [&](const std::vector<std::vector<std::vector<GapSubRegion>>>& sub3d)
     {
         for (size_t i = 0; i < sub3d.size(); ++i) {
             const auto& rows = sub3d[i];
@@ -1891,9 +2000,11 @@ void GapExtractor::publishGapCandidates(){
                     if (cell.size == 0) continue;
 
                     planner_manager::GapCandidate c;
-                    c.type        = type_tag;              // 0=open, 1=limited, 2=free
+                    c.type        = cell.type;              // 0=open, 1=limited, 2=free
                     c.center_yaw  = cell.center_yaw;
                     c.center_elev = cell.center_elev;
+                    c.yaw_bias    = cell.yaw_bias;
+                    c.elev_bias   = cell.elev_bias;
                     c.yaw_span    = cell.yaw_span;
                     c.elev_span   = cell.elev_span;
                     c.size        = cell.size;
@@ -1912,9 +2023,9 @@ void GapExtractor::publishGapCandidates(){
         }
     };
 
-    emit_from(open_gap_subregions_,    0);
-    emit_from(limited_gap_subregions_, 1);
-    emit_from(free_gap_subregions_,    2);
+    emit_from(open_gap_subregions_);
+    emit_from(limited_gap_subregions_);
+    emit_from(free_gap_subregions_);
 
     gap_candidates_pub_.publish(out);
 }

@@ -33,6 +33,10 @@ struct Gaps{
     float center_elev;
     float range_mean;
 
+    // yaw and elev bias for limited gap
+    float yaw_bias = 0.0f;
+    float elev_bias = 0.0f;
+
     float yaw_span;
     float elev_span;
     int   size;

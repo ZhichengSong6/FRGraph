@@ -1,6 +1,10 @@
 # representative direction 
 geometry_msgs/Vector3 dir
 
+# yaw and elev bias for limited gap
+float32 yaw_bias
+float32 elev_bias
+
 # spherical angles (rad) and mean range (m)
 float32 center_yaw
 float32 center_elev
