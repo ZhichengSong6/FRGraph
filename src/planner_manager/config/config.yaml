@@ -3,6 +3,23 @@ planner:
   size_of_cropped_pointcloud: [6, 6, 3]
   goal_z_pos: 1.0
 
+  # Parameters for robot shape
+  robot_shape/points: [0.1, 0.1, 0.1,
+                       0.1, -0.1, 0.1,
+                      -0.1, -0.1, 0.1,
+                      -0.1, 0.1, 0.1,
+                       0.1, 0.1, -0.1,
+                       0.1, -0.1, -0.1,
+                      -0.1, -0.1, -0.1,
+                      -0.1, 0.1, -0.1]
+  
+  robot_shape/imu_pos: [0.0, 0.0, 0.0]
+  # robot_shape/points: [0.1, 0.1,
+  #                      0.1, -0.1,
+  #                     -0.1, -0.1,
+  #                     -0.1, 0.1]
+  # robot_shape/imu_pos: [0.0, 0.0]
+
   # Parameters for lidar
   lidar/min_elev_angle: -30.67    # degrees
   lidar/max_elev_angle: 20.67     # degrees
@@ -34,9 +51,9 @@ planner:
   gap_extractor/3D/min_pixels_in_limited_subregion: 32
 
   # Parameters for gap extractor for 2D environment
-  gap_extractor/2D/min_pixels_in_open_gap_region: 20
+  gap_extractor/2D/min_pixels_in_open_gap_region: 10
   gap_extractor/2D/open_gap_yaw_span: 0.7854  # 45 degrees
-  gap_extractor/2D/min_pixels_in_subregion: 40
+  gap_extractor/2D/min_pixels_in_subregion: 20
   gap_extractor/2D/range_map_width: 1600  # lidar horizontal resolution
   gap_extractor/2D/range_map_height: 1  # lidar vertical resolution
   gap_extractor/2D/map_size: 3 # meters

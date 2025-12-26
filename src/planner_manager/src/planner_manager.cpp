@@ -9,13 +9,60 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     if(env_type_){
         ROS_INFO("3D environment, using velodyne pointcloud");
         velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &PlannerManager::velodyneCallback, this);
+        std::vector<double> robot_shape_pts;
+        node_.param<std::vector<double>>("robot_shape/points", robot_shape_pts, {0.1, 0.1, 0.0,
+                                                                                     0.1, -0.1, 0.0,
+                                                                                    -0.1, -0.1, 0.0,
+                                                                                    -0.1, 0.1, 0.0,
+                                                                                     0.1, 0.1, -0.2,
+                                                                                     0.1, -0.1, -0.2,
+                                                                                    -0.1, -0.1, -0.2,
+                                                                                    -0.1, 0.1, -0.2});
+        std::vector<double> imu_pos_tmp;
+        node_.param<std::vector<double>>("robot_shape/imu_pos", imu_pos_tmp, {0.0, 0.0, 0.0});   // imu position in base_link frame
+        imu_pos_ = Eigen::Vector3d(imu_pos_tmp[0], imu_pos_tmp[1], imu_pos_tmp[2]);
+        // convert to vec_Eigen format
+        for (size_t i = 0; i < robot_shape_pts.size(); i += 3) {
+            robot_shape_points_.push_back(Eigen::Vector3d(robot_shape_pts[i], robot_shape_pts[i+1], robot_shape_pts[i+2]));
+        }
+        Sphere3D robot_sphere;
+        std::vector<Eigen::Vector3d> robot_shape_pts_eigen;
+        for (const auto &pt : robot_shape_points_){
+            robot_shape_pts_eigen.push_back(pt);
+        }
+        robot_sphere = minimumEnclosingSphere3D(robot_shape_pts_eigen);
+        robot_ellipsoid_ = Ellipsoid3D(Eigen::Matrix3d::Identity() * robot_sphere.radius, robot_sphere.center);
     }
     else {
         ROS_INFO("2D environment, using 2D laser scan");
         scan2d_sub_ = node_.subscribe("/scan", 1, &PlannerManager::scan2dCallback, this);
+        std::vector<double> robot_shape_pts_2d;
+        node_.param<std::vector<double>>("robot_shape/points_2d", robot_shape_pts_2d, {0.1, 0.1,
+                                                                                         0.1, -0.1,
+                                                                                        -0.1, -0.1,
+                                                                                        -0.1, 0.1});
+        std::vector<double> imu_pos_tmp_2d;
+        node_.param<std::vector<double>>("robot_shape/imu_pos_2d", imu_pos_tmp_2d, {0.0, 0.0});
+        imu_pos_2d_ = Eigen::Vector2d(imu_pos_tmp_2d[0], imu_pos_tmp_2d[1]);
+        // convert to vec_Eigen format
+        for (size_t i = 0; i < robot_shape_pts_2d.size(); i += 2) {
+            robot_shape_points_2d_.push_back(Eigen::Vector2d(robot_shape_pts_2d[i], robot_shape_pts_2d[i+1]));
+        }
+        Circle2D robot_sphere_2d;
+        std::vector<Eigen::Vector2d> robot_shape_pts_eigen_2d;
+        for (const auto &pt : robot_shape_points_2d_){
+            robot_shape_pts_eigen_2d.push_back(pt);
+        }
+        robot_sphere_2d = minimumEnclosingCircle2D(robot_shape_pts_eigen_2d);
+        robot_ellipsoid_2d_ = Ellipsoid2D(Eigen::Matrix2d::Identity() * robot_sphere_2d.radius, robot_sphere_2d.center);
     }
 
     candidate_gaps_sub_ = node_.subscribe("/gap_candidates", 1, &PlannerManager::candidateGapsCallback, this);
+
+    poly_pub_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_array", 1, true);
+    poly_pub_aniso_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_array_aniso", 1, true);
+    robot_points_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_robot_points", 1, true);
+    robot_sphere_pub_ = node_.advertise<decomp_ros_msgs::EllipsoidArray>("planner_manager_sphere", 1, true);
 
     base_scan_ptr_ = geometry_msgs::TransformStamped::Ptr(new geometry_msgs::TransformStamped);
 	tf2_ros::Buffer tfBuffer_lidar;
@@ -34,6 +81,7 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     tf_listener_odom_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_odom_);
 
     odom_timer_ = node_.createTimer(ros::Duration(0.1), &PlannerManager::odomTimerCallback, this);
+    debug_timer_ = node_.createTimer(ros::Duration(0.2), &PlannerManager::debugTimerCallback, this);
 
     free_regions_graph_ptr_.reset(new FreeRegionsGraph());
 
@@ -74,6 +122,11 @@ void PlannerManager::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &ms
         Eigen::Vector4f pt_transformed = T_odom_base_mat * T_base_scan_mat_ * pt_homogeneous;
         pointcloud_cropped_odom_frame.push_back(Eigen::Vector3d(pt_transformed[0], pt_transformed[1], pt_transformed[2]));
     }
+    // add floor points at z = 0 
+    // for (const auto &pt : pointcloud_cropped_odom_frame) {
+    //     Eigen::Vector3d floor_pt(pt[0], pt[1], 0.0);
+    //     pointcloud_cropped_odom_frame.push_back(floor_pt);
+    // }
     pointcloud_cropped_odom_frame_ = pointcloud_cropped_odom_frame;
 }
 
@@ -165,6 +218,70 @@ void PlannerManager::candidateGapsCallback(const planner_manager::GapCandidates:
     // << gap_candidates_open_.size()
     // << " limited=" << gap_candidates_limited_.size()
     // << " free="    << gap_candidates_free_.size());
+}
+
+void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
+    /* TEST */
+    // we need to decompose first the sorted gap candidates
+    // TBD
+    polys_aniso_2d_.clear();
+    polys_2d_.clear();
+    polys_aniso_3d_.clear();
+    polys_3d_.clear();
+    if (env_type_){
+        const Vec3f p1(start_pos[0], start_pos[1], start_pos[2]);
+        const Vec3f p2(all_candidates[0].dir_odom_frame[0]/2,
+                   all_candidates[0].dir_odom_frame[1]/2,
+                   all_candidates[0].dir_odom_frame[2]/2);
+        LineSegment3D line_segment(p1, p2);
+        line_segment.set_obs(pointcloud_cropped_odom_frame_);
+        line_segment.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment.dilate(-0.1f);
+        LineSegment3D line_segment_aniso(p1, p2);
+        line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_);
+        line_segment_aniso.set_local_bbox_aniso(Vec3f(0.5f, 0.3f, 0.2f),
+                                               Vec3f(0.3f, 0.3f, 0.2f)); // set local bbox for decomposition
+        line_segment_aniso.dilate_aniso(-0.1f);
+        polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
+        polys_3d_.push_back(line_segment.get_polyhedron());
+        decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_3d_);
+        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
+        poly_msg.header.stamp = ros::Time::now();
+        poly_msg.header.frame_id = "odom";
+        poly_pub_.publish(poly_msg);
+        poly_msg_aniso.header.stamp = ros::Time::now();
+        poly_msg_aniso.header.frame_id = "odom";
+        poly_pub_aniso_.publish(poly_msg_aniso);
+    }
+    else{
+        // 2D case
+        const Vec2f p1(start_pos[0], start_pos[1]);
+        const Vec2f p2(all_candidates[0].dir_odom_frame[0],
+                     all_candidates[0].dir_odom_frame[1]);
+        ROS_INFO("Decomposing along gap direction: p1=(%.2f, %.2f), p2=(%.2f, %.2f)",
+                 p1[0], p1[1], p2[0], p2[1]);
+        ROS_INFO("size of pointcloud_cropped_odom_frame_2d_: %lu", pointcloud_cropped_odom_frame_2d_.size());
+        LineSegment2D line_segment(p1, p2);
+        line_segment.set_obs(pointcloud_cropped_odom_frame_2d_);
+        line_segment.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment.dilate(0.1f);
+        LineSegment2D line_segment_aniso(p1, p2);
+        line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
+        line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.3f),
+                                               Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
+        line_segment_aniso.dilate_aniso(0.1f);
+        polys_aniso_2d_.push_back(line_segment_aniso.get_polyhedron());
+        polys_2d_.push_back(line_segment.get_polyhedron());
+        ROS_INFO("size of polys_2d_: %lu", polys_2d_.size());
+        decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_2d_);
+        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_2d_);
+        poly_msg.header.stamp = ros::Time::now();
+        poly_msg.header.frame_id = "odom";
+        poly_pub_.publish(poly_msg);
+        poly_msg_aniso.header.stamp = ros::Time::now();
+        poly_msg_aniso.header.frame_id = "odom";
+        poly_pub_aniso_.publish(poly_msg_aniso);
+    }
 }
 
 void PlannerManager::sortAllCandidatesGap(Eigen:: Vector3d &goal_pos, 
@@ -383,6 +500,9 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
         return;
     }
 
+    // test
+    decomposeAlongGapDirections(start_pos, all_candidates);
+
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
 
     current_node->children.clear();
@@ -418,4 +538,79 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
     // print goal pos and the selected replan pos
     ROS_INFO("[PlannerManager] Goal position: (%.2f, %.2f, %.2f)", goal_pos[0], goal_pos[1], goal_pos[2]);
     ROS_INFO("[PlannerManager] Selected replan position: (%.2f, %.2f, %.2f)", current_node_->replan_pos_[0], current_node_->replan_pos_[1], current_node_->replan_pos_[2]);
+}
+
+void PlannerManager::publishRobotPoints() {
+    visualization_msgs::MarkerArray marker_array;
+    visualization_msgs::Marker robot_marker;
+    robot_marker.header.frame_id = "odom";
+    robot_marker.header.stamp = ros::Time::now();
+    robot_marker.ns = "robot_shape";
+    robot_marker.id = 0;
+    robot_marker.type = visualization_msgs::Marker::SPHERE_LIST;
+    robot_marker.action = visualization_msgs::Marker::ADD;
+    robot_marker.scale.x = 0.05;
+    robot_marker.scale.y = 0.05;
+    robot_marker.scale.z = 0.05;
+    robot_marker.color.a = 1.0;
+    robot_marker.color.r = 0.0;
+    robot_marker.color.g = 1.0;
+    robot_marker.color.b = 0.0;
+
+    Eigen::Vector3d base_pos(0.0, 0.0, 0.0);
+    if (odom_base_ptr_) {
+        base_pos[0] = odom_base_ptr_->transform.translation.x;
+        base_pos[1] = odom_base_ptr_->transform.translation.y;
+        base_pos[2] = odom_base_ptr_->transform.translation.z;
+    }
+
+    if (env_type_){
+        for (const auto &pt : robot_shape_points_){
+            geometry_msgs::Point p;
+            p.x = base_pos[0] + pt[0] + imu_pos_[0];
+            p.y = base_pos[1] + pt[1] + imu_pos_[1];
+            p.z = base_pos[2] + pt[2] + imu_pos_[2];
+            robot_marker.points.push_back(p);
+        }
+    }
+    else {
+        for (const auto &pt : robot_shape_points_2d_){
+            geometry_msgs::Point p;
+            p.x = base_pos[0] + pt[0] + imu_pos_2d_[0];
+            p.y = base_pos[1] + pt[1] + imu_pos_2d_[1];
+            p.z = base_pos[2];
+            robot_marker.points.push_back(p);
+        }
+    }
+    marker_array.markers.push_back(robot_marker);
+    robot_points_pub_.publish(marker_array);
+}
+
+void PlannerManager::publishRobotSphere() {
+    if (env_type_){
+        vec_E<Ellipsoid3D> robot_ellipsoid_vec;
+        robot_ellipsoid_vec.push_back(robot_ellipsoid_);
+        // ROS_INFO("Robot ellipsoid center: (%.2f, %.2f, %.2f), radii: (%.2f, %.2f, %.2f)",
+        //          robot_ellipsoid_.d_[0], robot_ellipsoid_.d_[1], robot_ellipsoid_.d_[2],
+        //          robot_ellipsoid_.C_.diagonal()[0], robot_ellipsoid_.C_.diagonal()[1], robot_ellipsoid_.C_.diagonal()[2]);
+        decomp_ros_msgs::EllipsoidArray ellipsoid_msg = DecompROS::ellipsoid_array_to_ros(robot_ellipsoid_vec);
+        ellipsoid_msg.header.stamp = ros::Time::now();
+        ellipsoid_msg.header.frame_id = "odom";
+        // publish
+        robot_sphere_pub_.publish(ellipsoid_msg);
+    }
+    else {
+        vec_E<Ellipsoid2D> robot_ellipsoid_vec_2d;
+        robot_ellipsoid_vec_2d.push_back(robot_ellipsoid_2d_);
+        decomp_ros_msgs::EllipsoidArray ellipsoid_msg_2d = DecompROS::ellipsoid_array_to_ros(robot_ellipsoid_vec_2d);
+        ellipsoid_msg_2d.header.stamp = ros::Time::now();
+        ellipsoid_msg_2d.header.frame_id = "odom";
+        // publish
+        robot_sphere_pub_.publish(ellipsoid_msg_2d);
+    }
+}
+
+void PlannerManager::debugTimerCallback(const ros::TimerEvent &event) {
+    // publishRobotPoints();
+    publishRobotSphere();
 }

@@ -9,6 +9,8 @@ Panels:
         - /Marker2
         - /InteractiveMarkers1
         - /MarkerArray1
+        - /PolyhedronArray1
+        - /PolyhedronArray2
       Splitter Ratio: 0.5
     Tree Height: 549
   - Class: rviz/Selection
@@ -207,7 +209,7 @@ Visualization Manager:
       Marker Topic: /goal_marker
       Name: Marker
       Namespaces:
-        goal_marker: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -215,9 +217,37 @@ Visualization Manager:
       Marker Topic: /global_graph
       Name: Marker
       Namespaces:
-        global_graph: true
+        {}
       Queue Size: 100
       Value: true
+    - Alpha: 0.20000000298023224
+      BoundColor: 255; 0; 0
+      Class: decomp_rviz_plugins/PolyhedronArray
+      Enabled: true
+      MeshColor: 0; 170; 255
+      Name: PolyhedronArray
+      Queue Size: 10
+      Scale: 0.10000000149011612
+      State: Mesh
+      Topic: /planner/polyhedron_array
+      Unreliable: false
+      Value: true
+      VsColor: 0; 255; 0
+      VsScale: 1
+    - Alpha: 0.20000000298023224
+      BoundColor: 255; 0; 0
+      Class: decomp_rviz_plugins/PolyhedronArray
+      Enabled: true
+      MeshColor: 143; 89; 2
+      Name: PolyhedronArray
+      Queue Size: 10
+      Scale: 0.10000000149011612
+      State: Mesh
+      Topic: /planner/polyhedron_array_aniso
+      Unreliable: false
+      Value: true
+      VsColor: 0; 255; 0
+      VsScale: 1
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -254,17 +284,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -3.3019509315490723
-        Y: 4.4311723709106445
+        X: -2.8194334506988525
+        Y: 3.792437791824341
         Z: -1.3113021850585938e-06
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9097970128059387
+      Pitch: 1.0297969579696655
       Target Frame: <Fixed Frame>
-      Yaw: 2.46417236328125
+      Yaw: 2.5641732215881348
     Saved: ~
 Window Geometry:
   Displays:
