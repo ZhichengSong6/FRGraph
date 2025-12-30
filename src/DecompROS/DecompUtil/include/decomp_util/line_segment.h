@@ -8,6 +8,9 @@
 #include <decomp_util/decomp_base.h>
 #include <decomp_geometry/geometric_utils.h>
 
+#include <limits>
+#include "piqp/piqp.hpp"
+
 /**
  * @brief Line Segment Class
  *
@@ -267,14 +270,50 @@ class LineSegment : public DecompBase<Dim> {
     template<int U = Dim>
       typename std::enable_if<U == 2>::type
       find_polyhedron_for_seed(const Vecf<Dim> &center, const float radius) {
+        Polyhedron<Dim> Vs;
         // first check whether there is obstacle inside the seed circle
         auto obs_inside = points_inside_seed(center, radius, this->obs_);
         while (!obs_inside.empty()) {
           // find the closest point to the seed center
           const auto pw = closest_point_in_seed(center, obs_inside);
+          // base on the closest point, find the hyperplane
+          Hyperplane2D hp(Vec2f::Zero(), Vec2f::Zero());
+          get_hyperplane(pw, center, hp);
+          Vs.add(hp);
+          // remove the points which are on the negative side of the hyperplane
+          vec_Vecf<Dim> obs_new;
+          for (const auto &it : obs_inside) {
+            if (hp.signed_dist(it) < 0)
+              obs_new.push_back(it);
+          }
+          obs_inside.swap(obs_new);
         }
+        this->polyhedron_ = Vs;
       }
     
+    template<int U = Dim>
+      typename std::enable_if<U == 3>::type
+      find_polyhedron_for_seed(const Vecf<Dim> &center, const float radius) {
+        Polyhedron<Dim> Vs;
+        // first check whether there is obstacle inside the seed circle
+        auto obs_inside = points_inside_seed(center, radius, this->obs_);
+        while (!obs_inside.empty()) {
+          // find the closest point to the seed center
+          const auto pw = closest_point_in_seed(center, obs_inside);
+          // base on the closest point, find the hyperplane
+          Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
+          get_hyperplane(pw, center, hp);
+          Vs.add(hp);
+          // remove the points which are on the negative side of the hyperplane
+          vec_Vecf<Dim> obs_new;
+          for (const auto &it : obs_inside) {
+            if (hp.signed_dist(it) < 0)
+              obs_new.push_back(it);
+          }
+          obs_inside.swap(obs_new);
+        }
+        this->polyhedron_ = Vs;
+      }
 
     vec_Vecf<Dim> points_inside_seed(const Vecf<Dim> &center, const float radius, const vec_Vecf<Dim> &obs) {
       vec_Vecf<Dim> new_obs;
@@ -300,7 +339,7 @@ class LineSegment : public DecompBase<Dim> {
 
     template<int U = Dim>
       typename std::enable_if<U == 2>::type
-      find_polyhedron_for_seed(Vec2f obstacle_pt, Vec2f center) {
+      get_hyperplane(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp) {
         Eigen::Vector2d e = (p2_ - p1_).normalized();
         std::vector<Eigen::Vector2d> robot_shape_pts_2d;
         for (const auto &pt : robot_shape_pts_){
@@ -328,11 +367,25 @@ class LineSegment : public DecompBase<Dim> {
         Eigen::Vector2d diff_eq = seed_center - obs_pt;
         A_eq.row(0) = diff_eq.transpose();
         b_eq(0) = -1.0;
+
+        piqp::DenseSolver<double> solver;
+        solver.setup(Q, c, A_eq, b_eq, A_ineq, piqp::nullopt, u_ineq, piqp::nullopt, piqp::nullopt);
+        const auto result = solver.solve();
+        Eigen::VectorXd sol;
+        if (result == piqp::Status::PIQP_SOLVED){
+          sol = solver.result().x;
+        }
+        else{
+          std::cout << "PIQP failed to solve the QP and the status is " << static_cast<int>(result) << std::endl;
+          return;
+        }
+        Hyperplane2D hp_tmp(obstacle_pt, Vec2f(sol(0), sol(1)));
+        hp = hp_tmp;
       }
 
     template<int U = Dim>
       typename std::enable_if<U == 3>::type
-      find_polyhedron_for_seed(Vec3f obstacle_pt, Vec3f center) {
+      get_hyperplane(Vec3f obstacle_pt, Vec3f center, Hyperplane3D &hp) {
         Eigen::Vector3d e = (p2_ - p1_).normalized();
         std::vector<Eigen::Vector3d> robot_shape_pts_3d;
         for (const auto &pt : robot_shape_pts_){
@@ -352,7 +405,7 @@ class LineSegment : public DecompBase<Dim> {
         for (int i = 0; i < Nr; i++){
           Eigen::Vector3d diff = robot_shape_pts_3d[i] - obs_pt;
           A_ineq.row(i) = diff.transpose();
-          u_ineq(i) = -eps;
+          u_ineq(i) = -eps; 
         }
         // Equality constraints A_eq * x = b_eq
         Eigen::Matrix<double, 1, 3> A_eq;
@@ -360,6 +413,20 @@ class LineSegment : public DecompBase<Dim> {
         Eigen::Vector3d diff_eq = seed_center - obs_pt;
         A_eq.row(0) = diff_eq.transpose();
         b_eq(0) = -1.0;
+
+        piqp::DenseSolver<double> solver;
+        solver.setup(Q, c, A_eq, b_eq, A_ineq, piqp::nullopt, u_ineq, piqp::nullopt, piqp::nullopt);
+        const auto result = solver.solve();
+        Eigen::VectorXd sol;
+        if (result == piqp::Status::PIQP_SOLVED){
+          sol = solver.result().x;
+        }
+        else{
+          std::cout << "PIQP failed to solve the QP and the status is " << static_cast<int>(result) << std::endl;
+          return;
+        }
+        Hyperplane3D hp_tmp(obstacle_pt, Vec3f(sol(0), sol(1), sol(2)));
+        hp = hp_tmp;
       }
     /// One end of line segment, input
     Vecf<Dim> p1_;

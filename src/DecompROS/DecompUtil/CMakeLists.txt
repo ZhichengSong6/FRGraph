@@ -5,14 +5,20 @@ project(decomp_util)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-deprecated-declarations")
-
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-deprecated-declarations")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-deprecated-declarations")
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BUILD_SHARED_LIBS ON)
 
 find_package(Eigen3 REQUIRED)
-include_directories(${EIGEN3_INCLUDE_DIRS} include)
+# include_directories(${EIGEN3_INCLUDE_DIRS} include)
+set(PIQP_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/piqp/include")
+include_directories(${EIGEN3_INCLUDE_DIRS} include ${PIQP_INCLUDE_DIR})
 message(STATUS "Eigen3 include dir: ${Eigen3_INCLUDE_DIRS}")
 include(CTest)
+
+list(REMOVE_ITEM Boost_LIBRARIES piqp::piqp)
 
 add_executable(test_seed_decomp test/test_seed_decomp.cpp)
 target_link_libraries(test_seed_decomp ${Boost_LIBRARIES})
@@ -39,4 +45,6 @@ install(TARGETS
   ARCHIVE DESTINATION lib)
 
 install(DIRECTORY include/decomp_basis include/decomp_geometry include/decomp_util
+  DESTINATION include)
+install(DIRECTORY ../../third_party/piqp/include/piqp
   DESTINATION include)
