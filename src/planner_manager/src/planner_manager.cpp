@@ -237,21 +237,21 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         line_segment.set_obs(pointcloud_cropped_odom_frame_);
         line_segment.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
         line_segment.dilate(-0.1f);
-        LineSegment3D line_segment_aniso(p1, p2);
-        line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_);
-        line_segment_aniso.set_local_bbox_aniso(Vec3f(0.5f, 0.3f, 0.2f),
-                                               Vec3f(0.3f, 0.3f, 0.2f)); // set local bbox for decomposition
-        line_segment_aniso.dilate_aniso(-0.1f);
-        polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
+        // LineSegment3D line_segment_aniso(p1, p2);
+        // line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_);
+        // line_segment_aniso.set_local_bbox_aniso(Vec3f(0.5f, 0.3f, 0.2f),
+        //                                        Vec3f(0.3f, 0.3f, 0.2f)); // set local bbox for decomposition
+        // line_segment_aniso.dilate_aniso(-0.1f);
+        // polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
         polys_3d_.push_back(line_segment.get_polyhedron());
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_3d_);
-        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
+        // decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_pub_.publish(poly_msg);
-        poly_msg_aniso.header.stamp = ros::Time::now();
-        poly_msg_aniso.header.frame_id = "odom";
-        poly_pub_aniso_.publish(poly_msg_aniso);
+        // poly_msg_aniso.header.stamp = ros::Time::now();
+        // poly_msg_aniso.header.frame_id = "odom";
+        // poly_pub_aniso_.publish(poly_msg_aniso);
     }
     else{
         // 2D case
@@ -265,22 +265,22 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         line_segment.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
         line_segment.dilate(0.1f);
-        LineSegment2D line_segment_aniso(p1, p2);
-        line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
-        line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.3f),
-                                               Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
-        line_segment_aniso.dilate_aniso(0.1f);
-        polys_aniso_2d_.push_back(line_segment_aniso.get_polyhedron());
+        // LineSegment2D line_segment_aniso(p1, p2);
+        // line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
+        // line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.3f),
+        //                                        Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
+        // line_segment_aniso.dilate_aniso(0.1f);
+        // polys_aniso_2d_.push_back(line_segment_aniso.get_polyhedron());
         polys_2d_.push_back(line_segment.get_polyhedron());
-        ROS_INFO("size of polys_2d_: %lu", polys_2d_.size());
+        // ROS_INFO("size of polys_2d_: %lu", polys_2d_.size());
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_2d_);
-        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_2d_);
+        // decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_2d_);
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_pub_.publish(poly_msg);
-        poly_msg_aniso.header.stamp = ros::Time::now();
-        poly_msg_aniso.header.frame_id = "odom";
-        poly_pub_aniso_.publish(poly_msg_aniso);
+        // poly_msg_aniso.header.stamp = ros::Time::now();
+        // poly_msg_aniso.header.frame_id = "odom";
+        // poly_pub_aniso_.publish(poly_msg_aniso);
     }
 }
 
