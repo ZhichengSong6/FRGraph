@@ -22,6 +22,9 @@ find_package(Eigen3 REQUIRED)
 find_package(PCL 1.7 REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 
+find_package(decomp_util REQUIRED)
+include_directories()
+
 add_message_files(
   FILES
   GapCandidate.msg
@@ -43,7 +46,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${Eigen3_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
-  ${PROJECT_SOURCE_DIR}/../third_party/DecompROS/DecompUtil/include
+  ${DECOMP_UTIL_INCLUDE_DIRS}
 )
 
 add_executable(${PROJECT_NAME}_node

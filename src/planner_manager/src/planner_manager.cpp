@@ -590,12 +590,9 @@ void PlannerManager::publishRobotSphere() {
     if (env_type_){
         vec_E<Ellipsoid3D> robot_ellipsoid_vec;
         robot_ellipsoid_vec.push_back(robot_ellipsoid_);
-        // ROS_INFO("Robot ellipsoid center: (%.2f, %.2f, %.2f), radii: (%.2f, %.2f, %.2f)",
-        //          robot_ellipsoid_.d_[0], robot_ellipsoid_.d_[1], robot_ellipsoid_.d_[2],
-        //          robot_ellipsoid_.C_.diagonal()[0], robot_ellipsoid_.C_.diagonal()[1], robot_ellipsoid_.C_.diagonal()[2]);
         decomp_ros_msgs::EllipsoidArray ellipsoid_msg = DecompROS::ellipsoid_array_to_ros(robot_ellipsoid_vec);
         ellipsoid_msg.header.stamp = ros::Time::now();
-        ellipsoid_msg.header.frame_id = "odom";
+        ellipsoid_msg.header.frame_id = "base_link";
         // publish
         robot_sphere_pub_.publish(ellipsoid_msg);
     }
@@ -604,13 +601,13 @@ void PlannerManager::publishRobotSphere() {
         robot_ellipsoid_vec_2d.push_back(robot_ellipsoid_2d_);
         decomp_ros_msgs::EllipsoidArray ellipsoid_msg_2d = DecompROS::ellipsoid_array_to_ros(robot_ellipsoid_vec_2d);
         ellipsoid_msg_2d.header.stamp = ros::Time::now();
-        ellipsoid_msg_2d.header.frame_id = "odom";
+        ellipsoid_msg_2d.header.frame_id = "base_link";
         // publish
         robot_sphere_pub_.publish(ellipsoid_msg_2d);
     }
 }
 
 void PlannerManager::debugTimerCallback(const ros::TimerEvent &event) {
-    // publishRobotPoints();
+    publishRobotPoints();
     publishRobotSphere();
 }

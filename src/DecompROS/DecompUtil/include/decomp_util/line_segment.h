@@ -34,10 +34,8 @@ class LineSegment : public DecompBase<Dim> {
       add_local_bbox(this->polyhedron_);
     }
 
-    void dilate_aniso(decimal_t radius){
-      find_ellipsoid(radius);
-      this->find_polyhedron_aniso(p1_, p2_);
-      add_local_bbox_aniso(this->polyhedron_);
+    void dilate_aniso(const Vecf<Dim> &center, const float radius){
+      find_polyhedron_for_seed(center, radius);
     }
 
     /// Get the line
@@ -46,6 +44,11 @@ class LineSegment : public DecompBase<Dim> {
       line.push_back(p1_);
       line.push_back(p2_);
       return line;
+    }
+
+    // set robot shape points
+    void set_robot_shape_pts(const std::vector<Vecf<Dim>> &robot_shape_pts){
+      robot_shape_pts_ = robot_shape_pts;
     }
 
   protected:
@@ -260,10 +263,110 @@ class LineSegment : public DecompBase<Dim> {
       this->aniso_ellipsoid_ = E;
     }
 
+    /// check whether there is obstacle inside the seed circle(2D)
+    template<int U = Dim>
+      typename std::enable_if<U == 2>::type
+      find_polyhedron_for_seed(const Vecf<Dim> &center, const float radius) {
+        // first check whether there is obstacle inside the seed circle
+        auto obs_inside = points_inside_seed(center, radius, this->obs_);
+        while (!obs_inside.empty()) {
+          // find the closest point to the seed center
+          const auto pw = closest_point_in_seed(center, obs_inside);
+        }
+      }
+    
+
+    vec_Vecf<Dim> points_inside_seed(const Vecf<Dim> &center, const float radius, const vec_Vecf<Dim> &obs) {
+      vec_Vecf<Dim> new_obs;
+      for (const auto &it : obs) {
+        if ((it - center).norm() <= radius)
+          new_obs.push_back(it);
+      }
+      return new_obs;
+    }
+
+    Vecf<Dim> closest_point_in_seed(const Vecf<Dim> &center, const vec_Vecf<Dim> &obs){
+      Vecf<Dim> pt = Vecf<Dim>::Zero();
+      decimal_t min_dist = std::numeric_limits<decimal_t>::max();
+      for (const auto &it : obs) {
+        decimal_t d = (it - center).norm();
+        if (d < min_dist) {
+          min_dist = d;
+          pt = it;
+        }
+      }
+      return pt;
+    }
+
+    template<int U = Dim>
+      typename std::enable_if<U == 2>::type
+      find_polyhedron_for_seed(Vec2f obstacle_pt, Vec2f center) {
+        Eigen::Vector2d e = (p2_ - p1_).normalized();
+        std::vector<Eigen::Vector2d> robot_shape_pts_2d;
+        for (const auto &pt : robot_shape_pts_){
+            robot_shape_pts_2d.push_back(Eigen::Vector2d(pt(0), pt(1)));
+        }
+        Eigen::Vector2d obs_pt = obstacle_pt;
+        Eigen::Vector2d seed_center = center;
+        double eps = 1e-4;
+        // Q matrix
+        Eigen::Matrix2d Q = 2.0 * (e * e.transpose());
+        // linear term c
+        Eigen::Vector2d c = Eigen::Vector2d::Zero();
+        // inequalitiy constraints A_ineq * x <= u_ineq
+        int Nr = robot_shape_pts_2d.size();
+        Eigen::MatrixXd A_ineq(Nr, 2);
+        Eigen::VectorXd u_ineq(Nr);
+        for (int i = 0; i < Nr; i++){
+          Eigen::Vector2d diff = robot_shape_pts_2d[i] - obs_pt;
+          A_ineq.row(i) = diff.transpose();
+          u_ineq(i) = -eps;
+        }
+        // Equality constraints A_eq * x = b_eq
+        Eigen::Matrix<double, 1, 2> A_eq;
+        Eigen::VectorXd b_eq(1);
+        Eigen::Vector2d diff_eq = seed_center - obs_pt;
+        A_eq.row(0) = diff_eq.transpose();
+        b_eq(0) = -1.0;
+      }
+
+    template<int U = Dim>
+      typename std::enable_if<U == 3>::type
+      find_polyhedron_for_seed(Vec3f obstacle_pt, Vec3f center) {
+        Eigen::Vector3d e = (p2_ - p1_).normalized();
+        std::vector<Eigen::Vector3d> robot_shape_pts_3d;
+        for (const auto &pt : robot_shape_pts_){
+            robot_shape_pts_3d.push_back(Eigen::Vector3d(pt(0), pt(1), pt(2)));
+        }
+        Eigen::Vector3d obs_pt = obstacle_pt;
+        Eigen::Vector3d seed_center = center;
+        double eps = 1e-4;
+        // Q matrix
+        Eigen::Matrix3d Q = 2.0 * (e * e.transpose());
+        // linear term c
+        Eigen::Vector3d c = Eigen::Vector3d::Zero();
+        // inequalitiy constraints A_ineq * x <= u_ineq
+        int Nr = robot_shape_pts_3d.size();
+        Eigen::MatrixXd A_ineq(Nr, 3);
+        Eigen::VectorXd u_ineq(Nr);
+        for (int i = 0; i < Nr; i++){
+          Eigen::Vector3d diff = robot_shape_pts_3d[i] - obs_pt;
+          A_ineq.row(i) = diff.transpose();
+          u_ineq(i) = -eps;
+        }
+        // Equality constraints A_eq * x = b_eq
+        Eigen::Matrix<double, 1, 3> A_eq;
+        Eigen::VectorXd b_eq(1);
+        Eigen::Vector3d diff_eq = seed_center - obs_pt;
+        A_eq.row(0) = diff_eq.transpose();
+        b_eq(0) = -1.0;
+      }
     /// One end of line segment, input
     Vecf<Dim> p1_;
     /// The other end of line segment, input
     Vecf<Dim> p2_;
+    /// vertices of the robot
+    std::vector<Vecf<Dim>> robot_shape_pts_;
 };
 
 typedef LineSegment<2> LineSegment2D;

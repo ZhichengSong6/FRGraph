@@ -11,7 +11,7 @@ set(BUILD_SHARED_LIBS ON)
 
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIRS} include)
-
+message(STATUS "Eigen3 include dir: ${Eigen3_INCLUDE_DIRS}")
 include(CTest)
 
 add_executable(test_seed_decomp test/test_seed_decomp.cpp)
