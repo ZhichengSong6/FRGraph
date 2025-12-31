@@ -18,9 +18,6 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
                                                                                      0.1, -0.1, -0.2,
                                                                                     -0.1, -0.1, -0.2,
                                                                                     -0.1, 0.1, -0.2});
-        std::vector<double> imu_pos_tmp;
-        node_.param<std::vector<double>>("robot_shape/imu_pos", imu_pos_tmp, {0.0, 0.0, 0.0});   // imu position in base_link frame
-        imu_pos_ = Eigen::Vector3d(imu_pos_tmp[0], imu_pos_tmp[1], imu_pos_tmp[2]);
         // convert to vec_Eigen format
         for (size_t i = 0; i < robot_shape_pts.size(); i += 3) {
             robot_shape_points_.push_back(Eigen::Vector3d(robot_shape_pts[i], robot_shape_pts[i+1], robot_shape_pts[i+2]));
@@ -41,9 +38,6 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
                                                                                          0.1, -0.1,
                                                                                         -0.1, -0.1,
                                                                                         -0.1, 0.1});
-        std::vector<double> imu_pos_tmp_2d;
-        node_.param<std::vector<double>>("robot_shape/imu_pos_2d", imu_pos_tmp_2d, {0.0, 0.0});
-        imu_pos_2d_ = Eigen::Vector2d(imu_pos_tmp_2d[0], imu_pos_tmp_2d[1]);
         // convert to vec_Eigen format
         for (size_t i = 0; i < robot_shape_pts_2d.size(); i += 2) {
             robot_shape_points_2d_.push_back(Eigen::Vector2d(robot_shape_pts_2d[i], robot_shape_pts_2d[i+1]));
@@ -81,7 +75,7 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     tf_listener_odom_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_odom_);
 
     odom_timer_ = node_.createTimer(ros::Duration(0.1), &PlannerManager::odomTimerCallback, this);
-    debug_timer_ = node_.createTimer(ros::Duration(0.2), &PlannerManager::debugTimerCallback, this);
+    debug_timer_ = node_.createTimer(ros::Duration(0.01), &PlannerManager::debugTimerCallback, this);
 
     free_regions_graph_ptr_.reset(new FreeRegionsGraph());
 
@@ -265,13 +259,18 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         line_segment.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
         line_segment.dilate(0.1f);
-        // LineSegment2D line_segment_aniso(p1, p2);
-        // line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
-        // line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.3f),
-        //                                        Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
-        // line_segment_aniso.dilate_aniso(0.1f);
+        LineSegment2D line_segment_aniso(p1, p2);
+        line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
+        line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.3f),
+                                               Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
+        const Eigen::Vector3d center_base = robot_ellipsoid_.d().cast<double>();
+        const Eigen::Affine3d T_odom_base = tf2::transformToEigen(*odom_base_ptr_);
+        const Eigen::Vector3d center_odom = T_odom_base * center_base;
+
+        const double radius = robot_ellipsoid_.C()(0, 0);
+        line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
         // polys_aniso_2d_.push_back(line_segment_aniso.get_polyhedron());
-        polys_2d_.push_back(line_segment.get_polyhedron());
+        // polys_2d_.push_back(line_segment.get_polyhedron());
         // ROS_INFO("size of polys_2d_: %lu", polys_2d_.size());
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_2d_);
         // decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_2d_);
@@ -531,10 +530,10 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
         }
     }
     // get trajectory
-    if (!getTrajectoryTemp(start_pos, current_node_)) {
-        ROS_WARN("[PlannerManager] Failed to generate temporary trajectory.");
-        return;
-    }
+    // if (!getTrajectoryTemp(start_pos, current_node_)) {
+    //     ROS_WARN("[PlannerManager] Failed to generate temporary trajectory.");
+    //     return;
+    // }
     // print goal pos and the selected replan pos
     ROS_INFO("[PlannerManager] Goal position: (%.2f, %.2f, %.2f)", goal_pos[0], goal_pos[1], goal_pos[2]);
     ROS_INFO("[PlannerManager] Selected replan position: (%.2f, %.2f, %.2f)", current_node_->replan_pos_[0], current_node_->replan_pos_[1], current_node_->replan_pos_[2]);
@@ -567,17 +566,17 @@ void PlannerManager::publishRobotPoints() {
     if (env_type_){
         for (const auto &pt : robot_shape_points_){
             geometry_msgs::Point p;
-            p.x = base_pos[0] + pt[0] + imu_pos_[0];
-            p.y = base_pos[1] + pt[1] + imu_pos_[1];
-            p.z = base_pos[2] + pt[2] + imu_pos_[2];
+            p.x = base_pos[0] + pt[0];
+            p.y = base_pos[1] + pt[1];
+            p.z = base_pos[2] + pt[2];
             robot_marker.points.push_back(p);
         }
     }
     else {
         for (const auto &pt : robot_shape_points_2d_){
             geometry_msgs::Point p;
-            p.x = base_pos[0] + pt[0] + imu_pos_2d_[0];
-            p.y = base_pos[1] + pt[1] + imu_pos_2d_[1];
+            p.x = base_pos[0] + pt[0];
+            p.y = base_pos[1] + pt[1];
             p.z = base_pos[2];
             robot_marker.points.push_back(p);
         }

@@ -39,6 +39,7 @@ class LineSegment : public DecompBase<Dim> {
 
     void dilate_aniso(const Vecf<Dim> &center, const float radius){
       find_polyhedron_for_seed(center, radius);
+      std::cout << "After dilation, polyhedron has " << this->polyhedron_.vs_.size() << " half-planes." << std::endl;
     }
 
     /// Get the line

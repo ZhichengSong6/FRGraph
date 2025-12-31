@@ -105,11 +105,9 @@ class PlannerManager {
     vec_Vec2f pointcloud_cropped_odom_frame_2d_;
 
     vec_Vec3f robot_shape_points_;
-    Eigen::Vector3d imu_pos_;
     Ellipsoid3D robot_ellipsoid_;
 
     vec_Vec2f robot_shape_points_2d_;
-    Eigen::Vector2d imu_pos_2d_;
     Ellipsoid2D robot_ellipsoid_2d_;
 
     vec_E<Polyhedron2D> polys_aniso_2d_;
