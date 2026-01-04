@@ -40,6 +40,8 @@ class LineSegment : public DecompBase<Dim> {
     void dilate_aniso(const Vecf<Dim> &center, const float radius){
       find_polyhedron_for_seed(center, radius);
       std::cout << "After dilation, polyhedron has " << this->polyhedron_.vs_.size() << " half-planes." << std::endl;
+      this->find_polyhedron_aniso(radius);
+      add_local_bbox_aniso(this->polyhedron_);
     }
 
     /// Get the line
@@ -429,7 +431,60 @@ class LineSegment : public DecompBase<Dim> {
         Hyperplane3D hp_tmp(obstacle_pt, Vec3f(sol(0), sol(1), sol(2)));
         hp = hp_tmp;
       }
-    /// One end of line segment, input
+    
+    /// Anisotropic polyhedron (2D)
+    template<int U = Dim>
+      typename std::enable_if<U == 2>::type
+      find_polyhedron_aniso(double radius) {
+        Polyhedron<Dim> Vs;
+        vec_Vecf<Dim> obs_remain = this->obs_;
+        // first check if there is any hyperplnae generate by find_polyhedron_for_seed
+        if(!this->polyhedron_.vs_.empty()){
+          this->obs_ = this->polyhedron_.points_inside(obs_remain);
+        }
+        
+        if (obs_remain.empty()){
+          return;
+        }
+
+        // we inflate the ellipsoid anisotropically
+        const double scale_long = 1.1;
+        const double scale_lat = 1.05;
+        Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
+
+        Vecf<Dim> e1;
+        e1 << -e0(1), e0(0);
+        e1.normalize();
+
+        Matf<Dim, Dim> R = Matf<Dim, Dim>::Identity();
+        R.col(0) = e0;   // local x: along line
+        R.col(1) = e1;   // local y: lateral
+
+        while (!obs_remain.empty()){
+          Matf<Dim, Dim> C_world = this->aniso_ellipsoid_.C_;
+          Matf<Dim, Dim> C_local = R.transpose() * C_world * R;
+          C_local(0,0) *= scale_long;
+          C_local(1,1) *= scale_lat;
+          C_local(0,1) = 0;
+          C_local(1,0) = 0;
+          C_world = R * C_local * R.transpose();
+          this->aniso_ellipsoid_.C_ = C_world;
+
+          const auto v = this->aniso_ellipsoid_.closest_hyperplane(obs_remain);
+          Vs.add(v);
+
+          vec_Vecf<Dim> obs_tmp;
+          for (const auto &it : obs_remain) {
+            if (v.signed_dist(it) < 0)
+              obs_tmp.push_back(it);
+          }
+          obs_remain = obs_tmp;
+        }
+        this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
+      }
+    
+    
+      /// One end of line segment, input
     Vecf<Dim> p1_;
     /// The other end of line segment, input
     Vecf<Dim> p2_;

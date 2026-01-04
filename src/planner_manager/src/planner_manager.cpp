@@ -269,6 +269,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
 
         const double radius = robot_ellipsoid_.C()(0, 0);
         line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
+        ROS_INFO("After anisotropic dilation, polyhedron has %lu half-planes.", line_segment_aniso.get_polyhedron().vs_.size());
         // polys_aniso_2d_.push_back(line_segment_aniso.get_polyhedron());
         // polys_2d_.push_back(line_segment.get_polyhedron());
         // ROS_INFO("size of polys_2d_: %lu", polys_2d_.size());
