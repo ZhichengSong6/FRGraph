@@ -38,9 +38,9 @@ class LineSegment : public DecompBase<Dim> {
     }
 
     void dilate_aniso(const Vecf<Dim> &center, const float radius){
+      set_ellipsoid(center, radius);
       find_polyhedron_for_seed(center, radius);
-      std::cout << "After dilation, polyhedron has " << this->polyhedron_.vs_.size() << " half-planes." << std::endl;
-      this->find_polyhedron_aniso(radius);
+      find_polyhedron_aniso(radius);
       add_local_bbox_aniso(this->polyhedron_);
     }
 
@@ -185,7 +185,6 @@ class LineSegment : public DecompBase<Dim> {
         }
 
         this->ellipsoid_ = E;
-        this->aniso_ellipsoid_ = E;
       }
 
     /// Find ellipsoid in 3D
@@ -268,6 +267,23 @@ class LineSegment : public DecompBase<Dim> {
       this->ellipsoid_ = E;
       this->aniso_ellipsoid_ = E;
     }
+
+    template<int U = Dim>
+      typename std::enable_if<U == 2>::type
+      set_ellipsoid(const Vecf<Dim> &center, const float radius){
+        // the input is a circle, use it to set an ellipsoid
+        Matf<Dim, Dim> C = radius * Matf<Dim, Dim>::Identity();
+        Ellipsoid<Dim> E(C, center);
+        this->aniso_ellipsoid_ = E;
+      }
+    
+    template<int U = Dim>
+      typename std::enable_if<U == 3>::type
+      set_ellipsoid(const Vecf<Dim> &center, const float radius){
+        // the input is a sphere, use it to set an ellipsoid
+        Matf<Dim, Dim> C = radius * Matf<Dim, Dim>::Identity();
+        this->aniso_ellipsoid_ = Ellipsoid<Dim>(C, center);
+      }
 
     /// check whether there is obstacle inside the seed circle(2D)
     template<int U = Dim>
@@ -440,7 +456,9 @@ class LineSegment : public DecompBase<Dim> {
         vec_Vecf<Dim> obs_remain = this->obs_;
         // first check if there is any hyperplnae generate by find_polyhedron_for_seed
         if(!this->polyhedron_.vs_.empty()){
-          this->obs_ = this->polyhedron_.points_inside(obs_remain);
+          vec_Vecf<Dim> obs_tmp;
+          obs_tmp = this->polyhedron_.points_inside(obs_remain);
+          obs_remain = obs_tmp;
         }
         
         if (obs_remain.empty()){
@@ -448,8 +466,8 @@ class LineSegment : public DecompBase<Dim> {
         }
 
         // we inflate the ellipsoid anisotropically
-        const double scale_long = 1.1;
-        const double scale_lat = 1.05;
+        const double scale_long = 2.0;
+        const double scale_lat = 1.01;
         Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
 
         Vecf<Dim> e1;
@@ -479,6 +497,9 @@ class LineSegment : public DecompBase<Dim> {
               obs_tmp.push_back(it);
           }
           obs_remain = obs_tmp;
+        }
+        if (Vs.vs_.empty()){
+          return;
         }
         this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
       }

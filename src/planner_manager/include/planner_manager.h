@@ -80,6 +80,8 @@ class PlannerManager {
     ros::Publisher robot_points_pub_;
     ros::Publisher robot_sphere_pub_;
 
+    ros::Publisher poly_frtree_pub_;
+
     void initPlannerModule(ros::NodeHandle &nh);
 
     /* Callback Functions */
@@ -114,6 +116,8 @@ class PlannerManager {
     vec_E<Polyhedron2D> polys_2d_;
     vec_E<Polyhedron3D> polys_aniso_3d_;
     vec_E<Polyhedron3D> polys_3d_;
+    
+    vec_E<Polyhedron2D> polys_FRTree_2d_;
 
     FreeRegionsGraph::Ptr free_regions_graph_ptr_;
     GraphNode *current_node_;
@@ -127,6 +131,7 @@ class PlannerManager {
     void reorderCandidatesGapWithGoal(Eigen:: Vector3d &goal_pos, 
                                      std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+    void decomposeAlongGapDirections_FRTree(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* current_node);
     std::vector<Eigen::Vector3d> trajectory_points_temp_;
