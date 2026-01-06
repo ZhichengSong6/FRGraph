@@ -57,6 +57,37 @@ struct Ellipsoid {
     return Hyperplane<Dim>(closest_pt, n.normalized());
   }
 
+  /// find hyperplane base on distance and angle
+  Hyperplane<Dim> closest_hyperplane_aniso(const vec_Vecf<Dim> &O, const Vecf<Dim>& e, double lambda){
+    Vecf<Dim> best_pt = Vecf<Dim>::Zero();
+    decimal_t best_score = std::numeric_limits<decimal_t>::max();
+    // Precompute
+    Matf<Dim, Dim> C_inv = C_.inverse();
+    Matf<Dim, Dim> A = C_inv * C_inv.transpose();
+    for (const auto &it : O) {
+      double dist_val = (C_inv * (it - d_)).norm();
+      // get the norm is we choose this point
+      Vecf<Dim> n_raw  = A * (it - d_);
+      double n_norm = n_raw.norm();
+      if (n_norm < 1e-12){
+        continue;
+      }
+      Vecf<Dim> n = n_raw / n_norm;
+
+      double angle_cost = std::abs(n.dot(e));
+      double score = dist_val + lambda * angle_cost;
+      if (score < best_score){
+        best_score = score;
+        best_pt = it;
+      }
+    }
+    // Fallback: if no point found, just use the closest point
+    if (!std::isfinite(best_score)){
+      best_pt = closest_point(O);
+    }
+    return Hyperplane<Dim>(best_pt, (C_inv * C_inv.transpose() * (best_pt - d_)).normalized());
+  }
+
   /// Sample n points along the contour
   template<int U = Dim>
     typename std::enable_if<U == 2, vec_Vecf<U>>::type

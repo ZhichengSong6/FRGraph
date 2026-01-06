@@ -58,6 +58,7 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     robot_points_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_robot_points", 1, true);
     robot_sphere_pub_ = node_.advertise<decomp_ros_msgs::EllipsoidArray>("planner_manager_sphere", 1, true);
 
+    poly_pub_aniso_full_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_aniso_full_array", 1, true);
     poly_frtree_pub_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_frtree_array", 1, true);
 
     base_scan_ptr_ = geometry_msgs::TransformStamped::Ptr(new geometry_msgs::TransformStamped);
@@ -222,6 +223,8 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
     polys_2d_.clear();
     polys_aniso_3d_.clear();
     polys_3d_.clear();
+
+    polys_aniso_full_2d_.clear();
     if (env_type_){
         const Vec3f p1(start_pos[0], start_pos[1], start_pos[2]);
         const Vec3f p2(all_candidates[0].dir_odom_frame[0]/2,
@@ -261,6 +264,31 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.3f),
                                                Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
+
+        // get robot shape in odom frame
+        Eigen::Vector2d base_pos_odom(0.0, 0.0);
+        Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
+        if (odom_base_ptr_) {
+            base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
+            base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
+            base_rot = Eigen::Quaterniond(
+                odom_base_ptr_->transform.rotation.w,
+                odom_base_ptr_->transform.rotation.x,
+                odom_base_ptr_->transform.rotation.y,
+                odom_base_ptr_->transform.rotation.z);
+        }
+        const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+        const Eigen::Matrix2d base_rot_2d = base_rot_mat.block<2, 2>(0, 0);
+        std::vector<Vec2f> robot_shape_points_odom;
+        robot_shape_points_odom.reserve(robot_shape_points_2d_.size());
+        for (const auto &pt : robot_shape_points_2d_) {
+            const Eigen::Vector2d local_pt(pt[0], pt[1]);
+            const Eigen::Vector2d rotated_pt = base_rot_2d * local_pt + base_pos_odom;
+            robot_shape_points_odom.emplace_back(
+                static_cast<float>(rotated_pt[0]),
+                static_cast<float>(rotated_pt[1]));
+        }
+        line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
         const Eigen::Vector2d center_base = robot_ellipsoid_2d_.d().cast<double>();
         const Eigen::Vector3d center_base_homo(center_base[0], center_base[1], 0.0);
         const Eigen::Affine3d T_odom_base = tf2::transformToEigen(*odom_base_ptr_);
@@ -269,16 +297,28 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         const double radius = robot_ellipsoid_2d_.C()(0, 0);
         line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
 
+        LineSegment2D line_segment_aniso_full(p1, p2);
+        line_segment_aniso_full.set_obs(pointcloud_cropped_odom_frame_2d_);
+        line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.0f, 0.3f),
+                                                    Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
+        line_segment_aniso_full.set_robot_shape_pts(robot_shape_points_odom);
+        line_segment_aniso_full.dilate_aniso_full(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
+
+        polys_aniso_full_2d_.push_back(line_segment_aniso_full.get_polyhedron());
         polys_aniso_2d_.push_back(line_segment_aniso.get_polyhedron());
         polys_2d_.push_back(line_segment.get_polyhedron());
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_2d_);
         decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_2d_);
+        decomp_ros_msgs::PolyhedronArray poly_msg_aniso_full = DecompROS::polyhedron_array_to_ros(polys_aniso_full_2d_);
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_pub_.publish(poly_msg);
         poly_msg_aniso.header.stamp = ros::Time::now();
         poly_msg_aniso.header.frame_id = "odom";
         poly_pub_aniso_.publish(poly_msg_aniso);
+        poly_msg_aniso_full.header.stamp = ros::Time::now();
+        poly_msg_aniso_full.header.frame_id = "odom";
+        poly_pub_aniso_full_.publish(poly_msg_aniso_full);
     }
 }
 
@@ -588,7 +628,7 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
 void PlannerManager::publishRobotPoints() {
     visualization_msgs::MarkerArray marker_array;
     visualization_msgs::Marker robot_marker;
-    robot_marker.header.frame_id = "odom";
+    robot_marker.header.frame_id = "base_link";
     robot_marker.header.stamp = ros::Time::now();
     robot_marker.ns = "robot_shape";
     robot_marker.id = 0;
@@ -602,28 +642,21 @@ void PlannerManager::publishRobotPoints() {
     robot_marker.color.g = 1.0;
     robot_marker.color.b = 0.0;
 
-    Eigen::Vector3d base_pos(0.0, 0.0, 0.0);
-    if (odom_base_ptr_) {
-        base_pos[0] = odom_base_ptr_->transform.translation.x;
-        base_pos[1] = odom_base_ptr_->transform.translation.y;
-        base_pos[2] = odom_base_ptr_->transform.translation.z;
-    }
-
     if (env_type_){
         for (const auto &pt : robot_shape_points_){
             geometry_msgs::Point p;
-            p.x = base_pos[0] + pt[0];
-            p.y = base_pos[1] + pt[1];
-            p.z = base_pos[2] + pt[2];
+            p.x = pt[0];
+            p.y = pt[1];
+            p.z = pt[2];
             robot_marker.points.push_back(p);
         }
     }
     else {
         for (const auto &pt : robot_shape_points_2d_){
             geometry_msgs::Point p;
-            p.x = base_pos[0] + pt[0];
-            p.y = base_pos[1] + pt[1];
-            p.z = base_pos[2];
+            p.x = pt[0];
+            p.y = pt[1];
+            p.z = odom_base_ptr_->transform.translation.z; // set z to base_link height
             robot_marker.points.push_back(p);
         }
     }

@@ -266,6 +266,20 @@ Visualization Manager:
       Value: true
       VsColor: 0; 255; 0
       VsScale: 1
+    - Alpha: 0.20000000298023224
+      BoundColor: 255; 0; 0
+      Class: decomp_rviz_plugins/PolyhedronArray
+      Enabled: true
+      MeshColor: 0; 0; 0
+      Name: PolyhedronArray
+      Queue Size: 10
+      Scale: 0.10000000149011612
+      State: Mesh
+      Topic: /planner/polyhedron_aniso_full_array
+      Unreliable: false
+      Value: true
+      VsColor: 0; 255; 0
+      VsScale: 1
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255

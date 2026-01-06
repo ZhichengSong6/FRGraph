@@ -80,6 +80,7 @@ class PlannerManager {
     ros::Publisher robot_points_pub_;
     ros::Publisher robot_sphere_pub_;
 
+    ros::Publisher poly_pub_aniso_full_;
     ros::Publisher poly_frtree_pub_;
 
     void initPlannerModule(ros::NodeHandle &nh);
@@ -117,6 +118,7 @@ class PlannerManager {
     vec_E<Polyhedron3D> polys_aniso_3d_;
     vec_E<Polyhedron3D> polys_3d_;
     
+    vec_E<Polyhedron2D> polys_aniso_full_2d_;
     vec_E<Polyhedron2D> polys_FRTree_2d_;
 
     FreeRegionsGraph::Ptr free_regions_graph_ptr_;

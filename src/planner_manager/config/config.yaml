@@ -24,17 +24,6 @@ planner:
   lidar/min_elev_angle: -30.67    # degrees
   lidar/max_elev_angle: 20.67     # degrees
 
-  # Parameters for interesting direction extraction
-  direction_extractor/num_of_edge_pts_: 20
-  direction_extractor/curvature_threshold_: 0.8
-  direction_extractor/num_of_neighbors_to_cluster_: 10 # better to be even number, since we will search half on each side
-  direction_extractor/clustering_distance_threshold_: 0.2 # meters
-
-  # Parameters for goal in 3D
-  direction_extractor/goal_z_: 0.0
-  direction_extractor/goal_roll_: 0.0
-  direction_extractor/goal_pitch_: 0.0
-
   # Parameters for gap extractor for 3D environment
   gap_extractor/3D/min_pixels_in_open_gap_region: 20
   gap_extractor/3D/open_gap_yaw_span: 0.7854  # 45 degrees

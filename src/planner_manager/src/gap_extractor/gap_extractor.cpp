@@ -449,7 +449,7 @@ void GapExtractor::detectEdges()
         const float dphi1 = std::fabs(ph_mid - ph_up);
         const float dphi2 = std::fabs(ph_dn  - ph_mid);
         const float dphi  = 0.5f * (dphi1 + dphi2);
-        const float denom = std::max(1e-3f, dphi * dphi);   // 角步长归一
+        const float denom = std::max(1e-3f, dphi * dphi);   
 
         return std::fabs(z_up - 2.0f * z_mid + z_dn) / denom;
     };
