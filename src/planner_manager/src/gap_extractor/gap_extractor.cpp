@@ -479,17 +479,6 @@ std::cout <<std::endl;
         if (free1 ^ free2) {
             if (horizontal) {
                 // pair: (v, u) -> (v, u_next)
-        const float th1 = range_map_.azimuth[v1][u1];
-        const float ph1 = range_map_.elevation[v1][u1];
-        const float th2 = range_map_.azimuth[v2][u2];
-        const float ph2 = range_map_.elevation[v2][u2];
-        ROS_WARN_STREAM("[FU dbg] type=" << (horizontal?"H":"V")
-            << " (v1,u1)=(" << v1 << "," << u1 << ") r1=" << range_map_.range[v1][u1]
-            << " free1=" << free1
-            << " (v2,u2)=(" << v2 << "," << u2 << ") r2=" << range_map_.range[v2][u2]
-            << " free2=" << free2
-            << " ang1=(" << th1 << "," << ph1 << ")"
-            << " ang2=(" << th2 << "," << ph2 << ")");
                 if (!free1 && free2) {
                     // finite -> free  ==> L at (v1,u1)
                     edges.push_back(Edge{v1, u1, type, range_map_.range[v1][u1],
