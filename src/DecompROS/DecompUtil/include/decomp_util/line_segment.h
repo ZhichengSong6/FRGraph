@@ -504,6 +504,58 @@ class LineSegment : public DecompBase<Dim> {
         this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
       }
     
+    /// Anisotropic polyhedron (3D)
+    template<int U = Dim>
+      typename std::enable_if<U == 3>::type
+      find_polyhedron_aniso(double radius) {
+        Polyhedron<Dim> Vs;
+        vec_Vecf<Dim> obs_remain = this->obs_;
+        // first check if there is any hyperplnae generate by find_polyhedron_for_seed
+        if(!this->polyhedron_.vs_.empty()){
+          vec_Vecf<Dim> obs_tmp;
+          obs_tmp = this->polyhedron_.points_inside(obs_remain);
+          obs_remain = obs_tmp;
+        }
+        
+        if (obs_remain.empty()){
+          return;
+        }
+
+        // we inflate the ellipsoid anisotropically
+        const double scale_long = 2.0;
+        const double scale_lat = 1.01;
+        Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
+        Vecf<Dim> seed = Vecf<Dim>::UnitX();
+        if (std::abs(e0.dot(seed)) > 0.9){
+          seed = Vecf<Dim>::UnitY();
+        }
+        Vecf<Dim> e1 = e0.cross(seed).normalized();
+        Vecf<Dim> e2 = e0.cross(e1).normalized();
+
+        Matf<Dim, Dim> R = Matf<Dim, Dim>::Identity();
+        R.col(0) = e0;   // local x: along line
+        R.col(1) = e1;   // local y: lateral
+        R.col(2) = e2;   // local z: vertical
+        
+        while (!obs_remain.empty()){
+          aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
+
+          const auto v = this->aniso_ellipsoid_.closest_hyperplane(obs_remain);
+          Vs.add(v);
+
+          vec_Vecf<Dim> obs_tmp;
+          for (const auto &it : obs_remain) {
+            if (v.signed_dist(it) < 0)
+              obs_tmp.push_back(it);
+          }
+          obs_remain = obs_tmp;
+        }
+        if (Vs.vs_.empty()){
+          return;
+        }
+        this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
+      }
+    
     /// Anisotropic polyhedron (2D)
     template<int U = Dim>
       typename std::enable_if<U == 2>::type
@@ -606,6 +658,62 @@ class LineSegment : public DecompBase<Dim> {
         }
       }
     
+    template<int U = Dim>
+      typename std::enable_if<U == 3>::type
+      aniso_inflate_ellipsoid(double scale_long, double scale_lat, Matf<Dim, Dim>& R, vec_Vecf<Dim>& obs) {
+        Matf<Dim, Dim> C_world = this->aniso_ellipsoid_.C_;
+        Matf<Dim, Dim> C_local = R.transpose() * C_world * R;
+        // first inflate long axis
+        C_local(0,0) *= scale_long;
+        C_local(0,1) = 0;
+        C_local(1,0) = 0;
+        C_local(0,2) = 0;
+        C_local(2,0) = 0;
+        // check whether there is any obstacle inside the ellipsoid
+        C_world = R * C_local * R.transpose();
+        Ellipsoid<Dim> E(C_world, this->aniso_ellipsoid_.d_);
+        vec_Vecf<Dim> obs_tmp;
+        obs_tmp = E.points_inside(obs);
+        if (obs_tmp.empty()){
+          // now inflate the short axes
+          C_local(1,1) *= scale_lat;
+          C_local(2,2) *= scale_lat;
+          C_world = R * C_local * R.transpose();
+          E.C_ = C_world;
+          obs_tmp = E.points_inside(obs);
+          if (obs_tmp.empty()){
+            this->aniso_ellipsoid_.C_ = C_world;
+            return;
+          }
+        }
+        else{
+          // find the closest point
+          const auto pw = E.closest_point(obs_tmp);
+          // update the short axes
+          Vecf<Dim> p = R.transpose() * (pw - E.d()); // to ellipsoid frame
+          const double t = 1.0 - (p(0)* p(0)) / (C_local(0,0) * C_local(0,0));
+          double b = std::sqrt((p(1) * p(1))  + (p(2) * p(2))) / std::sqrt(t);
+          C_local(1,1) = b;
+          C_local(2,2) = b;
+          C_world = R * C_local * R.transpose();
+          this->aniso_ellipsoid_.C_ = C_world;
+          return;
+        }
+        else{
+          // find the closest point
+          const auto pw = E.closest_point(obs_tmp);
+          // update the long axis
+          Vecf<Dim> p = R.transpose() * (pw - E.d()); // to ellipsoid frame
+          const double t = 1.0 - (p(1)* p(1)) / (C_local(1,1) * C_local(1,1))
+                           - (p(2)* p(2)) / (C_local(2,2) * C_local(2,2));
+          double a = std::abs(p(0)) / std::sqrt(t);
+          C_local(0,0) = a;
+          C_world = R * C_local * R.transpose();
+          this->aniso_ellipsoid_.C_ = C_world;
+          return;
+        }
+      }
+
     /// One end of line segment, input
     Vecf<Dim> p1_;
     /// The other end of line segment, input

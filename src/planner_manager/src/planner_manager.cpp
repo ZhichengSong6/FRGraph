@@ -258,12 +258,16 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         LineSegment2D line_segment(p1, p2);
         line_segment.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+    // auto t0 = std::chrono::high_resolution_clock::now();
         line_segment.dilate(0.1f);
+    // auto t1 = std::chrono::high_resolution_clock::now();
+    // double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
+    // ROS_INFO("[PlannerManager] dilate elapsed: %.3f ms", ms);
 
         LineSegment2D line_segment_aniso(p1, p2);
         line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
-        line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.3f),
-                                               Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
+        line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
+                                               Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
 
         // get robot shape in odom frame
         Eigen::Vector2d base_pos_odom(0.0, 0.0);
@@ -295,7 +299,11 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         const Eigen::Vector3d center_odom = T_odom_base * center_base_homo;
 
         const double radius = robot_ellipsoid_2d_.C()(0, 0);
-        line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
+    // auto t2 = std::chrono::high_resolution_clock::now();
+    line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
+    // auto t3 = std::chrono::high_resolution_clock::now();
+    // double ms_1 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
+    // ROS_INFO("[PlannerManager] dilate_aniso elapsed: %.3f ms", ms_1);
 
         LineSegment2D line_segment_aniso_full(p1, p2);
         line_segment_aniso_full.set_obs(pointcloud_cropped_odom_frame_2d_);

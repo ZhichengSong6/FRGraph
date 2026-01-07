@@ -24,6 +24,8 @@
 #include "free_regions_graph/free_regions_graph.h"
 #include "gap_extractor/gap_extractor.h"
 
+#include <chrono>
+
 #include <planner_manager/GapCandidates.h>
 #include <planner_manager/GapCandidate.h>
 
