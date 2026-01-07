@@ -434,7 +434,7 @@ void GapExtractor::detectEdges()
     const int W = params_.range_map_width;
 
     static constexpr float z_curv_gate = 30.0f;
-std::cout <<std::endl;
+    
     auto kappaZTriplet = [&](int vc, int uc)->float {
         if (vc - 1 < 0 || vc + 1 >= H) return std::numeric_limits<float>::infinity();
 
