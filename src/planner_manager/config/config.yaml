@@ -1,5 +1,5 @@
 planner:
-  env_type: 1 # 0 for 2D, 1 for 3D
+  env_type: 0 # 0 for 2D, 1 for 3D
   size_of_cropped_pointcloud: [6, 6, 3]
   goal_z_pos: 0.5
 

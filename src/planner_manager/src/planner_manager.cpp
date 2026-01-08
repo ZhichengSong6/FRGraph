@@ -218,6 +218,132 @@ void PlannerManager::candidateGapsCallback(const planner_manager::GapCandidates:
 }
 
 void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
+    polys_aniso_2d_.clear();
+    polys_2d_.clear();
+    polys_aniso_3d_.clear();
+    polys_3d_.clear();
+
+    if (env_type_){
+        const Vec3f p1(start_pos[0], start_pos[1], start_pos[2]);
+        for (const auto &gap : all_candidates){
+            const Vec3f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1], gap.dir_odom_frame[2]);
+            LineSegment3D line_segment_aniso(p1, p2);
+            line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_);
+            // check the type of gap to set different local bbox
+            if (gap.type == 1){ // limited gap
+                line_segment_aniso.set_local_bbox_aniso(Vec3f(0.5f, 0.5f, 0.5f),
+                                                       Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+            }
+            else{ 
+                line_segment_aniso.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
+                                                       Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+            }
+            // get robot shape in odom frame
+            Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
+            Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
+            if (odom_base_ptr_) {
+                base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
+                base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
+                base_pos_odom[2] = odom_base_ptr_->transform.translation.z;
+                base_rot = Eigen::Quaterniond(
+                    odom_base_ptr_->transform.rotation.w,
+                    odom_base_ptr_->transform.rotation.x,
+                    odom_base_ptr_->transform.rotation.y,
+                    odom_base_ptr_->transform.rotation.z);
+            }
+            const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+            std::vector<Vec3f> robot_shape_points_odom;
+            for (const auto &pt : robot_shape_points_) {
+                const Eigen::Vector3d local_pt(pt[0], pt[1], pt[2]);
+                const Eigen::Vector3d rotated_pt = base_rot_mat * local_pt + base_pos_odom;
+                robot_shape_points_odom.emplace_back(
+                    static_cast<float>(rotated_pt[0]),
+                    static_cast<float>(rotated_pt[1]),
+                    static_cast<float>(rotated_pt[2]));
+            }
+            line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
+
+            const Eigen::Vector3d center_base = robot_ellipsoid_.d().cast<double>();
+            const Eigen::Vector4d center_base_homo(center_base[0], center_base[1], center_base[2], 1.0);
+            const Eigen::Matrix4d Tmat = tf2::transformToEigen(*odom_base_ptr_).matrix();
+            const Eigen::Vector4d center_odom_homo = Tmat * center_base_homo;
+            const Eigen::Vector3d center_odom = center_odom_homo.head<3>();
+
+            const double radius = robot_ellipsoid_.C()(0,0);
+            line_segment_aniso.dilate_aniso(Vec3f(center_odom[0], center_odom[1], center_odom[2]), radius);
+
+            polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
+        }
+        // decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
+        auto single_poly = polys_aniso_3d_;
+        single_poly.resize(1);
+        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(single_poly);
+        poly_msg_aniso.header.stamp = ros::Time::now();
+        poly_msg_aniso.header.frame_id = "odom";
+        poly_pub_aniso_.publish(poly_msg_aniso);
+    }
+    else{
+        // 2D case
+        const Vec2f p1(start_pos[0], start_pos[1]);
+        for (const auto &gap : all_candidates){
+            const Vec2f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1]);
+            LineSegment2D line_segment_aniso(p1, p2);
+            line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
+            // check the type of the gap to set different local bbox
+            if (gap.type == 1){ // limited gap
+                line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.5f),
+                                                       Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+            }
+            else{ 
+                line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
+                                                       Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+            }
+            // getrobot shape in odom frame
+            Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
+            Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
+            if (odom_base_ptr_) {
+                base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
+                base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
+                base_pos_odom[2] = odom_base_ptr_->transform.translation.z;
+                base_rot = Eigen::Quaterniond(
+                    odom_base_ptr_->transform.rotation.w,
+                    odom_base_ptr_->transform.rotation.x,
+                    odom_base_ptr_->transform.rotation.y,
+                    odom_base_ptr_->transform.rotation.z);
+            }
+            const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+            std::vector<Vec2f> robot_shape_points_odom;
+            for (const auto &pt : robot_shape_points_2d_) {
+                const Eigen::Vector3d local_pt(pt[0], pt[1], 0.0);
+                const Eigen::Vector3d rotated_pt = base_rot_mat * local_pt + base_pos_odom;
+                robot_shape_points_odom.emplace_back(
+                    static_cast<float>(rotated_pt[0]),
+                    static_cast<float>(rotated_pt[1]));
+            }
+            line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
+
+            const Eigen::Vector2d center_base = robot_ellipsoid_2d_.d().cast<double>();
+            const Eigen::Vector3d center_base_homo(center_base[0], center_base[1], 1.0);
+            const Eigen::Affine3d T_odom_base = tf2::transformToEigen(*odom_base_ptr_);
+            const Eigen::Vector3d center_odom = T_odom_base * center_base_homo;
+
+            double radius = robot_ellipsoid_2d_.C()(0,0);
+
+            line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
+
+            polys_aniso_2d_.push_back(line_segment_aniso.get_polyhedron());
+        }
+        // decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_2d_);
+        auto single_poly = polys_aniso_2d_; 
+        single_poly.resize(1);              
+        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(single_poly);
+        poly_msg_aniso.header.stamp = ros::Time::now();
+        poly_msg_aniso.header.frame_id = "odom";
+        poly_pub_aniso_.publish(poly_msg_aniso);
+    }
+}
+
+void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
     /* TEST */
     polys_aniso_2d_.clear();
     polys_2d_.clear();
@@ -335,7 +461,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
 
         const double radius = robot_ellipsoid_2d_.C()(0, 0);
     // auto t2 = std::chrono::high_resolution_clock::now();
-    line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
+        line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
     // auto t3 = std::chrono::high_resolution_clock::now();
     // double ms_1 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
     // ROS_INFO("[PlannerManager] dilate_aniso elapsed: %.3f ms", ms_1);
@@ -365,7 +491,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
     }
 }
 
-void PlannerManager::decomposeAlongGapDirections_FRTree(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
+void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
     polys_FRTree_2d_.clear();
     polys_FRTree_3d_.clear();
     if (!env_type_){
@@ -672,8 +798,10 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
     }
 
     // test
+    // decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
+    // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
+    // first decompose along all gap directions
     decomposeAlongGapDirections(start_pos, all_candidates);
-    decomposeAlongGapDirections_FRTree(start_pos, all_candidates);
 
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
 

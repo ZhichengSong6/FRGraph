@@ -135,8 +135,11 @@ class PlannerManager {
                               std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void reorderCandidatesGapWithGoal(Eigen:: Vector3d &goal_pos, 
                                      std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+
     void decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
-    void decomposeAlongGapDirections_FRTree(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+
+    void decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+    void decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* current_node);
     std::vector<Eigen::Vector3d> trajectory_points_temp_;

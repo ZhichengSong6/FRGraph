@@ -473,7 +473,7 @@ class LineSegment : public DecompBase<Dim> {
         }
 
         // we inflate the ellipsoid anisotropically
-        const double scale_long = 2.0;
+        const double scale_long = 1.5;
         const double scale_lat = 1.01;
         Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
 
@@ -522,7 +522,7 @@ class LineSegment : public DecompBase<Dim> {
         }
 
         // we inflate the ellipsoid anisotropically
-        const double scale_long = 2.0;
+        const double scale_long = 1.5;
         const double scale_lat = 1.01;
         Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
         Vecf<Dim> seed = Vecf<Dim>::UnitX();
