@@ -1859,8 +1859,13 @@ void GapExtractor::publishSubGapRegions() {
     m_open.color.g = 0.0f;
     m_open.color.b = 1.0f;
     m_open.color.a = 1.0f;
-
-    geometry_msgs::Point origin;    // (0,0,0)
+ 
+    geometry_msgs::Point origin;
+    const Eigen::Affine3d T_base_scan = tf2::transformToEigen(*lidar_to_base_ptr_);
+    const Eigen::Vector3d base_in_scan = T_base_scan.inverse().translation();
+    origin.x = base_in_scan.x();
+    origin.y = base_in_scan.y();
+    origin.z = base_in_scan.z();
     int seg_open = 0;
 
     for (size_t i = 0; i < open_gap_subregions_.size(); ++i){

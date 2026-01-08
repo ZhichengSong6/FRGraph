@@ -685,19 +685,19 @@ class LineSegment : public DecompBase<Dim> {
             this->aniso_ellipsoid_.C_ = C_world;
             return;
           }
-        }
-        else{
-          // find the closest point
-          const auto pw = E.closest_point(obs_tmp);
-          // update the short axes
-          Vecf<Dim> p = R.transpose() * (pw - E.d()); // to ellipsoid frame
-          const double t = 1.0 - (p(0)* p(0)) / (C_local(0,0) * C_local(0,0));
-          double b = std::sqrt((p(1) * p(1))  + (p(2) * p(2))) / std::sqrt(t);
-          C_local(1,1) = b;
-          C_local(2,2) = b;
-          C_world = R * C_local * R.transpose();
-          this->aniso_ellipsoid_.C_ = C_world;
-          return;
+          else{
+            // find the closest point
+            const auto pw = E.closest_point(obs_tmp);
+            // update the short axes
+            Vecf<Dim> p = R.transpose() * (pw - E.d()); // to ellipsoid frame
+            const double t = 1.0 - (p(0)* p(0)) / (C_local(0,0) * C_local(0,0));
+            double b = std::sqrt((p(1) * p(1))  + (p(2) * p(2))) / std::sqrt(t);
+            C_local(1,1) = b;
+            C_local(2,2) = b;
+            C_world = R * C_local * R.transpose();
+            this->aniso_ellipsoid_.C_ = C_world;
+            return;
+          }
         }
         else{
           // find the closest point

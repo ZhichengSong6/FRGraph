@@ -227,28 +227,63 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
     polys_aniso_full_2d_.clear();
     if (env_type_){
         const Vec3f p1(start_pos[0], start_pos[1], start_pos[2]);
-        const Vec3f p2(all_candidates[0].dir_odom_frame[0]/2,
-                   all_candidates[0].dir_odom_frame[1]/2,
-                   all_candidates[0].dir_odom_frame[2]/2);
+        const Vec3f p2(all_candidates[0].dir_odom_frame[0],
+                   all_candidates[0].dir_odom_frame[1],
+                   all_candidates[0].dir_odom_frame[2]);
         LineSegment3D line_segment(p1, p2);
         line_segment.set_obs(pointcloud_cropped_odom_frame_);
         line_segment.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
         line_segment.dilate(-0.1f);
-        // LineSegment3D line_segment_aniso(p1, p2);
-        // line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_);
-        // line_segment_aniso.set_local_bbox_aniso(Vec3f(0.5f, 0.3f, 0.2f),
-        //                                        Vec3f(0.3f, 0.3f, 0.2f)); // set local bbox for decomposition
-        // line_segment_aniso.dilate_aniso(-0.1f);
-        // polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
+
+        LineSegment3D line_segment_aniso(p1, p2);
+        line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_);
+        line_segment_aniso.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
+                                                Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+
+        // get robot shape in odom frame
+        Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
+        Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
+        if (odom_base_ptr_) {
+            base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
+            base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
+            base_pos_odom[2] = odom_base_ptr_->transform.translation.z;
+            base_rot = Eigen::Quaterniond(
+                odom_base_ptr_->transform.rotation.w,
+                odom_base_ptr_->transform.rotation.x,
+                odom_base_ptr_->transform.rotation.y,
+                odom_base_ptr_->transform.rotation.z);
+        }
+        const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+        std::vector<Vec3f> robot_shape_points_odom;
+        for (const auto &pt : robot_shape_points_) {
+            const Eigen::Vector3d local_pt(pt[0], pt[1], pt[2]);
+            const Eigen::Vector3d rotated_pt = base_rot_mat * local_pt + base_pos_odom;
+            robot_shape_points_odom.emplace_back(
+                static_cast<float>(rotated_pt[0]),
+                static_cast<float>(rotated_pt[1]),
+                static_cast<float>(rotated_pt[2]));
+        }
+        line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
+
+        const Eigen::Vector3d center_base = robot_ellipsoid_.d().cast<double>();
+        const Eigen::Vector4d center_base_homo(center_base[0], center_base[1], center_base[2], 1.0);
+        const Eigen::Matrix4d Tmat = tf2::transformToEigen(*odom_base_ptr_).matrix();
+        const Eigen::Vector4d center_odom_homo = Tmat * center_base_homo;
+        const Eigen::Vector3d center_odom = center_odom_homo.head<3>();
+
+        const double radius = robot_ellipsoid_.C()(0,0);
+        line_segment_aniso.dilate_aniso(Vec3f(center_odom[0], center_odom[1], center_odom[2]), radius);
+
+        polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
         polys_3d_.push_back(line_segment.get_polyhedron());
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_3d_);
-        // decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
+        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_pub_.publish(poly_msg);
-        // poly_msg_aniso.header.stamp = ros::Time::now();
-        // poly_msg_aniso.header.frame_id = "odom";
-        // poly_pub_aniso_.publish(poly_msg_aniso);
+        poly_msg_aniso.header.stamp = ros::Time::now();
+        poly_msg_aniso.header.frame_id = "odom";
+        poly_pub_aniso_.publish(poly_msg_aniso);
     }
     else{
         // 2D case
@@ -332,6 +367,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
 
 void PlannerManager::decomposeAlongGapDirections_FRTree(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
     polys_FRTree_2d_.clear();
+    polys_FRTree_3d_.clear();
     if (!env_type_){
         Eigen::Vector2d dir = all_candidates[0].dir_odom_frame.head<2>() - start_pos.head<2>();
         double dist = dir.norm();
@@ -370,6 +406,49 @@ void PlannerManager::decomposeAlongGapDirections_FRTree(Eigen::Vector3d &start_p
         polys_FRTree_2d_.push_back(line_segment3.get_polyhedron()); 
 
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_FRTree_2d_);
+        poly_msg.header.stamp = ros::Time::now();
+        poly_msg.header.frame_id = "odom";
+        poly_frtree_pub_.publish(poly_msg);
+    }
+    else{
+        // 3D
+        Eigen::Vector3d dir = all_candidates[0].dir_odom_frame - start_pos;
+        double dist = dir.norm();
+        dir.normalize();
+        Eigen::Vector3d pos1, pos2, pos3, pos4, pos5, pos6;
+        pos1 = start_pos + dir * (dist * 0.05);
+        pos2 = start_pos + dir * (dist * 0.45);
+
+        pos3 = start_pos + dir * (dist * 0.4);
+        pos4 = start_pos + dir * (dist * 0.7);
+
+        pos5 = start_pos + dir * (dist * 0.65);
+        pos6 = start_pos + dir * (dist * 0.9);
+
+        const Vec3f p1(pos1[0], pos1[1], pos1[2]);
+        const Vec3f p2(pos2[0], pos2[1], pos2[2]);
+        const Vec3f p3(pos3[0], pos3[1], pos3[2]);
+        const Vec3f p4(pos4[0], pos4[1], pos4[2]);
+        const Vec3f p5(pos5[0], pos5[1], pos5[2]);
+        const Vec3f p6(pos6[0], pos6[1], pos6[2]);
+
+        LineSegment3D line_segment1(p1, p2);
+        line_segment1.set_obs(pointcloud_cropped_odom_frame_);
+        line_segment1.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment1.dilate(0.1f);
+        polys_FRTree_3d_.push_back(line_segment1.get_polyhedron());
+        LineSegment3D line_segment2(p3, p4);
+        line_segment2.set_obs(pointcloud_cropped_odom_frame_);
+        line_segment2.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment2.dilate(0.1f);
+        polys_FRTree_3d_.push_back(line_segment2.get_polyhedron());
+        LineSegment3D line_segment3(p5, p6);
+        line_segment3.set_obs(pointcloud_cropped_odom_frame_);
+        line_segment3.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment3.dilate(0.1f);
+        polys_FRTree_3d_.push_back(line_segment3.get_polyhedron());
+
+        decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_FRTree_3d_);
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_frtree_pub_.publish(poly_msg);

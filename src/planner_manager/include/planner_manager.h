@@ -122,6 +122,7 @@ class PlannerManager {
     
     vec_E<Polyhedron2D> polys_aniso_full_2d_;
     vec_E<Polyhedron2D> polys_FRTree_2d_;
+    vec_E<Polyhedron3D> polys_FRTree_3d_;
 
     FreeRegionsGraph::Ptr free_regions_graph_ptr_;
     GraphNode *current_node_;
