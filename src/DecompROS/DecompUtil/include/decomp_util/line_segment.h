@@ -42,6 +42,9 @@ class LineSegment : public DecompBase<Dim> {
       find_polyhedron_for_seed(center, radius);
       find_polyhedron_aniso(radius);
       add_local_bbox_aniso(this->polyhedron_);
+      std::cout << "Aniso polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
+      remove_redundant_hyperplanes(this->polyhedron_);
+      std::cout << "After removing redundant hyperplanes, aniso polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
     }
 
     void dilate_aniso_full(const Vecf<Dim> &center, const float radius){

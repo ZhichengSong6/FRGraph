@@ -798,10 +798,10 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
     }
 
     // test
-    // decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
+    decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
     // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
     // first decompose along all gap directions
-    decomposeAlongGapDirections(start_pos, all_candidates);
+    // decomposeAlongGapDirections(start_pos, all_candidates);
 
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
 

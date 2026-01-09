@@ -180,6 +180,58 @@ inline vec_E<vec_Vec3f> cal_vertices(const Polyhedron3D &poly) {
   return bds;
 }
 
+/// Remove reduntant hyperplanes using polyhedron vertices (2D)
+inline void remove_redundant_hyperplanes(Polyhedron2D &poly, decimal_t tol = 1e-6){
+  const auto vertices = cal_vertices(poly);
+  if (vertices.empty()){
+    return;
+  }
+  vec_E<Hyperplane2D> kept;
+  kept.reserve(poly.vs_.size());
+  for (const auto& hp : poly.vs_){
+    bool active = false;
+    for (const auto& v : vertices){
+      if (std::abs(hp.signed_dist(v)) < tol){
+        active = true;
+        break;
+      }
+    }
+    if (active) {
+      kept.push_back(hp);
+    }
+  }
+  poly.vs_ = kept;
+}
+
+/// Remove reduntant hyperplanes using polyhedron vertices (3D)
+inline void remove_redundant_hyperplanes(Polyhedron3D &poly, decimal_t tol = 1e-6){
+  const auto faces = cal_vertices(poly);
+  vec_Vec3f vertices;
+  for (const auto& face : faces){
+    for (const auto& v : face){
+      vertices.push_back(v);
+    }
+  }
+  if (vertices.empty()){
+    return;
+  }
+  vec_E<Hyperplane3D> kept;
+  kept.reserve(poly.vs_.size());
+  for (const auto& hp : poly.vs_){
+    bool active = false;
+    for (const auto& v : vertices){
+      if (std::abs(hp.signed_dist(v)) < tol){
+        active = true;
+        break;
+      }
+    }
+    if (active) {
+      kept.push_back(hp);
+    }
+  }
+  poly.vs_ = kept;
+}
+
 /// Get the convex hull of a 2D points array, use wrapping method
 inline vec_Vec2f cal_convex_hull(const vec_Vec2f &pts) {
   /// find left most point
