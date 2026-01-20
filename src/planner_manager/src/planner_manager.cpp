@@ -468,8 +468,8 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
 
         LineSegment2D line_segment_aniso_full(p1, p2);
         line_segment_aniso_full.set_obs(pointcloud_cropped_odom_frame_2d_);
-        line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.0f, 0.3f),
-                                                    Vec2f(0.3f, 0.3f)); // set local bbox for decomposition
+        line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
+                                                    Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
         line_segment_aniso_full.set_robot_shape_pts(robot_shape_points_odom);
         line_segment_aniso_full.dilate_aniso_full(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
 
@@ -789,6 +789,28 @@ bool PlannerManager::getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* cu
     return true;
 }
 
+double PlannerManager::supportValueVertices(Eigen::Vector3d &norm, vec_Vec3f &vertices, const Eigen::Matrix3d& R){
+    double h = -std::numeric_limits<double>::infinity();
+    for (const auto &v : vertices){
+        double val = norm.dot(R * v.cast<double>());
+        if (val > h) h = val;
+    }
+    return h;
+}
+
+bool PlannerManager::getTrajectory(Eigen::Vector3d &start_pos, GraphNode* current_node){
+    if(env_type_){
+        // 3D
+    }
+    else{
+        // 2D
+        // fisrt get supporting functions base on current yaw
+        const int m = current_node.
+        Eigen::VectorXd b_prime;
+    }
+    return true;
+}
+
 void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, GraphNode* current_node) {
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> all_candidates;
     sortAllCandidatesGap(goal_pos, all_candidates);
@@ -798,11 +820,10 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
     }
 
     // test
-    decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
+    // decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
     // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
     // first decompose along all gap directions
-    // decomposeAlongGapDirections(start_pos, all_candidates);
-
+    decomposeAlongGapDirections(start_pos, all_candidates);
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
 
     current_node->children.clear();

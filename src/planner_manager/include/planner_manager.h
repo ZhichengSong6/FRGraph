@@ -140,6 +140,9 @@ class PlannerManager {
 
     void decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+    
+    bool getTrajectory(Eigen::Vector3d &start_pos, GraphNode* current_node);
+    double supportValueVertices(Eigen::Vector3d &norm, vec_Vec3f &vertices, const Eigen::Matrix3d& R);
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* current_node);
     std::vector<Eigen::Vector3d> trajectory_points_temp_;
