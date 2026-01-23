@@ -12,12 +12,27 @@
 
 template <int Dim>
 struct Ellipsoid {
-  Ellipsoid() {}
-  Ellipsoid(const Matf<Dim, Dim>& C, const Vecf<Dim>& d) : C_(C), d_(d) {}
+  Ellipsoid() : cache_valid_(false) {}
 
+  Ellipsoid(const Matf<Dim, Dim>& C, const Vecf<Dim>& d) : C_(C), d_(d) {
+    update_cache();
+  }
+
+  /// Recompute cached inverses (call whenever C_ changes)
+  inline void update_cache() {
+    C_inv_ = C_.inverse();
+    A_ = C_inv_ * C_inv_.transpose();
+    cache_valid_ = true;
+  }
+
+  /// Helper: set C and keep cache consistent
+  inline void setC(const Matf<Dim, Dim>& C) {
+    C_ = C;
+    update_cache();
+  }
   /// Calculate distance to the center
   decimal_t dist(const Vecf<Dim>& pt) const {
-    return (C_.inverse() * (pt - d_)).norm();
+    return (C_inv_ * (pt - d_)).norm();
   }
 
   /// Check if the point is inside, non-exclusive
@@ -49,11 +64,10 @@ struct Ellipsoid {
     return pt;
   }
 
-  ///Find the closest hyperplane from the closest point
+  /// Find the closest hyperplane from the closest point
   Hyperplane<Dim> closest_hyperplane(const vec_Vecf<Dim> &O) const {
     const auto closest_pt = closest_point(O);
-    const auto n = C_.inverse() * C_.inverse().transpose() *
-      (closest_pt - d_);
+    const auto n = A_ * (closest_pt - d_);
     return Hyperplane<Dim>(closest_pt, n.normalized());
   }
 
@@ -61,13 +75,11 @@ struct Ellipsoid {
   Hyperplane<Dim> closest_hyperplane_aniso(const vec_Vecf<Dim> &O, const Vecf<Dim>& e, double lambda){
     Vecf<Dim> best_pt = Vecf<Dim>::Zero();
     decimal_t best_score = std::numeric_limits<decimal_t>::max();
-    // Precompute
-    Matf<Dim, Dim> C_inv = C_.inverse();
-    Matf<Dim, Dim> A = C_inv * C_inv.transpose();
+
     for (const auto &it : O) {
-      double dist_val = (C_inv * (it - d_)).norm();
+      double dist_val = (C_inv_ * (it - d_)).norm();
       // get the norm is we choose this point
-      Vecf<Dim> n_raw  = A * (it - d_);
+      Vecf<Dim> n_raw  = A_ * (it - d_);
       double n_norm = n_raw.norm();
       if (n_norm < 1e-12){
         continue;
@@ -85,7 +97,7 @@ struct Ellipsoid {
     if (!std::isfinite(best_score)){
       best_pt = closest_point(O);
     }
-    return Hyperplane<Dim>(best_pt, (C_inv * C_inv.transpose() * (best_pt - d_)).normalized());
+    return Hyperplane<Dim>(best_pt, (A_ * (best_pt - d_)).normalized());
   }
 
   /// Sample n points along the contour
@@ -124,6 +136,11 @@ struct Ellipsoid {
 
   Matf<Dim, Dim> C_;
   Vecf<Dim> d_;
+
+  // cached
+  Matf<Dim, Dim> C_inv_;
+  Matf<Dim, Dim> A_;
+  bool cache_valid_;
 };
 
 typedef Ellipsoid<2> Ellipsoid2D;

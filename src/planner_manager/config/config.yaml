@@ -14,10 +14,10 @@ planner:
   #                     -0.1, 0.1, -0.1]
   # robot_shape/imu_pos: [0.0, 0.0, 0.0]
 
-  robot_shape/points: [0.1, 0.1,
-                       0.1, -0.1,
-                      -0.1, -0.1,
-                      -0.1, 0.1]
+  robot_shape/points_2d: [0.2, 0.1,
+                       0.2, -0.1,
+                      -0.2, -0.1,
+                      -0.2, 0.1]
   robot_shape/imu_pos: [0.0, 0.0]
 
   # Parameters for lidar
@@ -56,3 +56,6 @@ planner:
   # Parameters for yaw/elev adjustment in limited gap region
   gap_extractor/limited_gap_bias_yaw: 0.1746 # 10 degrees
   gap_extractor/limited_gap_bias_elev: 0.1746 # 10 degrees
+
+  # Parameters for trajectory
+  trajectory/num_of_yaw_samples: 72

@@ -50,8 +50,11 @@ class LineSegment : public DecompBase<Dim> {
     void dilate_aniso_full(const Vecf<Dim> &center, const float radius){
       set_ellipsoid(center, radius);
       find_polyhedron_for_seed(center, radius);
-      find_polyhedron_aniso_full(radius);
+      find_polyhedron_aniso_full(radius, center);
       add_local_bbox_aniso(this->polyhedron_);
+// std::cout << "Aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
+      remove_redundant_hyperplanes(this->polyhedron_);
+// std::cout << "After removing redundant hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
     }
 
     /// Get the line
@@ -65,6 +68,15 @@ class LineSegment : public DecompBase<Dim> {
     // set robot shape points
     void set_robot_shape_pts(const std::vector<Vecf<Dim>> &robot_shape_pts){
       robot_shape_pts_ = robot_shape_pts;
+
+      const int Nr = (int)robot_shape_pts_.size();
+      robot_pts_mat_.resize(Nr, Dim);
+      for(int i = 0; i < Nr; i++){
+        for(int k = 0; k < Dim; k++){
+          robot_pts_mat_(i, k) = robot_shape_pts_[i](k);
+        }
+      }
+      robot_pts_cached_ = true;
     }
 
   protected:
@@ -185,6 +197,7 @@ class LineSegment : public DecompBase<Dim> {
           new_C(0, 0) = axes(0);
           new_C(1, 1) = axes(1);
           E.C_ = Ri * new_C * Ri.transpose();
+          E.update_cache();
 
           vec_Vecf<Dim> obs_new;
           for(const auto &it: obs_inside) {
@@ -236,6 +249,7 @@ class LineSegment : public DecompBase<Dim> {
         new_C(1, 1) = axes(1);
         new_C(2, 2) = axes(1);
         E.C_ = Rf * new_C * Rf.transpose();
+        E.update_cache();
 
         vec_Vecf<Dim> obs_new;
         for(const auto &it: obs_inside) {
@@ -251,6 +265,8 @@ class LineSegment : public DecompBase<Dim> {
       C(1, 1) = axes(1);
       C(2, 2) = axes(2);
       E.C_ = Rf * C * Rf.transpose();
+      E.update_cache();
+
       obs_inside = E.points_inside(obs);
 
       while (!obs_inside.empty()) {
@@ -265,6 +281,7 @@ class LineSegment : public DecompBase<Dim> {
         new_C(1, 1) = axes(1);
         new_C(2, 2) = axes(2);
         E.C_ = Rf * new_C * Rf.transpose();
+        E.update_cache();
 
         vec_Vecf<Dim> obs_new;
         for(const auto &it: obs_inside) {
@@ -302,21 +319,39 @@ class LineSegment : public DecompBase<Dim> {
         Polyhedron<Dim> Vs;
         // first check whether there is obstacle inside the seed circle
         auto obs_inside = points_inside_seed(center, radius, this->obs_);
+// int counter = 0;
         while (!obs_inside.empty()) {
           // find the closest point to the seed center
           const auto pw = closest_point_in_seed(center, obs_inside);
           // base on the closest point, find the hyperplane
           Hyperplane2D hp(Vec2f::Zero(), Vec2f::Zero());
           get_hyperplane(pw, center, hp);
+          
+          vec_E<Hyperplane2D> hp_vec;
+          hp_vec.push_back(hp);
+          LinearConstraint2D lc(center, hp_vec);
+          Vec2f A_raw = lc.A_.row(0);
+          double nrm = A_raw.norm();
+          Vec2f A = A_raw / nrm;
+          double b0 = lc.b()(0) / nrm;
+          const double eps_robot = 1e-4;  
+          const double eps_obs = 1e-4;    
+          double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
+          hp.n_ = A;
+          hp.p_ = A * b;
+
           Vs.add(hp);
+
+// counter++;
           // remove the points which are on the negative side of the hyperplane
           vec_Vecf<Dim> obs_new;
           for (const auto &it : obs_inside) {
-            if (hp.signed_dist(it) < 0)
+            if (hp.signed_dist(it) < -1e-10)
               obs_new.push_back(it);
           }
           obs_inside.swap(obs_new);
         }
+// std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplanes." << std::endl;
         this->polyhedron_ = Vs;
       }
     
@@ -332,17 +367,63 @@ class LineSegment : public DecompBase<Dim> {
           // base on the closest point, find the hyperplane
           Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
           get_hyperplane(pw, center, hp);
+
+          vec_E<Hyperplane3D> hp_vec;
+          hp_vec.push_back(hp);
+          LinearConstraint3D lc(center, hp_vec);
+          Vec3f A_raw = lc.A_.row(0);
+          double nrm = A_raw.norm();
+          Vec3f A = A_raw / nrm;
+          double b0 = lc.b()(0) / nrm;
+          const double eps_robot = 1e-4;  
+          const double eps_obs = 1e-4;    
+          double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
+          hp.n_ = A;
+          hp.p_ = A * b;
           Vs.add(hp);
           // remove the points which are on the negative side of the hyperplane
           vec_Vecf<Dim> obs_new;
           for (const auto &it : obs_inside) {
-            if (hp.signed_dist(it) < 0)
+            if (hp.signed_dist(it) < -1e-10)
               obs_new.push_back(it);
           }
           obs_inside.swap(obs_new);
         }
         this->polyhedron_ = Vs;
       }
+
+    double tighten_b(const Vecf<Dim> &A_unit, double b0, const Vecf<Dim> &pw, const vec_Vecf<Dim> &obs, double eps_robot, double eps_obs, double tau, double sd_tol = 1e-9){
+      // robot safety
+      double robot_max = -std::numeric_limits<double>::max();
+      for(const auto &it : robot_shape_pts_){
+        robot_max = std::max(robot_max, (double)(A_unit.dot(it)));
+      }
+      const double b_robot = robot_max + eps_robot;
+      // near-violating
+      double b_near = std::numeric_limits<double>::infinity();
+      for(const auto &it : obs){
+        const double sd = (double)A_unit.dot(it) - b0;
+        if (sd > -tau && sd < -sd_tol){
+          b_near = std::min(b_near, (double)A_unit.dot(it) - eps_obs);
+        }
+      }
+      if (!std::isfinite(b_near)){
+        // no near-violating points, do not tighten
+        return b0;
+      }
+
+      double b = std::min(b0, b_near);
+
+      const double b_pw = (double)A_unit.dot(pw);
+      b = std::min(b, b_pw - 1e-10); // ensure pw is outside
+
+      b = std::max(b, b_robot);
+
+      if(b > b_pw){
+        return b0;
+      }
+      return b;
+    }
 
     vec_Vecf<Dim> points_inside_seed(const Vecf<Dim> &center, const float radius, const vec_Vecf<Dim> &obs) {
       vec_Vecf<Dim> new_obs;
@@ -381,28 +462,43 @@ class LineSegment : public DecompBase<Dim> {
         Eigen::Matrix2d Q = 2.0 * (e * e.transpose());
         // linear term c
         Eigen::Vector2d c = Eigen::Vector2d::Zero();
+
+        const int Nr = robot_pts_mat_.rows();
+        if(!qp_cache_init_){
+          A_ineq_cache_.resize(Nr, Dim);
+          u_ineq_cache_.resize(Nr);
+          A_eq_cache_.resize(1, Dim);
+          b_eq_cache_.resize(1);
+          qp_cache_init_ = true;
+        }
         // inequalitiy constraints A_ineq * x <= u_ineq
-        int Nr = robot_shape_pts_2d.size();
-        Eigen::MatrixXd A_ineq(Nr, 2);
-        Eigen::VectorXd u_ineq(Nr);
+
         for (int i = 0; i < Nr; i++){
-          Eigen::Vector2d diff = robot_shape_pts_2d[i] - obs_pt;
-          A_ineq.row(i) = diff.transpose();
-          u_ineq(i) = -eps;
+          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
+          u_ineq_cache_(i) = -eps;
         }
         // Equality constraints A_eq * x = b_eq
-        Eigen::Matrix<double, 1, 2> A_eq;
-        Eigen::VectorXd b_eq(1);
-        Eigen::Vector2d diff_eq = seed_center - obs_pt;
-        A_eq.row(0) = diff_eq.transpose();
-        b_eq(0) = -1.0;
+        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
+        b_eq_cache_(0) = -1.0;
 
-        piqp::DenseSolver<double> solver;
-        solver.setup(Q, c, A_eq, b_eq, A_ineq, piqp::nullopt, u_ineq, piqp::nullopt, piqp::nullopt);
-        const auto result = solver.solve();
+        if (!solver_init_){
+          solver_.setup(Q, c,
+                        A_eq_cache_, b_eq_cache_,
+                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                        piqp::nullopt, piqp::nullopt);
+          solver_init_ = true;
+        }
+        else{
+          solver_.update(Q, c,
+                         A_eq_cache_, b_eq_cache_,
+                         A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                         piqp::nullopt, piqp::nullopt);
+        }
+
+        const auto result = solver_.solve();
         Eigen::VectorXd sol;
         if (result == piqp::Status::PIQP_SOLVED){
-          sol = solver.result().x;
+          sol = solver_.result().x;
         }
         else{
           std::cout << "PIQP failed to solve the QP and the status is " << static_cast<int>(result) << std::endl;
@@ -428,27 +524,42 @@ class LineSegment : public DecompBase<Dim> {
         // linear term c
         Eigen::Vector3d c = Eigen::Vector3d::Zero();
         // inequalitiy constraints A_ineq * x <= u_ineq
-        int Nr = robot_shape_pts_3d.size();
-        Eigen::MatrixXd A_ineq(Nr, 3);
-        Eigen::VectorXd u_ineq(Nr);
+        const int Nr = robot_pts_mat_.rows();
+        if(!qp_cache_init_){
+          A_ineq_cache_.resize(Nr, Dim);
+          u_ineq_cache_.resize(Nr);
+          A_eq_cache_.resize(1, Dim);
+          b_eq_cache_.resize(1);
+          qp_cache_init_ = true;
+        }
+        // inequalitiy constraints A_ineq * x <= u_ineq
+
         for (int i = 0; i < Nr; i++){
-          Eigen::Vector3d diff = robot_shape_pts_3d[i] - obs_pt;
-          A_ineq.row(i) = diff.transpose();
-          u_ineq(i) = -eps; 
+          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
+          u_ineq_cache_(i) = -eps;
         }
         // Equality constraints A_eq * x = b_eq
-        Eigen::Matrix<double, 1, 3> A_eq;
-        Eigen::VectorXd b_eq(1);
-        Eigen::Vector3d diff_eq = seed_center - obs_pt;
-        A_eq.row(0) = diff_eq.transpose();
-        b_eq(0) = -1.0;
+        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
+        b_eq_cache_(0) = -1.0;
 
-        piqp::DenseSolver<double> solver;
-        solver.setup(Q, c, A_eq, b_eq, A_ineq, piqp::nullopt, u_ineq, piqp::nullopt, piqp::nullopt);
-        const auto result = solver.solve();
+        if (!solver_init_){
+          solver_.setup(Q, c,
+                        A_eq_cache_, b_eq_cache_,
+                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                        piqp::nullopt, piqp::nullopt);
+          solver_init_ = true;
+        }
+        else{
+          solver_.update(Q, c,
+                         A_eq_cache_, b_eq_cache_,
+                         A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                         piqp::nullopt, piqp::nullopt);
+        }
+
+        const auto result = solver_.solve();
         Eigen::VectorXd sol;
         if (result == piqp::Status::PIQP_SOLVED){
-          sol = solver.result().x;
+          sol = solver_.result().x;
         }
         else{
           std::cout << "PIQP failed to solve the QP and the status is " << static_cast<int>(result) << std::endl;
@@ -477,7 +588,7 @@ class LineSegment : public DecompBase<Dim> {
 
         // we inflate the ellipsoid anisotropically
         const double scale_long = 1.5;
-        const double scale_lat = 1.01;
+        const double scale_lat = 1.1;
         Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
 
         Vecf<Dim> e1;
@@ -496,7 +607,7 @@ class LineSegment : public DecompBase<Dim> {
 
           vec_Vecf<Dim> obs_tmp;
           for (const auto &it : obs_remain) {
-            if (v.signed_dist(it) < 0)
+            if (v.signed_dist(it) < -1e-10)
               obs_tmp.push_back(it);
           }
           obs_remain = obs_tmp;
@@ -526,7 +637,7 @@ class LineSegment : public DecompBase<Dim> {
 
         // we inflate the ellipsoid anisotropically
         const double scale_long = 1.5;
-        const double scale_lat = 1.01;
+        const double scale_lat = 1.1;
         Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
         Vecf<Dim> seed = Vecf<Dim>::UnitX();
         if (std::abs(e0.dot(seed)) > 0.9){
@@ -548,7 +659,7 @@ class LineSegment : public DecompBase<Dim> {
 
           vec_Vecf<Dim> obs_tmp;
           for (const auto &it : obs_remain) {
-            if (v.signed_dist(it) < 0)
+            if (v.signed_dist(it) < -1e-10)
               obs_tmp.push_back(it);
           }
           obs_remain = obs_tmp;
@@ -562,14 +673,16 @@ class LineSegment : public DecompBase<Dim> {
     /// Anisotropic polyhedron (2D)
     template<int U = Dim>
       typename std::enable_if<U == 2>::type
-      find_polyhedron_aniso_full(double radius) {
+      find_polyhedron_aniso_full(double radius, const Vecf<Dim> &center) {
         Polyhedron<Dim> Vs;
         vec_Vecf<Dim> obs_remain = this->obs_;
         // first check if there is any hyperplnae generate by find_polyhedron_for_seed
+        bool obs_in_seed = false;
         if(!this->polyhedron_.vs_.empty()){
           vec_Vecf<Dim> obs_tmp;
           obs_tmp = this->polyhedron_.points_inside(obs_remain);
           obs_remain = obs_tmp;
+          obs_in_seed = true;
         }
         
         if (obs_remain.empty()){
@@ -577,8 +690,8 @@ class LineSegment : public DecompBase<Dim> {
         }
 
         // we inflate the ellipsoid anisotropically
-        const double scale_long = 2.0;
-        const double scale_lat = 1.01;
+        const double scale_long = 1.5;
+        const double scale_lat = 1.1;
         Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
 
         Vecf<Dim> e1;
@@ -589,17 +702,116 @@ class LineSegment : public DecompBase<Dim> {
         R.col(0) = e0;   // local x: along line
         R.col(1) = e1;   // local y: lateral
 
+int counter = 0;
         while (!obs_remain.empty()){
           aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
 
-          // const auto v = this->aniso_ellipsoid_.closest_hyperplane(obs_remain);
-          Eigen::Vector2d e = (p2_ - p1_).normalized();
-          const auto v = this->aniso_ellipsoid_.closest_hyperplane_aniso(obs_remain, e, 0.2);
+          
+          Hyperplane2D v(Vec2f::Zero(), Vec2f::Zero());
+          if (obs_in_seed){
+            const auto pw = this->aniso_ellipsoid_.closest_point(obs_remain);
+            get_hyperplane(pw, center, v);
+
+            vec_E<Hyperplane2D> hp_vec;
+            hp_vec.push_back(v);
+            LinearConstraint2D lc(center, hp_vec);
+            Vec2f A_raw = lc.A_.row(0);
+            double nrm = A_raw.norm();
+            Vec2f A = A_raw / nrm;
+            double b0 = lc.b()(0) / nrm;
+
+            const double eps_robot = 1e-4;  
+            const double eps_obs = 1e-4;    
+            double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+            v.n_ = A;
+            v.p_ = A * b;
+          }
+          else{
+            v = this->aniso_ellipsoid_.closest_hyperplane(obs_remain);
+          }
+
+          Vs.add(v);
+counter++;
+          vec_Vecf<Dim> obs_tmp;
+          for (const auto &it : obs_remain) {
+            if (v.signed_dist(it) < -1e-10)
+              obs_tmp.push_back(it);
+          }
+          obs_remain = obs_tmp;
+        }
+std::cout << "Aniso full polyhedron generated " << counter << " hyperplanes." << std::endl;
+        if (Vs.vs_.empty()){
+          return;
+        }
+        this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
+      }
+    
+    /// Anisotropic polyhedron (3D)
+    template<int U = Dim>
+      typename std::enable_if<U == 3>::type
+      find_polyhedron_aniso_full(double radius,  const Vecf<Dim> &center) {
+        Polyhedron<Dim> Vs;
+        vec_Vecf<Dim> obs_remain = this->obs_;
+        // first check if there is any hyperplnae generate by find_polyhedron_for_seed
+        bool obs_in_seed = false;
+        if(!this->polyhedron_.vs_.empty()){
+          vec_Vecf<Dim> obs_tmp;
+          obs_tmp = this->polyhedron_.points_inside(obs_remain);
+          obs_remain = obs_tmp;
+          obs_in_seed = true;
+        }
+        
+        if (obs_remain.empty()){
+          return;
+        }
+
+        // we inflate the ellipsoid anisotropically
+        const double scale_long = 1.5;
+        const double scale_lat = 1.1;
+        Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
+        Vecf<Dim> seed = Vecf<Dim>::UnitX();
+        if (std::abs(e0.dot(seed)) > 0.9){
+          seed = Vecf<Dim>::UnitY();
+        }
+        Vecf<Dim> e1 = e0.cross(seed).normalized();
+        Vecf<Dim> e2 = e0.cross(e1).normalized();
+
+        Matf<Dim, Dim> R = Matf<Dim, Dim>::Identity();
+        R.col(0) = e0;   // local x: along line
+        R.col(1) = e1;   // local y: lateral
+        R.col(2) = e2;   // local z: vertical
+        
+        while (!obs_remain.empty()){
+          aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
+
+          
+          Hyperplane3D v(Vec3f::Zero(), Vec3f::Zero());
+          if(obs_in_seed){
+            const auto pw = this->aniso_ellipsoid_.closest_point(obs_remain);
+            get_hyperplane(pw, center, v);
+
+            vec_E<Hyperplane3D> hp_vec;
+            hp_vec.push_back(v);
+            LinearConstraint3D lc(center, hp_vec);
+            Vec3f A_raw = lc.A_.row(0);
+            double nrm = A_raw.norm();
+            Vec3f A = A_raw / nrm;
+            double b0 = lc.b()(0) / nrm;
+            const double eps_robot = 1e-4;  
+            const double eps_obs = 1e-4;    
+            double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+            v.n_ = A;
+            v.p_ = A * b;
+          }
+          else{
+            v = this->aniso_ellipsoid_.closest_hyperplane(obs_remain);
+          }
+
           Vs.add(v);
 
           vec_Vecf<Dim> obs_tmp;
           for (const auto &it : obs_remain) {
-            if (v.signed_dist(it) < 0)
+            if (v.signed_dist(it) < -1e-10)
               obs_tmp.push_back(it);
           }
           obs_remain = obs_tmp;
@@ -609,7 +821,7 @@ class LineSegment : public DecompBase<Dim> {
         }
         this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
       }
-    
+
     template<int U = Dim>
       typename std::enable_if<U == 2>::type
       aniso_inflate_ellipsoid(double scale_long, double scale_lat, Matf<Dim, Dim>& R, vec_Vecf<Dim>& obs) {
@@ -629,6 +841,8 @@ class LineSegment : public DecompBase<Dim> {
           C_local(1,1) *= scale_lat;
           C_world = R * C_local * R.transpose();
           E.C_ = C_world;
+          E.update_cache();
+
           obs_tmp = E.points_inside(obs);
           if (obs_tmp.empty()){
             this->aniso_ellipsoid_.C_ = C_world;
@@ -657,6 +871,7 @@ class LineSegment : public DecompBase<Dim> {
           C_local(0,0) = a;
           C_world = R * C_local * R.transpose();
           this->aniso_ellipsoid_.C_ = C_world;
+          this->aniso_ellipsoid_.update_cache();
           return;
         }
       }
@@ -683,6 +898,7 @@ class LineSegment : public DecompBase<Dim> {
           C_local(2,2) *= scale_lat;
           C_world = R * C_local * R.transpose();
           E.C_ = C_world;
+          E.update_cache();
           obs_tmp = E.points_inside(obs);
           if (obs_tmp.empty()){
             this->aniso_ellipsoid_.C_ = C_world;
@@ -713,6 +929,7 @@ class LineSegment : public DecompBase<Dim> {
           C_local(0,0) = a;
           C_world = R * C_local * R.transpose();
           this->aniso_ellipsoid_.C_ = C_world;
+          this->aniso_ellipsoid_.update_cache();
           return;
         }
       }
@@ -723,6 +940,18 @@ class LineSegment : public DecompBase<Dim> {
     Vecf<Dim> p2_;
     /// vertices of the robot
     std::vector<Vecf<Dim>> robot_shape_pts_;
+    Eigen::MatrixXd robot_pts_mat_;   // Nr x Dim
+    bool robot_pts_cached_ = false;
+
+    Eigen::MatrixXd A_ineq_cache_;   // Nr x Dim
+    Eigen::VectorXd u_ineq_cache_;   // Nr
+    Eigen::Matrix<double, 1, Eigen::Dynamic> A_eq_cache_; // 1 x Dim
+    Eigen::VectorXd b_eq_cache_;     // 1
+
+    bool qp_cache_init_ = false;
+
+    piqp::DenseSolver<double> solver_;
+    bool solver_init_ = false;
 };
 
 typedef LineSegment<2> LineSegment2D;

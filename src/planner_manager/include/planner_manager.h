@@ -85,6 +85,8 @@ class PlannerManager {
     ros::Publisher poly_pub_aniso_full_;
     ros::Publisher poly_frtree_pub_;
 
+    ros::Publisher test_cube_pub_;
+
     void initPlannerModule(ros::NodeHandle &nh);
 
     /* Callback Functions */
@@ -96,6 +98,8 @@ class PlannerManager {
     void debugTimerCallback(const ros::TimerEvent &event);
     void publishRobotPoints();
     void publishRobotSphere();
+
+    void publishTestCube();
 
     ros::Timer odom_timer_;
     ros::Timer debug_timer_;
@@ -129,6 +133,8 @@ class PlannerManager {
 
     GapExtractor::Ptr gap_extractor_ptr_;
 
+    int num_of_yaw_samples_ = 0;
+
     // plan trajectory function
     void planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, GraphNode* current_node);
     void sortAllCandidatesGap(Eigen:: Vector3d &start_pos,
@@ -143,6 +149,9 @@ class PlannerManager {
     
     bool getTrajectory(Eigen::Vector3d &start_pos, GraphNode* current_node);
     double supportValueVertices(Eigen::Vector3d &norm, vec_Vec3f &vertices, const Eigen::Matrix3d& R);
+    double supportValueVertices(Eigen::Vector2d &norm, vec_Vec2f &vertices, const Eigen::Matrix2d& R);
+
+    double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* current_node);
     std::vector<Eigen::Vector3d> trajectory_points_temp_;

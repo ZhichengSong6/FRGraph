@@ -12,8 +12,10 @@ struct GraphNode {
 
     // the position of the robot when planning process starts
     Eigen::Vector3d replan_pos_;
+    Eigen::Matrix2d R_2d_;
 
     vec_E<Polyhedron3D> polys_;
+    vec_E<Polyhedron2D> polys_2d_;
 
     bool root = false;
     bool visited = false;

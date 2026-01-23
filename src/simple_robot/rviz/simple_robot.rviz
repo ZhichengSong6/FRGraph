@@ -6,6 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Marker5
+        - /Marker5/Status1
       Splitter Ratio: 0.5
     Tree Height: 549
   - Class: rviz/Selection
@@ -280,6 +282,14 @@ Visualization Manager:
       Value: true
       VsColor: 0; 255; 0
       VsScale: 1
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /planner/planner_manager_test_cube
+      Name: Marker
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -317,7 +327,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 83.91290283203125
+      Scale: 70.5077896118164
       Target Frame: <Fixed Frame>
       X: -0.2903575897216797
       Y: -0.3086514472961426
