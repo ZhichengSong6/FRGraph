@@ -231,7 +231,6 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         for (const auto &gap : all_candidates){
             const Vec3f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1], gap.dir_odom_frame[2]);
             LineSegment3D line_segment_aniso(p1, p2);
-            line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_);
             // check the type of gap to set different local bbox
             if (gap.type == 1){ // limited gap
                 line_segment_aniso.set_local_bbox_aniso(Vec3f(0.5f, 0.5f, 0.5f),
@@ -241,6 +240,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
                 line_segment_aniso.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
                                                        Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
             }
+            line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
             // get robot shape in odom frame
             Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
             Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
@@ -291,7 +291,6 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         for (const auto &gap : all_candidates){
             const Vec2f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1]);
             LineSegment2D line_segment_aniso(p1, p2);
-            line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
             // check the type of the gap to set different local bbox
             if (gap.type == 1){ // limited gap
                 line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.5f),
@@ -301,6 +300,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
                 line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
                                                        Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
             }
+            line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
             // getrobot shape in odom frame
             Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
             Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
@@ -360,14 +360,14 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
                    all_candidates[0].dir_odom_frame[1],
                    all_candidates[0].dir_odom_frame[2]);
         LineSegment3D line_segment(p1, p2);
-        line_segment.set_obs(pointcloud_cropped_odom_frame_);
         line_segment.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment.set_obs(pointcloud_cropped_odom_frame_);
         line_segment.dilate(-0.1f);
 
         LineSegment3D line_segment_aniso(p1, p2);
-        line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_);
         line_segment_aniso.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
                                                 Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
 
         // get robot shape in odom frame
         Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
@@ -420,8 +420,8 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
         const Vec2f p2(all_candidates[0].dir_odom_frame[0],
                      all_candidates[0].dir_odom_frame[1]);
         LineSegment2D line_segment(p1, p2);
-        line_segment.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment.set_obs(pointcloud_cropped_odom_frame_2d_);
     auto t0 = std::chrono::high_resolution_clock::now();
         line_segment.dilate(0.1f);
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -429,9 +429,9 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     ROS_INFO("[PlannerManager] dilate elapsed: %.3f ms", ms);
 
         LineSegment2D line_segment_aniso(p1, p2);
-        line_segment_aniso.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
-                                               Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+                                                Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+        line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
 
         // get robot shape in odom frame
         Eigen::Vector2d base_pos_odom(0.0, 0.0);
@@ -470,9 +470,16 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     ROS_INFO("[PlannerManager] dilate_aniso elapsed: %.3f ms", ms_1);
 
         LineSegment2D line_segment_aniso_full(p1, p2);
-        line_segment_aniso_full.set_obs(pointcloud_cropped_odom_frame_2d_);
-        line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
-                                                    Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+
+            if (all_candidates[0].type == 1){ // limited gap
+                line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.2f, 0.5f),
+                                                       Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+            }
+            else{ 
+                line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
+                                                       Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+            }
+        line_segment_aniso_full.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
         line_segment_aniso_full.set_robot_shape_pts(robot_shape_points_odom);
     auto t4 = std::chrono::high_resolution_clock::now();
         line_segment_aniso_full.dilate_aniso_full(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
@@ -523,18 +530,18 @@ void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &sta
         const Vec2f p6(pos6[0], pos6[1]);
 
         LineSegment2D line_segment1(p1, p2);
-        line_segment1.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment1.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment1.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment1.dilate(0.1f);
         polys_FRTree_2d_.push_back(line_segment1.get_polyhedron());
         LineSegment2D line_segment2(p3, p4);
-        line_segment2.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment2.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment2.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment2.dilate(0.1f);
         polys_FRTree_2d_.push_back(line_segment2.get_polyhedron());
         LineSegment2D line_segment3(p5, p6);
-        line_segment3.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment3.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment3.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment3.dilate(0.1f);
         polys_FRTree_2d_.push_back(line_segment3.get_polyhedron()); 
 
@@ -566,18 +573,18 @@ void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &sta
         const Vec3f p6(pos6[0], pos6[1], pos6[2]);
 
         LineSegment3D line_segment1(p1, p2);
-        line_segment1.set_obs(pointcloud_cropped_odom_frame_);
         line_segment1.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment1.set_obs(pointcloud_cropped_odom_frame_);
         line_segment1.dilate(0.1f);
         polys_FRTree_3d_.push_back(line_segment1.get_polyhedron());
         LineSegment3D line_segment2(p3, p4);
-        line_segment2.set_obs(pointcloud_cropped_odom_frame_);
         line_segment2.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment2.set_obs(pointcloud_cropped_odom_frame_);
         line_segment2.dilate(0.1f);
         polys_FRTree_3d_.push_back(line_segment2.get_polyhedron());
         LineSegment3D line_segment3(p5, p6);
-        line_segment3.set_obs(pointcloud_cropped_odom_frame_);
         line_segment3.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment3.set_obs(pointcloud_cropped_odom_frame_);
         line_segment3.dilate(0.1f);
         polys_FRTree_3d_.push_back(line_segment3.get_polyhedron());
 
@@ -938,10 +945,10 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
 
     // test
     decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
-    decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
+    // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
     // first decompose along all gap directions
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
-    decomposeAlongGapDirections(start_pos, all_candidates);
+    // decomposeAlongGapDirections(start_pos, all_candidates);
 
     current_node->children.clear();
     // push all candidates as children of the current node

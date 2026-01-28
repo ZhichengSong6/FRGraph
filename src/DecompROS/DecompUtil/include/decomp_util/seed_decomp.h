@@ -69,6 +69,11 @@ class SeedDecomp : public DecompBase<Dim> {
       }
     }
 
+    // Add the bounding box anisotropically
+    void add_local_bbox_aniso(Polyhedron<Dim> &Vs){
+      return; // seed decomp does not need anisotropic bbox
+    }
+    
     ///Seed location
     Vecf<Dim> p_;
 };

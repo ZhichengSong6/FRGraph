@@ -71,6 +71,11 @@ struct Ellipsoid {
     return Hyperplane<Dim>(closest_pt, n.normalized());
   }
 
+  Hyperplane<Dim> closest_hyperplane(Vecf<Dim> closest_pt) const {
+    const auto n = A_ * (closest_pt - d_);
+    return Hyperplane<Dim>(closest_pt, n.normalized());
+  }
+
   /// find hyperplane base on distance and angle
   Hyperplane<Dim> closest_hyperplane_aniso(const vec_Vecf<Dim> &O, const Vecf<Dim>& e, double lambda){
     Vecf<Dim> best_pt = Vecf<Dim>::Zero();
