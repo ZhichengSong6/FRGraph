@@ -124,6 +124,7 @@ class PlannerManager {
     vec_E<Polyhedron3D> polys_aniso_3d_;
     vec_E<Polyhedron3D> polys_3d_;
     
+    vec_E<Polyhedron3D> polys_aniso_full_;
     vec_E<Polyhedron2D> polys_aniso_full_2d_;
     vec_E<Polyhedron2D> polys_FRTree_2d_;
     vec_E<Polyhedron3D> polys_FRTree_3d_;

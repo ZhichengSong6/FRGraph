@@ -353,6 +353,7 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     polys_aniso_3d_.clear();
     polys_3d_.clear();
 
+    polys_aniso_full_.clear();
     polys_aniso_full_2d_.clear();
     if (env_type_){
         const Vec3f p1(start_pos[0], start_pos[1], start_pos[2]);
@@ -362,11 +363,21 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
         LineSegment3D line_segment(p1, p2);
         line_segment.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
         line_segment.set_obs(pointcloud_cropped_odom_frame_);
-        line_segment.dilate(-0.1f);
+    auto t0 = std::chrono::high_resolution_clock::now();
+        line_segment.dilate(0.1f);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
+    ROS_INFO("[PlannerManager] dilate elapsed: %.3f ms", ms);
 
         LineSegment3D line_segment_aniso(p1, p2);
-        line_segment_aniso.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
-                                                Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+        if (all_candidates[0].type == 1){ // limited gap
+            line_segment_aniso.set_local_bbox_aniso(Vec3f(0.2f, 0.5f, 0.5f),
+                                                   Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+        }
+        else{
+            line_segment_aniso.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
+                                                    Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+        }
         line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
 
         // get robot shape in odom frame
@@ -401,18 +412,44 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
         const Eigen::Vector3d center_odom = center_odom_homo.head<3>();
 
         const double radius = robot_ellipsoid_.C()(0,0);
+    auto t2 = std::chrono::high_resolution_clock::now();
         line_segment_aniso.dilate_aniso(Vec3f(center_odom[0], center_odom[1], center_odom[2]), radius);
+    auto t3 = std::chrono::high_resolution_clock::now();
+    double ms_1 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
+    ROS_INFO("[PlannerManager]  dilate_aniso elapsed: %.3f ms", ms_1);
 
-        polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
+        LineSegment3D line_segment_aniso_full(p1, p2);
+        if (all_candidates[0].type == 1){ // limited gap
+            line_segment_aniso_full.set_local_bbox_aniso(Vec3f(0.2f, 0.5f, 0.5f),
+                                                   Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+        }
+        else{
+            line_segment_aniso_full.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
+                                                    Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
+        }
+        line_segment_aniso_full.set_obs_aniso(pointcloud_cropped_odom_frame_);
+        line_segment_aniso_full.set_robot_shape_pts(robot_shape_points_odom);
+    auto t4 = std::chrono::high_resolution_clock::now();
+        line_segment_aniso_full.dilate_aniso_full(Vec3f(center_odom[0], center_odom[1], center_odom[2]), radius);
+    auto t5 = std::chrono::high_resolution_clock::now();
+    double ms_2 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
+    ROS_INFO("[PlannerManager]  dilate_aniso_full elapsed: %.3f ms", ms_2);
+
         polys_3d_.push_back(line_segment.get_polyhedron());
+        polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
+        polys_aniso_full_.push_back(line_segment_aniso_full.get_polyhedron());
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_3d_);
         decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
+        decomp_ros_msgs::PolyhedronArray poly_msg_aniso_full = DecompROS::polyhedron_array_to_ros(polys_aniso_full_);
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_pub_.publish(poly_msg);
         poly_msg_aniso.header.stamp = ros::Time::now();
         poly_msg_aniso.header.frame_id = "odom";
         poly_pub_aniso_.publish(poly_msg_aniso);
+        poly_msg_aniso_full.header.stamp = ros::Time::now();
+        poly_msg_aniso_full.header.frame_id = "odom";
+        poly_pub_aniso_full_.publish(poly_msg_aniso_full);
     }
     else{
         // 2D case
@@ -429,8 +466,14 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     ROS_INFO("[PlannerManager] dilate elapsed: %.3f ms", ms);
 
         LineSegment2D line_segment_aniso(p1, p2);
-        line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
-                                                Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+        if (all_candidates[0].type == 1){ // limited gap
+            line_segment_aniso.set_local_bbox_aniso(Vec2f(0.2f, 0.5f),
+                                                   Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+        }
+        else{
+            line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
+                                                    Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+        }
         line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
 
         // get robot shape in odom frame
@@ -470,15 +513,14 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     ROS_INFO("[PlannerManager] dilate_aniso elapsed: %.3f ms", ms_1);
 
         LineSegment2D line_segment_aniso_full(p1, p2);
-
-            if (all_candidates[0].type == 1){ // limited gap
-                line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.2f, 0.5f),
-                                                       Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
-            }
-            else{ 
-                line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
-                                                       Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
-            }
+        if (all_candidates[0].type == 1){ // limited gap
+            line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.2f, 0.5f),
+                                                Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+        }
+        else{ 
+            line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
+                                                Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
+        }
         line_segment_aniso_full.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
         line_segment_aniso_full.set_robot_shape_pts(robot_shape_points_odom);
     auto t4 = std::chrono::high_resolution_clock::now();

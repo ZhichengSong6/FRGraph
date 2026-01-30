@@ -29,10 +29,10 @@
   </gazebo>
 
   <xacro:if value="$(arg if_3D_Lidar)">
-    <xacro:Velodyne-HDL-32E connected_to="base_link" scan_name="scan" xyz="0. 0. 0.2" rpy="0. 0. 0."/>
+    <xacro:Velodyne-HDL-32E connected_to="base_link" scan_name="scan" xyz="0. 0. 0.25" rpy="0. 0. 0."/>
   </xacro:if>
   <xacro:unless value="$(arg if_3D_Lidar)">
-    <xacro:scan2d connected_to="base_link" scan_name="scan" xyz="0. 0. 0.2" rpy="0. 0. 0."/>
+    <xacro:scan2d connected_to="base_link" scan_name="scan" xyz="0. 0. 0.25" rpy="0. 0. 0."/>
   </xacro:unless>
 
   <xacro:IMU connected_to="base_link" imu_name="imu" xyz="0. 0. 0.1" rpy="0. 0. 0."/>

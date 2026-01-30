@@ -40,20 +40,20 @@ class DecompBase {
       // only consider points inside local bbox
       Polyhedron<Dim> vs;
       add_local_bbox(vs);
-std::cout << "[set obs] size of vs: " << vs.vs_.size() << std::endl;
-std::cout << "[set obs] Total input obstacle points: " << obs.size() << std::endl;
+// std::cout << "[set obs] size of vs: " << vs.vs_.size() << std::endl;
+// std::cout << "[set obs] Total input obstacle points: " << obs.size() << std::endl;
       obs_ = vs.points_inside(obs);
-std::cout << "[set obs] Obstacle points after local bbox pruning: " << obs_.size() << std::endl;
+// std::cout << "[set obs] Obstacle points after local bbox pruning: " << obs_.size() << std::endl;
     }
 
     void set_obs_aniso(const vec_Vecf<Dim> &obs){
       // only consider points inside local bbox
       Polyhedron<Dim> vs;
       add_local_bbox_aniso(vs);
-std::cout << "[set obs aniso] size of vs: " << vs.vs_.size() << std::endl;
-std::cout << "[set obs aniso] Total input obstacle points: " << obs.size() << std::endl;
+// std::cout << "[set obs aniso] size of vs: " << vs.vs_.size() << std::endl;
+// std::cout << "[set obs aniso] Total input obstacle points: " << obs.size() << std::endl;
       obs_ = vs.points_inside(obs);
-std::cout << "[set obs aniso] Obstacle points after local bbox pruning: " << obs_.size() << std::endl;
+// std::cout << "[set obs aniso] Obstacle points after local bbox pruning: " << obs_.size() << std::endl;
     }
 
     ///Get obstacel points

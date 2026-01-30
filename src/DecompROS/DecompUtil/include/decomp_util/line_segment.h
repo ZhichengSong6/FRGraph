@@ -321,40 +321,66 @@ class LineSegment : public DecompBase<Dim> {
         Polyhedron<Dim> Vs;
         // first check whether there is obstacle inside the seed circle
         auto obs_inside = points_inside_seed(center, radius, this->obs_);
+
 int counter = 0;
 // Vec2f e = (p2_ - p1_).normalized();
         while (!obs_inside.empty()) {
           // find the closest point to the seed center
           const auto pw = closest_point_in_seed(center, obs_inside);
-std::cout << "[seed] closest point to seed center: " << pw.transpose() << std::endl;
+// std::cout << "[seed] closest point to seed center: " << pw.transpose() << std::endl;
 // std::cout << "[seed] (pw - center).dot(e): " << (pw - center).dot(e) << std::endl;
-          // base on the closest point, find the hyperplane
-          Hyperplane2D hp(Vec2f::Zero(), Vec2f::Zero());
-          // get_hyperplane(pw, center, hp);
-          get_hyperplane_seed(pw, center, hp, radius);
-          
-          vec_E<Hyperplane2D> hp_vec;
-          hp_vec.push_back(hp);
-          LinearConstraint2D lc(center, hp_vec);
-          Vec2f A_raw = lc.A_.row(0);
-          double nrm = A_raw.norm();
-          Vec2f A = A_raw / nrm;
-          double b0 = lc.b()(0) / nrm;
-          const double eps_robot = 1e-4;  
-          const double eps_obs = 1e-4;    
-          double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
-          hp.n_ = A;
-          hp.p_ = A * b;
 
-          Vs.add(hp);
-std::cout << "[seed] hyperplane normal: " << hp.n_.transpose() << ", point: " << hp.p_.transpose() << std::endl;
+          const double lambda_max = 10.0;
+          double lambda = 0.0;
+          int best_removed = -1;
+          Hyperplane2D best_hp(Vec2f::Zero(), Vec2f::Zero());
+
+          vec_Vecf<Dim> tmp_kept;
+          tmp_kept.reserve(obs_inside.size());
+          for(;;){
+            Hyperplane2D hp(Vec2f::Zero(), Vec2f::Zero());
+            get_hyperplane_seed(pw, center, hp, radius, lambda);
+
+            vec_E<Hyperplane2D> hp_vec;
+            hp_vec.push_back(hp);
+            LinearConstraint2D lc(center, hp_vec);
+            Vec2f A_raw = lc.A_.row(0);
+            double nrm = A_raw.norm();
+            Vec2f A = A_raw / nrm;
+            double b0 = lc.b()(0) / nrm;
+            const double eps_robot = 1e-4;  
+            const double eps_obs = 1e-4;    
+            double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
+            hp.n_ = A;
+            hp.p_ = A * b;
+
+            tmp_kept.clear();
+            for (const auto &it : obs_inside){
+              if (hp.signed_dist(it) < -1e-10){
+                tmp_kept.push_back(it);
+              }
+            }
+            const int removed = static_cast<int>(obs_inside.size() - tmp_kept.size());
+            if(removed > best_removed){
+              best_removed = removed;
+              best_hp = hp;
+            }
+            
+            if (removed >1) break;
+
+            if (lambda >= lambda_max) break;
+            lambda = (lambda == 0.0) ? 2.0 : std::min(lambda * 2.0, lambda_max);
+          }
+          Vs.add(best_hp);
+
+// std::cout << "[seed] hyperplane normal: " << best_hp.n_.transpose() << ", point: " << best_hp.p_.transpose() << std::endl;
 counter++;
           // remove the points which are on the negative side of the hyperplane
           vec_Vecf<Dim> obs_new;
           obs_new.reserve(obs_inside.size());
-// int size_before = obs_inside.size();
+          int size_before = obs_inside.size();
           for (const auto &it : obs_inside) {
-            if (hp.signed_dist(it) < -1e-10)
+            if (best_hp.signed_dist(it) < -1e-10)
               obs_new.push_back(it);
           }
           obs_inside.swap(obs_new);
@@ -373,27 +399,52 @@ std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplan
         while (!obs_inside.empty()) {
           // find the closest point to the seed center
           const auto pw = closest_point_in_seed(center, obs_inside);
-          // base on the closest point, find the hyperplane
-          Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
-          get_hyperplane(pw, center, hp);
+          const double lambda_max = 10.0;
+          double lambda = 0.0;
+          int best_removed = -1;
+          Hyperplane3D best_hp(Vec3f::Zero(), Vec3f::Zero());
 
-          vec_E<Hyperplane3D> hp_vec;
-          hp_vec.push_back(hp);
-          LinearConstraint3D lc(center, hp_vec);
-          Vec3f A_raw = lc.A_.row(0);
-          double nrm = A_raw.norm();
-          Vec3f A = A_raw / nrm;
-          double b0 = lc.b()(0) / nrm;
-          const double eps_robot = 1e-4;  
-          const double eps_obs = 1e-4;    
-          double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
-          hp.n_ = A;
-          hp.p_ = A * b;
-          Vs.add(hp);
+          vec_Vecf<Dim> tmp_kept;
+          tmp_kept.reserve(obs_inside.size());
+          for(;;){
+            Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
+            get_hyperplane_seed(pw, center, hp, radius, lambda);
+
+            vec_E<Hyperplane3D> hp_vec;
+            hp_vec.push_back(hp);
+            LinearConstraint3D lc(center, hp_vec);
+            Vec3f A_raw = lc.A_.row(0);
+            double nrm = A_raw.norm();
+            Vec3f A = A_raw / nrm;
+            double b0 = lc.b()(0) / nrm;
+            const double eps_robot = 1e-4;  
+            const double eps_obs = 1e-4;    
+            double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
+            hp.n_ = A;
+            hp.p_ = A * b;
+
+            tmp_kept.clear();
+            for (const auto &it : obs_inside){
+              if (hp.signed_dist(it) < -1e-10){
+                tmp_kept.push_back(it);
+              }
+            }
+            const int removed = static_cast<int>(obs_inside.size() - tmp_kept.size());
+            if(removed > best_removed){
+              best_removed = removed;
+              best_hp = hp;
+            }
+            
+            if (removed >10) break;
+
+            if (lambda >= lambda_max) break;
+            lambda = (lambda == 0.0) ? 2.0 : std::min(lambda * 2.0, lambda_max);
+          }
+          Vs.add(best_hp);
           // remove the points which are on the negative side of the hyperplane
           vec_Vecf<Dim> obs_new;
           for (const auto &it : obs_inside) {
-            if (hp.signed_dist(it) < -1e-10)
+            if (best_hp.signed_dist(it) < -1e-10)
               obs_new.push_back(it);
           }
           obs_inside.swap(obs_new);
@@ -589,7 +640,7 @@ std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplan
     
     template<int U = Dim>
       typename std::enable_if<U == 2>::type
-      get_hyperplane_seed(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp, double radius){
+      get_hyperplane_seed(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp, double radius, double lambda_prep = 0.0){
         Eigen::Vector2d e = (p2_ - p1_).normalized();
         Eigen::Vector2d obs_pt = obstacle_pt;
         Eigen::Vector2d seed_center = center;
@@ -608,7 +659,7 @@ std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplan
         if (signed_proj >= 0.1 * radius){
           Eigen::Vector2d a_hat = a / a_norm;
           Eigen::Matrix2d P_prep = Eigen::Matrix2d::Identity() - a_hat * a_hat.transpose();
-          Q = 2.0 * (e * e.transpose()) + 3.0 * P_prep;
+          Q = 2.0 * (e * e.transpose()) + 2.0 * lambda_prep * P_prep;
         }
         else{
           Eigen::Vector2d a_hat = a / a_norm;
@@ -667,6 +718,85 @@ std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplan
         Hyperplane2D hp_tmp(obstacle_pt, Vec2f(sol(0), sol(1)));
         hp = hp_tmp;
 
+      }
+
+    template<int U = Dim>
+      typename std::enable_if<U == 3>::type
+      get_hyperplane_seed(Vec3f obstacle_pt, Vec3f center, Hyperplane3D &hp, double radius, double lambda_prep = 0.0){
+        Eigen::Vector3d e = (p2_ - p1_).normalized();
+        Eigen::Vector3d obs_pt = obstacle_pt;
+        Eigen::Vector3d seed_center = center;
+
+        Eigen::Vector3d a = obs_pt - seed_center;
+        double a_norm = a.norm();
+
+        double eps = 1e-4;
+
+        Eigen::Matrix3d Q = Eigen::Matrix3d::Zero();
+        Eigen::Vector3d c = Eigen::Vector3d::Zero();
+
+        double signed_proj = a.dot(e);
+
+        const double reg = 1e-8;
+        if (signed_proj >= 0.1 * radius){
+          Eigen::Vector3d a_hat = a / a_norm;
+          Eigen::Matrix3d P_prep = Eigen::Matrix3d::Identity() - a_hat * a_hat.transpose();
+          Q = 2.0 * (e * e.transpose()) + 2.0 * lambda_prep * P_prep;
+        }
+        else{
+          Eigen::Vector3d a_hat = a / a_norm;
+          Eigen::Matrix3d P_prep = Eigen::Matrix3d::Identity() - a_hat * a_hat.transpose();
+          Q = 2.0 * P_prep;
+        }
+        Q += 2.0 * reg * Eigen::Matrix3d::Identity();
+
+        // ---------- Constraints ----------
+        const int Nr = robot_pts_mat_.rows();
+        if(!qp_cache_init_){
+          A_ineq_cache_.resize(Nr, Dim);
+          u_ineq_cache_.resize(Nr);
+          A_eq_cache_.resize(1, Dim);
+          b_eq_cache_.resize(1);
+          qp_cache_init_ = true;
+        }
+
+        // robot points must be strictly on negative side of plane through obs_pt:
+        // (r_i - obs)^T n <= -eps
+        for (int i = 0; i < Nr; i++){
+          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
+          u_ineq_cache_(i) = -eps;
+        }
+      
+        // scaling + sign fixing:
+        // (center - obs)^T n = -1   <=>  a^T n = 1
+        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
+        b_eq_cache_(0) = -1.0;
+
+        // ---------- Solve ----------
+        if (!solver_init_){
+          solver_.setup(Q, c,
+                        A_eq_cache_, b_eq_cache_,
+                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                        piqp::nullopt, piqp::nullopt);
+          solver_init_ = true;
+        } else {
+          solver_.update(Q, c,
+                        A_eq_cache_, b_eq_cache_,
+                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                        piqp::nullopt, piqp::nullopt);
+          }
+        const auto result = solver_.solve();
+        Eigen::VectorXd sol;
+        if (result == piqp::Status::PIQP_SOLVED){
+          sol = solver_.result().x;
+        } else {
+          std::cout << "PIQP failed to solve the QP and the status is "
+                    << static_cast<int>(result) << std::endl;
+          return;
+        }
+        // sol is normal
+        Hyperplane3D hp_tmp(obstacle_pt, Vec3f(sol(0), sol(1), sol(2)));
+        hp = hp_tmp;
       }
 
     /// Anisotropic polyhedron (2D)
@@ -799,46 +929,67 @@ std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplan
         R.col(1) = e1;   // local y: lateral
 
         Vec2f e = (p2_ - p1_).normalized();
+        Vec2f e_perp = Vec2f(-e(1), e(0));
+        const double L = (p2_ - p1_).dot(e); // == (p2_-p1_).norm()
 int counter = 0;
         while (!obs_remain.empty()){
           aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
           const auto pw = this->aniso_ellipsoid_.closest_point(obs_remain);
+// std::cout << "closest point to seed center: " << pw.transpose() << std::endl;
           Hyperplane2D v(Vec2f::Zero(), Vec2f::Zero());
           v = this->aniso_ellipsoid_.closest_hyperplane(pw);
           // gate for whether use qp to solve hyperplane
-          bool points_ahead = (pw - center).dot(e) > 0.1 * radius;                  // whether the point is ahead of the seed center
-          bool points_within = (pw - p1_).dot(e) - (p2_ - p1_).dot(e) < 0;          // whether the point is within the line segment
-          Vec2f e_perp = Vec2f(-e(1), e(0));
-          bool lateral_offset = (std::abs((pw - center).dot(e_perp)) < radius) && ((pw - p1_).dot(e) - 0.8 * (p2_ - p1_).dot(e) > 0);      // whether the point has large lateral offset (also need to be not too close to p1_)
+          bool use_qp = false;
+          if(seed_has_constraints){
+            const double s_center = (center - p1_).dot(e);
+            const double s_pw = (pw - p1_).dot(e);
 
-std::cout << "closest point to seed center: " << pw.transpose() << std::endl;
-          if (seed_has_constraints && points_ahead && points_within && !lateral_offset){
-            Vec2f n = v.n_;
-            n.normalize();
-            // check angle between n and e
-            const double align = std::abs(n.dot(e));
-            const double align_thresh = std::cos(30 * M_PI / 180.0);
-            if(align > align_thresh){
-// std::cout << "(pw - center).dot(e): " << (pw - center).dot(e) << std::endl;
-              Hyperplane2D v_qp(Vec2f::Zero(), Vec2f::Zero());
-              get_hyperplane(pw, center, v_qp);
+            const bool points_ahead = s_pw - s_center > 0.1 * radius;          // whether the point is ahead of the seed center
+            const bool points_within = (s_pw < L);                            // whether the point is within the line segment
 
-              vec_E<Hyperplane2D> hp_vec;
-              hp_vec.push_back(v_qp);
-              LinearConstraint2D lc(center, hp_vec);
-              Vec2f A_raw = lc.A_.row(0);
-              double nrm = A_raw.norm();
-              Vec2f A = A_raw / nrm;
-              double b0 = lc.b()(0) / nrm;
+            // lateral distance to the forward line
+            const Vec2f d = pw - center;
+            const double s_rel = d.dot(e);
+            const Vec2f r = d - s_rel * e;      
+            const double lateral = r.norm();
 
-              const double eps_robot = 1e-4;  
-              const double eps_obs = 1e-4;    
-              double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
-              v.n_ = A;
-              v.p_ = A * b;
+            // forward projection far and lateral small
+            const bool forward_far = (s_pw > 0.8 * L);
+            const bool lateral_small = (lateral < radius);
+
+            const bool skip_qp = (forward_far && lateral_small);
+            
+            if (points_ahead && points_within && !skip_qp){
+              // align check: only if ellipsoid plane normal already aligns with forward direction
+              Vec2f n = v.n_;
+              n.normalize();
+              const double align = std::abs(n.dot(e));
+              const double align_thresh = std::cos(30 * M_PI / 180.0);
+              if(align > align_thresh){
+                use_qp = true;
+              }
             }
           }
-std::cout << "hyperplane normal: " << v.n_.transpose() << ", point: " << v.p_.transpose() << std::endl;
+          if (use_qp){
+            Hyperplane2D v_qp(Vec2f::Zero(), Vec2f::Zero());
+            get_hyperplane(pw, center, v_qp);
+
+            vec_E<Hyperplane2D> hp_vec;
+            hp_vec.push_back(v_qp);
+            LinearConstraint2D lc(center, hp_vec);
+            Vec2f A_raw = lc.A_.row(0);
+            double nrm = A_raw.norm();
+            Vec2f A = A_raw / nrm;
+            double b0 = lc.b()(0) / nrm;
+
+            const double eps_robot = 1e-4;  
+            const double eps_obs = 1e-4;    
+            double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+            v.n_ = A;
+            v.p_ = A * b;
+          }
+
+// std::cout << "hyperplane normal: " << v.n_.transpose() << ", point: " << v.p_.transpose() << std::endl;
           Vs.add(v);
 counter++;
           vec_Vecf<Dim> obs_tmp;
@@ -891,30 +1042,64 @@ std::cout << "Aniso full polyhedron generated " << counter << " hyperplanes." <<
         R.col(1) = e1;   // local y: lateral
         R.col(2) = e2;   // local z: vertical
         
+        const Vec3f e = (p2_ - p1_).normalized();
+        const double L = (p2_ - p1_).dot(e); // == (p2_-p1_).norm()
         while (!obs_remain.empty()){
           aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
 
-          
+          const auto pw = this->aniso_ellipsoid_.closest_point(obs_remain);
           Hyperplane3D v(Vec3f::Zero(), Vec3f::Zero());
-          if(seed_has_constraints){
-            const auto pw = this->aniso_ellipsoid_.closest_point(obs_remain);
-            get_hyperplane(pw, center, v);
+          v = this->aniso_ellipsoid_.closest_hyperplane(pw);
+          // gate for whether use qp to solve hyperplane
+          bool use_qp = false;
+          if (seed_has_constraints){
+            const double s_center = (center - p1_).dot(e);
+            const double s_pw = (pw - p1_).dot(e);
 
+            const bool points_ahead = s_pw - s_center > 0.1 * radius;          // whether the point is ahead of the seed center
+            const bool points_within = (s_pw < L);                            // whether the point is within the line segment
+
+            // lateral distance to the forward line
+            const Vec3f r_pw = (pw - p1_) - s_pw * e;
+            const double lateral = r_pw.norm();
+
+            // forward projection far and lateral small
+            const bool forward_far = (s_pw > 0.8 * L);
+            const bool lateral_small = (lateral < radius);
+
+            const bool skip_qp = (forward_far && lateral_small);
+            
+            if (points_ahead && points_within && !skip_qp){
+              // align check: only if ellipsoid plane normal already aligns with forward direction
+              Vec3f n = v.n_;
+              n.normalize();
+              const double align = std::abs(n.dot(e));
+              const double align_thresh = std::cos(30 * M_PI / 180.0);
+              if(align > align_thresh){
+                use_qp = true;
+              }
+            }
+          }
+
+          if(use_qp){
+            Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
+            get_hyperplane(pw, center, v_qp);
+            
             vec_E<Hyperplane3D> hp_vec;
-            hp_vec.push_back(v);
+            hp_vec.push_back(v_qp);
             LinearConstraint3D lc(center, hp_vec);
+
             Vec3f A_raw = lc.A_.row(0);
             double nrm = A_raw.norm();
             Vec3f A = A_raw / nrm;
             double b0 = lc.b()(0) / nrm;
+
             const double eps_robot = 1e-4;  
             const double eps_obs = 1e-4;    
             double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+
             v.n_ = A;
             v.p_ = A * b;
-          }
-          else{
-            v = this->aniso_ellipsoid_.closest_hyperplane(obs_remain);
           }
 
           Vs.add(v);
