@@ -23,6 +23,7 @@
 
 #include "free_regions_graph/free_regions_graph.h"
 #include "gap_extractor/gap_extractor.h"
+#include "trajectory_optimization/trajectory.h"
 
 #include <chrono>
 
@@ -148,7 +149,7 @@ class PlannerManager {
     void decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     
-    bool getTrajectory(Eigen::Vector3d &start_pos, GraphNode* current_node);
+    bool getTargetPose(Eigen::Vector3d &start_pos, GraphNode* current_node);
     double supportValueVertices(Eigen::Vector3d &norm, vec_Vec3f &vertices, const Eigen::Matrix3d& R);
     double supportValueVertices(Eigen::Vector2d &norm, vec_Vec2f &vertices, const Eigen::Matrix2d& R);
 

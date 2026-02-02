@@ -6,8 +6,6 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /Marker5
-        - /Marker5/Status1
       Splitter Ratio: 0.5
     Tree Height: 549
   - Class: rviz/Selection
@@ -282,12 +280,12 @@ Visualization Manager:
       Value: true
       VsColor: 0; 255; 0
       VsScale: 1
-    - Class: rviz/Marker
+    - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /planner/planner_manager_test_cube
-      Name: Marker
+      Name: MarkerArray
       Namespaces:
-        {}
+        child_cube: true
       Queue Size: 100
       Value: true
   Enabled: true

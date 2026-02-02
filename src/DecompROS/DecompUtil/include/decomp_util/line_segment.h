@@ -369,7 +369,7 @@ int counter = 0;
             if (removed >1) break;
 
             if (lambda >= lambda_max) break;
-            lambda = (lambda == 0.0) ? 2.0 : std::min(lambda * 2.0, lambda_max);
+            lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
           }
           Vs.add(best_hp);
 
@@ -438,7 +438,7 @@ std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplan
             if (removed >10) break;
 
             if (lambda >= lambda_max) break;
-            lambda = (lambda == 0.0) ? 2.0 : std::min(lambda * 2.0, lambda_max);
+            lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
           }
           Vs.add(best_hp);
           // remove the points which are on the negative side of the hyperplane
@@ -952,7 +952,6 @@ int counter = 0;
             const double s_rel = d.dot(e);
             const Vec2f r = d - s_rel * e;      
             const double lateral = r.norm();
-
             // forward projection far and lateral small
             const bool forward_far = (s_pw > 0.8 * L);
             const bool lateral_small = (lateral < radius);
@@ -964,8 +963,8 @@ int counter = 0;
               Vec2f n = v.n_;
               n.normalize();
               const double align = std::abs(n.dot(e));
-              const double align_thresh = std::cos(30 * M_PI / 180.0);
-              if(align > align_thresh){
+              const double perp_thresh = std::cos(70 * M_PI / 180.0);
+              if(align > perp_thresh){
                 use_qp = true;
               }
             }
@@ -1074,8 +1073,8 @@ std::cout << "Aniso full polyhedron generated " << counter << " hyperplanes." <<
               Vec3f n = v.n_;
               n.normalize();
               const double align = std::abs(n.dot(e));
-              const double align_thresh = std::cos(30 * M_PI / 180.0);
-              if(align > align_thresh){
+              const double perp_thresh = std::cos(70 * M_PI / 180.0);
+              if(align > perp_thresh){
                 use_qp = true;
               }
             }
