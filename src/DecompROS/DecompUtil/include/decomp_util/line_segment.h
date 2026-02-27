@@ -386,7 +386,7 @@ counter++;
           obs_inside.swap(obs_new);
 // std::cout << "obs reduced from " << size_before << " to " << obs_inside.size() << std::endl;
         }
-std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplanes." << std::endl;
+// std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplanes." << std::endl;
         this->polyhedron_ = Vs;
       }
     
@@ -518,19 +518,41 @@ std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplan
 
     template<int U = Dim>
       typename std::enable_if<U == 2>::type
-      get_hyperplane(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp) {
-        Eigen::Vector2d e = (p2_ - p1_).normalized();
-        std::vector<Eigen::Vector2d> robot_shape_pts_2d;
-        for (const auto &pt : robot_shape_pts_){
-          robot_shape_pts_2d.push_back(Eigen::Vector2d(pt(0), pt(1)));
-        }
-        Eigen::Vector2d obs_pt = obstacle_pt;
+      get_hyperplane(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp, double radius) {
         Eigen::Vector2d seed_center = center;
         double eps = 1e-4;
-        // Q matrix
-        Eigen::Matrix2d Q = 2.0 * (e * e.transpose());
+
+        Eigen::VectorXd e = (p2_ - p1_).normalized();  
+        Eigen::VectorXd obs_pt = obstacle_pt;          
+        Eigen::VectorXd p1 = p1_;                      
+
+        // lateral distance to guide line
+        Eigen::VectorXd v = obs_pt - p1;
+        double s = v.dot(e);
+        Eigen::VectorXd rvec = v - s * e;
+        double d_lat = rvec.norm();
+
+        // switch threshold
+        double d_sw = 0.7 * radius;  
+        double w_max = 1.0;
+
+        // weight schedule
+        double w = 0.0;
+        if (d_lat < d_sw) {
+          double t = 1.0 - d_lat / d_sw;   // in (0,1]
+          w = w_max * t * t;
+        }
+
+        // build Q
+        Eigen::MatrixXd I = Eigen::MatrixXd::Identity(Dim, Dim);
+        Eigen::MatrixXd eeT = e * e.transpose();
+        Eigen::MatrixXd Q = 2.0 * ( eeT + w * (I - eeT) );
+
+        const double reg = 1e-8;
+        Q += 2.0 * reg * I;
+
         // linear term c
-        Eigen::Vector2d c = Eigen::Vector2d::Zero();
+        Eigen::VectorXd c = Eigen::VectorXd::Zero(Dim);
 
         const int Nr = robot_pts_mat_.rows();
         if(!qp_cache_init_){
@@ -579,19 +601,40 @@ std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplan
 
     template<int U = Dim>
       typename std::enable_if<U == 3>::type
-      get_hyperplane(Vec3f obstacle_pt, Vec3f center, Hyperplane3D &hp) {
-        Eigen::Vector3d e = (p2_ - p1_).normalized();
-        std::vector<Eigen::Vector3d> robot_shape_pts_3d;
-        for (const auto &pt : robot_shape_pts_){
-            robot_shape_pts_3d.push_back(Eigen::Vector3d(pt(0), pt(1), pt(2)));
-        }
-        Eigen::Vector3d obs_pt = obstacle_pt;
+      get_hyperplane(Vec3f obstacle_pt, Vec3f center, Hyperplane3D &hp, double radius) {
         Eigen::Vector3d seed_center = center;
         double eps = 1e-4;
-        // Q matrix
-        Eigen::Matrix3d Q = 2.0 * (e * e.transpose());
+        Eigen::VectorXd e = (p2_ - p1_).normalized();  
+        Eigen::VectorXd obs_pt = obstacle_pt;          
+        Eigen::VectorXd p1 = p1_;                      
+
+        // lateral distance to guide line
+        Eigen::VectorXd v = obs_pt - p1;
+        double s = v.dot(e);
+        Eigen::VectorXd rvec = v - s * e;
+        double d_lat = rvec.norm();
+
+        // switch threshold
+        double d_sw = 0.7 * radius;  
+        double w_max = 1.0;
+
+        // weight schedule
+        double w = 0.0;
+        if (d_lat < d_sw) {
+          double t = 1.0 - d_lat / d_sw;   // in (0,1]
+          w = w_max * t * t;
+        }
+
+        // build Q
+        Eigen::MatrixXd I = Eigen::MatrixXd::Identity(Dim, Dim);
+        Eigen::MatrixXd eeT = e * e.transpose();
+        Eigen::MatrixXd Q = 2.0 * ( eeT + w * (I - eeT) );
+
+        const double reg = 1e-8;
+        Q += 2.0 * reg * I;
+
         // linear term c
-        Eigen::Vector3d c = Eigen::Vector3d::Zero();
+        Eigen::VectorXd c = Eigen::VectorXd::Zero(Dim);
         // inequalitiy constraints A_ineq * x <= u_ineq
         const int Nr = robot_pts_mat_.rows();
         if(!qp_cache_init_){
@@ -971,7 +1014,7 @@ int counter = 0;
           }
           if (use_qp){
             Hyperplane2D v_qp(Vec2f::Zero(), Vec2f::Zero());
-            get_hyperplane(pw, center, v_qp);
+            get_hyperplane(pw, center, v_qp, radius);
 
             vec_E<Hyperplane2D> hp_vec;
             hp_vec.push_back(v_qp);
@@ -1001,7 +1044,7 @@ counter++;
           obs_remain.swap(obs_tmp);
 // std::cout << "obs reduced from " << size_before << " to " << obs_remain.size() << std::endl;
         }
-std::cout << "Aniso full polyhedron generated " << counter << " hyperplanes." << std::endl;
+// std::cout << "Aniso full polyhedron generated " << counter << " hyperplanes." << std::endl;
         if (Vs.vs_.empty()){
           return;
         }
@@ -1082,7 +1125,7 @@ std::cout << "Aniso full polyhedron generated " << counter << " hyperplanes." <<
 
           if(use_qp){
             Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
-            get_hyperplane(pw, center, v_qp);
+            get_hyperplane(pw, center, v_qp, radius);
             
             vec_E<Hyperplane3D> hp_vec;
             hp_vec.push_back(v_qp);

@@ -54,6 +54,7 @@ add_executable(${PROJECT_NAME}_node
   src/planner_manager_fsm.cpp
   src/free_regions_graph/free_regions_graph.cpp
   src/gap_extractor/gap_extractor.cpp
+  src/trajectory_optimization/continuous_violation.cpp
 )
 
 add_dependencies(${PROJECT_NAME}_node

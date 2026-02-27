@@ -63,6 +63,8 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     poly_frtree_pub_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_frtree_array", 1, true);
 
     test_cube_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_test_cube", 1, true);
+    traj_vis_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_traj_vis", 1, true);
+    traj_after_opt_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_traj_after_opt", 1, true);
 
     base_scan_ptr_ = geometry_msgs::TransformStamped::Ptr(new geometry_msgs::TransformStamped);
 	tf2_ros::Buffer tfBuffer_lidar;
@@ -182,6 +184,20 @@ void PlannerManager::odomTimerCallback(const ros::TimerEvent &event) {
     }
 }
 
+void PlannerManager::getOdometryInfo(Eigen::Matrix4d &T_odom){
+    T_odom(0,3) = odom_base_ptr_->transform.translation.x;
+    T_odom(1,3) = odom_base_ptr_->transform.translation.y;
+    T_odom(2,3) = odom_base_ptr_->transform.translation.z;
+    T_odom(3,3) = 1.0;
+    
+    Eigen::Quaterniond q;
+    q.x() = odom_base_ptr_->transform.rotation.x;
+    q.y() = odom_base_ptr_->transform.rotation.y;
+    q.z() = odom_base_ptr_->transform.rotation.z;
+    q.w() = odom_base_ptr_->transform.rotation.w;
+    T_odom.block<3,3>(0,0) = q.toRotationMatrix();
+}
+
 void PlannerManager::candidateGapsCallback(const planner_manager::GapCandidates::ConstPtr &msg) {
     gap_candidates_open_.clear();
     gap_candidates_limited_.clear();
@@ -242,19 +258,11 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
             }
             line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
             // get robot shape in odom frame
+            Eigen::Matrix4d T_odom;
+            getOdometryInfo(T_odom);
             Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-            Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
-            if (odom_base_ptr_) {
-                base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
-                base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
-                base_pos_odom[2] = odom_base_ptr_->transform.translation.z;
-                base_rot = Eigen::Quaterniond(
-                    odom_base_ptr_->transform.rotation.w,
-                    odom_base_ptr_->transform.rotation.x,
-                    odom_base_ptr_->transform.rotation.y,
-                    odom_base_ptr_->transform.rotation.z);
-            }
-            const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+            base_pos_odom = T_odom.block<3,1>(0,3);
+            const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
             std::vector<Vec3f> robot_shape_points_odom;
             for (const auto &pt : robot_shape_points_) {
                 const Eigen::Vector3d local_pt(pt[0], pt[1], pt[2]);
@@ -302,19 +310,11 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
             }
             line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
             // getrobot shape in odom frame
+            Eigen::Matrix4d T_odom;
+            getOdometryInfo(T_odom);
             Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-            Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
-            if (odom_base_ptr_) {
-                base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
-                base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
-                base_pos_odom[2] = odom_base_ptr_->transform.translation.z;
-                base_rot = Eigen::Quaterniond(
-                    odom_base_ptr_->transform.rotation.w,
-                    odom_base_ptr_->transform.rotation.x,
-                    odom_base_ptr_->transform.rotation.y,
-                    odom_base_ptr_->transform.rotation.z);
-            }
-            const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+            base_pos_odom = T_odom.block<3,1>(0,3);
+            const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
             std::vector<Vec2f> robot_shape_points_odom;
             for (const auto &pt : robot_shape_points_2d_) {
                 const Eigen::Vector3d local_pt(pt[0], pt[1], 0.0);
@@ -381,19 +381,11 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
         line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
 
         // get robot shape in odom frame
+        Eigen::Matrix4d T_odom;
+        getOdometryInfo(T_odom);
         Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-        Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
-        if (odom_base_ptr_) {
-            base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
-            base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
-            base_pos_odom[2] = odom_base_ptr_->transform.translation.z;
-            base_rot = Eigen::Quaterniond(
-                odom_base_ptr_->transform.rotation.w,
-                odom_base_ptr_->transform.rotation.x,
-                odom_base_ptr_->transform.rotation.y,
-                odom_base_ptr_->transform.rotation.z);
-        }
-        const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+        base_pos_odom = T_odom.block<3,1>(0,3);
+        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
         std::vector<Vec3f> robot_shape_points_odom;
         for (const auto &pt : robot_shape_points_) {
             const Eigen::Vector3d local_pt(pt[0], pt[1], pt[2]);
@@ -477,18 +469,11 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
         line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
 
         // get robot shape in odom frame
+        Eigen::Matrix4d T_odom;
+        getOdometryInfo(T_odom);
         Eigen::Vector2d base_pos_odom(0.0, 0.0);
-        Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
-        if (odom_base_ptr_) {
-            base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
-            base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
-            base_rot = Eigen::Quaterniond(
-                odom_base_ptr_->transform.rotation.w,
-                odom_base_ptr_->transform.rotation.x,
-                odom_base_ptr_->transform.rotation.y,
-                odom_base_ptr_->transform.rotation.z);
-        }
-        const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+        base_pos_odom = T_odom.block<2,1>(0,3);
+        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
         const Eigen::Matrix2d base_rot_2d = base_rot_mat.block<2, 2>(0, 0);
         std::vector<Vec2f> robot_shape_points_odom;
         robot_shape_points_odom.reserve(robot_shape_points_2d_.size());
@@ -869,7 +854,7 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
     }
     else{
         // 2D
-        // fisrt get supporting functions base on current yaw
+        // fisrt get supporting functions base on selected yaw
         vec_E<Hyperplane2D> hyperplanes;
         hyperplanes = current_node->polys_2d_.hyperplanes();
         LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
@@ -879,6 +864,13 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
         double best_value = -std::numeric_limits<double>::infinity();
         Eigen::Vector2d best_pos;
         Eigen::Matrix2d best_rpy;
+        Eigen::Matrix4d T_odom;
+        getOdometryInfo(T_odom);
+        Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
+        base_pos_odom = T_odom.block<3,1>(0,3);
+        // get robot yaw in odom frame
+        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
+        const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
         for (int i = 0; i < num_of_yaw_samples_; ++i) {
             double yaw = -M_PI + (2.0 * M_PI) * (double(i) / double(num_of_yaw_samples_));
             Eigen::Matrix2d R;
@@ -902,7 +894,10 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
             double align = x_axis_world.dot(dir);
             // weight in "meters": w_align=0.1 means 10cm worth of alignment
             double w_align = 0.5;
-            double score = value + align * w_align; // weight for alignment
+
+            double angle_diff = std::abs(yaw - robot_yaw);
+            double w_angle_diff = 0.5; // weight for angle difference 
+            double score = value + align * w_align - angle_diff * w_angle_diff; // weight for alignment
 
             if (score > best_value){
                 best_value = score;
@@ -1005,14 +1000,14 @@ ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
     }
 
     // choose the best candidate which has not been visited
-    for (const auto &child_node : current_node->children) {
-        if (!child_node->visited) {
-            ROS_INFO("[PlannerManager] New node selected for replanning.");
-            child_node->visited = true;
-            current_node_ = child_node;
-            break;
-        }
-    }
+    // for (const auto &child_node : current_node->children) {
+    //     if (!child_node->visited) {
+    //         ROS_INFO("[PlannerManager] New node selected for replanning.");
+    //         child_node->visited = true;
+    //         current_node_ = child_node;
+    //         break;
+    //     }
+    // }
     // print goal pos and the selected replan pos
     // ROS_INFO("[PlannerManager] Goal position: (%.2f, %.2f, %.2f)", goal_pos[0], goal_pos[1], goal_pos[2]);
     // ROS_INFO("[PlannerManager] Selected replan position: (%.2f, %.2f, %.2f)", current_node_->replan_pos_[0], current_node_->replan_pos_[1], current_node_->replan_pos_[2]);
@@ -1023,28 +1018,71 @@ ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
     }
     else{
         Eigen::Vector2d start_xy(start_pos[0], start_pos[1]);
-        Eigen::Vector2d goal_xy(current_node_->replan_pos_[0], current_node_->replan_pos_[1]);
+        // Eigen::Vector2d goal_xy(current_node_->replan_pos_[0], current_node_->replan_pos_[1]);
+        Eigen::Vector2d goal_xy(current_node_->children[0]->replan_pos_[0], current_node_->children[0]->replan_pos_[1]);
+        Eigen::Matrix4d T_odom;
+        getOdometryInfo(T_odom);
         Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-        Eigen::Quaterniond base_rot(1.0, 0.0, 0.0, 0.0);
-        if (odom_base_ptr_) {
-            base_pos_odom[0] = odom_base_ptr_->transform.translation.x;
-            base_pos_odom[1] = odom_base_ptr_->transform.translation.y;
-            base_pos_odom[2] = odom_base_ptr_->transform.translation.z;
-            base_rot = Eigen::Quaterniond(
-                odom_base_ptr_->transform.rotation.w,
-                odom_base_ptr_->transform.rotation.x,
-                odom_base_ptr_->transform.rotation.y,
-                odom_base_ptr_->transform.rotation.z);
-        }
+        base_pos_odom = T_odom.block<3,1>(0,3);
         // get robot yaw in odom frame
-        const Eigen::Matrix3d base_rot_mat = base_rot.normalized().toRotationMatrix();
+        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
         const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
         // get goal yaw based on R_2d_
-        Eigen::Matrix2d R_goal_2d = current_node_->R_2d_;
+        // Eigen::Matrix2d R_goal_2d = current_node_->R_2d_;
+        Eigen::Matrix2d R_goal_2d = current_node_->children[0]->R_2d_;
         double goal_yaw = std::atan2(R_goal_2d(1,0), R_goal_2d(0,0));
-
         BezierSE2 traj = BezierSE2::initFromEndpoints(start_xy, robot_yaw,
                                                       goal_xy,  goal_yaw);
+
+        VerifyOptions opt;
+        opt.eps = 1e-6;
+        opt.min_dt = 1e-4;
+        opt.max_nodes = 8000;
+        opt.unit_normals = false;
+
+        std::vector<Eigen::Vector2d> verts;
+        // put robot_shape_points_2d_ inin verts
+        for (const auto &pt : robot_shape_points_2d_){
+            verts.push_back(pt);
+        }
+        Eigen::MatrixXd A;
+        Eigen::VectorXd b;
+        // vec_E<Hyperplane2D> hyperplanes = current_node->polys_2d_.hyperplanes();
+        vec_E<Hyperplane2D> hyperplanes = current_node_->children[0]->polys_2d_.hyperplanes();
+        LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
+        A = lc.A();
+        b = lc.b();
+
+        WorstViolation2D wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
+        if (wv.safe){
+            ROS_INFO("[PlannerManager] Found a safe trajectory");
+            publishTrajectoryForVisualization(traj);
+        }
+        else{
+            // Not safe, update the traj
+            ROS_INFO("Bezier verify: safe=%d, g=%g, t=%g, k=%d, i=%d",
+                    (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
+
+            publishTrajectoryForVisualization(traj, wv.t);
+        }
+        for (int it=0; it<30; ++it) {
+            WorstViolation2D w = FindWorstViolationContinuous2D(A,b,verts,traj,opt);
+            ROS_INFO("[it %d] safe=%d g=%g t=%g", it, (int)w.safe, w.g, w.t);
+            if (w.safe) break;
+
+            bool ok = RepairOnce_PIQP(A,b,verts,traj,opt,
+                                    /*Kcp=*/2,
+                                    /*topKplanes=*/10,
+                                    /*eps_add=*/1e-6,
+                                    /*margin=*/1e-3,
+                                    /*delta_p=*/0.10,
+                                    /*delta_th=*/0.20,
+                                    /*w_p=*/1.0,
+                                    /*w_th=*/1.0,
+                                    /*w_slack=*/1e4);
+            if (!ok) { ROS_WARN("repair failed"); break; }
+        } 
+        publishTrajectoryAfterOptimization(traj);     
     }
 }
 
@@ -1149,6 +1187,118 @@ void PlannerManager::publishTestCube(){
     single_cube.markers.resize(1); 
     test_cube_pub_.publish(single_cube);
     // test_cube_pub_.publish(cube_array);
+}
+
+void PlannerManager::publishTrajectoryForVisualization(BezierSE2 &traj, double worst_violation_time){
+    // get 10 points along the traj, and pub robot shape at those points
+    visualization_msgs::MarkerArray traj_marker_array;
+    int num_points = 9;
+    for (int i = 0; i <= num_points; ++i){
+        double t = double(i) / double(num_points);
+        Eigen::Vector2d pos = traj.pos(t);
+        // create a marker for the robot at this position
+        visualization_msgs::Marker robot_marker;
+        robot_marker.header.frame_id = "odom";
+        robot_marker.header.stamp = ros::Time::now();
+        robot_marker.ns = "traj_robot";
+        robot_marker.id = i;
+        robot_marker.type = visualization_msgs::Marker::CUBE;
+        robot_marker.action = visualization_msgs::Marker::ADD;
+        robot_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
+        robot_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
+        robot_marker.scale.z = 0.2;
+        robot_marker.color.a = 0.5;
+        robot_marker.color.r = 0.0;
+        robot_marker.color.g = 0.0;
+        robot_marker.color.b = 1.0;
+        robot_marker.pose.position.x = pos[0];
+        robot_marker.pose.position.y = pos[1];
+        robot_marker.pose.position.z = 0;
+        // from 2D rotation matrix to quaternion (robot only has yaw)
+        Eigen::Matrix2d R_mat = traj.R(t);
+        // embed into a 3x3 rotation matrix (rotation about Z)
+        Eigen::Matrix3d R3 = Eigen::Matrix3d::Identity();
+        R3.block<2,2>(0,0) = R_mat;
+        Eigen::Quaterniond q(R3);
+        robot_marker.pose.orientation.x = q.x();
+        robot_marker.pose.orientation.y = q.y();
+        robot_marker.pose.orientation.z = q.z();
+        robot_marker.pose.orientation.w = q.w();
+        traj_marker_array.markers.push_back(robot_marker);
+    }
+    // if worst_violation_time is provided, pub additional marker to indicate it
+    if (worst_violation_time >= 0.0){
+        visualization_msgs::Marker violation_marker;
+        violation_marker.header.frame_id = "odom";
+        violation_marker.header.stamp = ros::Time::now();
+        violation_marker.ns = "traj_robot";
+        violation_marker.id = 0;
+        violation_marker.type = visualization_msgs::Marker::CUBE;
+        violation_marker.action = visualization_msgs::Marker::ADD;
+        violation_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
+        violation_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
+        violation_marker.scale.z = 0.2;
+        violation_marker.color.a = 0.5;
+        violation_marker.color.r = 1.0;
+        violation_marker.color.g = 0.0;
+        violation_marker.color.b = 0.0;
+        Eigen::Vector2d pos = traj.pos(worst_violation_time);
+        violation_marker.pose.position.x = pos[0];
+        violation_marker.pose.position.y = pos[1];
+        violation_marker.pose.position.z = 0;
+        // from 2D rotation matrix to quaternion (robot only has yaw)
+        Eigen::Matrix2d R_mat = traj.R(worst_violation_time);
+        // embed into a 3x3 rotation matrix (rotation about Z)
+        Eigen::Matrix3d R3 = Eigen::Matrix3d::Identity();
+        R3.block<2,2>(0,0) = R_mat;
+        Eigen::Quaterniond q(R3);
+        violation_marker.pose.orientation.x = q.x();
+        violation_marker.pose.orientation.y = q.y();
+        violation_marker.pose.orientation.z = q.z();
+        violation_marker.pose.orientation.w = q.w();
+        traj_marker_array.markers.push_back(violation_marker);
+    }
+    traj_vis_pub_.publish(traj_marker_array);
+}
+
+void PlannerManager::publishTrajectoryAfterOptimization(BezierSE2 &traj){
+    // get 10 points along the traj, and pub robot shape at those points
+    visualization_msgs::MarkerArray traj_marker_array;
+    int num_points = 9;
+    for (int i = 0; i <= num_points; ++i){
+        double t = double(i) / double(num_points);
+        Eigen::Vector2d pos = traj.pos(t);
+        // create a marker for the robot at this position
+        visualization_msgs::Marker robot_marker;
+        robot_marker.header.frame_id = "odom";
+        robot_marker.header.stamp = ros::Time::now();
+        robot_marker.ns = "traj_robot";
+        robot_marker.id = i;
+        robot_marker.type = visualization_msgs::Marker::CUBE;
+        robot_marker.action = visualization_msgs::Marker::ADD;
+        robot_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
+        robot_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
+        robot_marker.scale.z = 0.2;
+        robot_marker.color.a = 1.0;
+        robot_marker.color.r = 0.0;
+        robot_marker.color.g = 0.0;
+        robot_marker.color.b = 0.0;
+        robot_marker.pose.position.x = pos[0];
+        robot_marker.pose.position.y = pos[1];
+        robot_marker.pose.position.z = 0;
+        // from 2D rotation matrix to quaternion (robot only has yaw)
+        Eigen::Matrix2d R_mat = traj.R(t);
+        // embed into a 3x3 rotation matrix (rotation about Z)
+        Eigen::Matrix3d R3 = Eigen::Matrix3d::Identity();
+        R3.block<2,2>(0,0) = R_mat;
+        Eigen::Quaterniond q(R3);
+        robot_marker.pose.orientation.x = q.x();
+        robot_marker.pose.orientation.y = q.y();
+        robot_marker.pose.orientation.z = q.z();
+        robot_marker.pose.orientation.w = q.w();
+        traj_marker_array.markers.push_back(robot_marker);
+    }
+    traj_after_opt_pub_.publish(traj_marker_array);
 }
 
 void PlannerManager::debugTimerCallback(const ros::TimerEvent &event) {

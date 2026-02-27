@@ -122,11 +122,11 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
         return;
     }
     double distance_to_subgoal = (odom_pos_ - planner_manager_->current_node_->replan_pos_).norm();
-    if (distance_to_subgoal < 0.1){
-        ROS_INFO("[FSM]: Reached subgoal, replanning...");
-        changeFSMState(PLAN_TRAJECTORY, "replanCheckCallback");
-        return;
-    }
+    // if (distance_to_subgoal < 0.1){
+    //     ROS_INFO("[FSM]: Reached subgoal, replanning...");
+    //     changeFSMState(PLAN_TRAJECTORY, "replanCheckCallback");
+    //     return;
+    // }
 }
 
 void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
@@ -297,6 +297,7 @@ void PlannerManagerFSM::publishGlobalGraph() {
     }
     global_graph_pub_.publish(ray_list);
 }
+
 void PlannerManagerFSM::visualizationCallback(const ros::TimerEvent &e) {
     if (have_goal_){
         publishGoalMarker();

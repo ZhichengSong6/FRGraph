@@ -204,7 +204,7 @@ Visualization Manager:
       Marker Topic: /goal_marker
       Name: Marker
       Namespaces:
-        goal_marker: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -212,7 +212,7 @@ Visualization Manager:
       Marker Topic: /global_graph
       Name: Marker
       Namespaces:
-        global_graph: true
+        {}
       Queue Size: 100
       Value: true
     - Alpha: 0.20000000298023224
@@ -285,7 +285,23 @@ Visualization Manager:
       Marker Topic: /planner/planner_manager_test_cube
       Name: MarkerArray
       Namespaces:
-        child_cube: true
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /planner/planner_manager_traj_vis
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /planner/planner_manager_traj_after_opt
+      Name: MarkerArray
+      Namespaces:
+        {}
       Queue Size: 100
       Value: true
   Enabled: true

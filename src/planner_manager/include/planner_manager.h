@@ -24,6 +24,7 @@
 #include "free_regions_graph/free_regions_graph.h"
 #include "gap_extractor/gap_extractor.h"
 #include "trajectory_optimization/trajectory.h"
+#include "trajectory_optimization/continuous_violation.h"
 
 #include <chrono>
 
@@ -87,6 +88,8 @@ class PlannerManager {
     ros::Publisher poly_frtree_pub_;
 
     ros::Publisher test_cube_pub_;
+    ros::Publisher traj_vis_pub_;
+    ros::Publisher traj_after_opt_pub_;
 
     void initPlannerModule(ros::NodeHandle &nh);
 
@@ -94,6 +97,7 @@ class PlannerManager {
     void velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg);
     void scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg);
     void odomTimerCallback(const ros::TimerEvent &event);
+    void getOdometryInfo(Eigen::Matrix4d &T_odom);
     void candidateGapsCallback(const planner_manager::GapCandidates::ConstPtr &msg);
 
     void debugTimerCallback(const ros::TimerEvent &event);
@@ -101,6 +105,8 @@ class PlannerManager {
     void publishRobotSphere();
 
     void publishTestCube();
+    void publishTrajectoryForVisualization(BezierSE2& traj, double worst_violation_time = -1.0);
+    void publishTrajectoryAfterOptimization(BezierSE2& traj);
 
     ros::Timer odom_timer_;
     ros::Timer debug_timer_;
