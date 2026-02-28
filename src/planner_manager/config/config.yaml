@@ -59,3 +59,9 @@ planner:
 
   # Parameters for trajectory
   trajectory/num_of_yaw_samples: 72
+  trajectory/num_of_roll_samples: 6
+  trajectory/upper_bound_of_roll: 0.5236 # 30 degrees
+  trajectory/lower_bound_of_roll: -0.5236 # -30 degrees
+  trajectory/num_of_pitch_samples: 6
+  trajectory/upper_bound_of_pitch: 0.5236 # 30 degrees
+  trajectory/lower_bound_of_pitch: -0.5236 # -30 degrees

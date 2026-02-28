@@ -9,6 +9,13 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     if(env_type_){
         ROS_INFO("3D environment, using velodyne pointcloud");
         velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &PlannerManager::velodyneCallback, this);
+        node_.param<int>("trajectory/num_of_yaw_samples", num_of_yaw_samples_, 72);
+        node_.param<int>("trajectory/num_of_roll_samples", num_of_roll_samples_, 20);
+        node_.param<int>("trajectory/num_of_pitch_samples", num_of_pitch_samples_, 20);
+        node_.param<double>("trajectory/upper_bound_of_roll", upper_bound_of_roll_, 0.5236);
+        node_.param<double>("trajectory/lower_bound_of_roll", lower_bound_of_roll_, -0.5236);
+        node_.param<double>("trajectory/upper_bound_of_pitch", upper_bound_of_pitch_, 0.5236);
+        node_.param<double>("trajectory/lower_bound_of_pitch", lower_bound_of_pitch_, -0.5236);
         std::vector<double> robot_shape_pts;
         node_.param<std::vector<double>>("robot_shape/points", robot_shape_pts, {0.1, 0.1, 0.0,
                                                                                      0.1, -0.1, 0.0,
@@ -832,8 +839,10 @@ bool PlannerManager::getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* cu
 
 double PlannerManager::supportValueVertices(Eigen::Vector3d &norm, vec_Vec3f &vertices, const Eigen::Matrix3d& R){
     double h = -std::numeric_limits<double>::infinity();
+    const Eigen::Vector3d n_local = R.transpose() * norm; 
     for (const auto &v : vertices){
-        double val = norm.dot(R * v.cast<double>());
+        // float val = norm.dot(R * v.cast<float>());
+        double val = n_local.dot(v);
         if (val > h) h = val;
     }
     return h;
@@ -841,8 +850,10 @@ double PlannerManager::supportValueVertices(Eigen::Vector3d &norm, vec_Vec3f &ve
 
 double PlannerManager::supportValueVertices(Eigen::Vector2d &norm, vec_Vec2f &vertices, const Eigen::Matrix2d& R){
     double h = -std::numeric_limits<double>::infinity();
+    const Eigen::Vector2d n_local = R.transpose() * norm;
     for (const auto &v : vertices){
-        double val = norm.dot(R * v.cast<double>());
+        // float val = norm.dot(R * v.cast<float>());
+        double val = n_local.dot(v);
         if (val > h) h = val;
     }
     return h;
@@ -851,6 +862,116 @@ double PlannerManager::supportValueVertices(Eigen::Vector2d &norm, vec_Vec2f &ve
 bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* current_node){
     if(env_type_){
         // 3D
+        // fisrt get supporting functions base on selected roll pitch and yaw
+        vec_E<Hyperplane3D> hyperplanes;
+        hyperplanes = current_node->polys_.hyperplanes();
+        LinearConstraint3D lc(start_pos, hyperplanes);
+        Eigen::MatrixXd A;
+        const int m = lc.A().rows();
+        A = lc.A();
+        Eigen::Vector3d dir = current_node->replan_pos_ - start_pos;
+        dir.normalize();
+        double best_value = -std::numeric_limits<double>::infinity();
+        Eigen::Vector3d best_pos;
+        Eigen::Matrix3d best_rpy;
+        Eigen::Matrix4d T_odom;
+        getOdometryInfo(T_odom);
+        Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
+        base_pos_odom = T_odom.block<3,1>(0,3);
+        // get robot roll pitch and yaw in odom frame
+        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
+        const double robot_roll = std::atan2(base_rot_mat(2,1), base_rot_mat(2,2));
+        const double robot_pitch = std::asin(-base_rot_mat(2,0));
+        const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
+
+        const int Ny = num_of_yaw_samples_;
+        const int Nr = num_of_roll_samples_;
+        const int Np = num_of_pitch_samples_;
+
+        std::vector<double> yaw_vals(Ny),  syaw(Ny),  cyaw(Ny);
+        std::vector<double> roll_vals(Nr), sroll(Nr), croll(Nr);
+        std::vector<double> pitch_vals(Np), spitch(Np), cpitch(Np);
+
+        // yaw
+        for (int i = 0; i < Ny; ++i) {
+            double yaw = -M_PI + (2.0 * M_PI) * (double(i) / double(Ny));
+            yaw_vals[i] = yaw;
+            syaw[i] = std::sin(yaw);
+            cyaw[i] = std::cos(yaw);
+        }
+        // roll
+        for (int j = 0; j < Nr; ++j) {
+            double roll = lower_bound_of_roll_ +
+                        (upper_bound_of_roll_ - lower_bound_of_roll_) * (double(j) / double(Nr));
+            roll_vals[j] = roll;
+            sroll[j] = std::sin(roll);
+            croll[j] = std::cos(roll);
+        }
+        // pitch
+        for (int k = 0; k < Np; ++k) {
+            double pitch = lower_bound_of_pitch_ +
+                        (upper_bound_of_pitch_ - lower_bound_of_pitch_) * (double(k) / double(Np));
+            pitch_vals[k] = pitch;
+            spitch[k] = std::sin(pitch);
+            cpitch[k] = std::cos(pitch);
+        }
+        Eigen::VectorXd b_prime(m);
+
+        std::vector<Eigen::Vector3d> arows(m);
+        std::vector<double> shrink(m);
+        const double clearance = 0.02;
+        for(int l = 0; l < m; ++l){
+            arows[l] = A.row(l).transpose();
+            shrink[l] = clearance * arows[l].norm();
+        }        
+
+        // sample loop
+        for (int i = 0; i < num_of_yaw_samples_; ++i){
+            const double yaw = yaw_vals[i];
+            const double cy = cyaw[i], sy = syaw[i];
+            for (int j = 0; j < num_of_roll_samples_; ++j){
+                const double roll = roll_vals[j];
+                const double cr = croll[j], sr = sroll[j];
+                for (int k = 0; k < num_of_pitch_samples_; ++k){
+                    const double pitch = pitch_vals[k];
+                    const double cp = cpitch[k], sp = spitch[k];
+
+                    Eigen::Matrix3d R;
+                    // R = Rz(yaw) * Ry(pitch) * Rx(roll)
+                    R(0,0) = cy*cp;
+                    R(0,1) = cy*sp*sr - sy*cr;
+                    R(0,2) = cy*sp*cr + sy*sr;
+
+                    R(1,0) = sy*cp;
+                    R(1,1) = sy*sp*sr + cy*cr;
+                    R(1,2) = sy*sp*cr - cy*sr;
+
+                    R(2,0) = -sp;
+                    R(2,1) = cp*sr;
+                    R(2,2) = cp*cr;
+                    for(int l = 0; l < m; ++l){
+                        const double hl = supportValueVertices(arows[l], robot_shape_points_, R);
+                        b_prime[l] = lc.b()[l] - hl - shrink[l];
+                    }
+                    Eigen::Vector3d best_vertex;
+                    double value = solveLPByEnumeratingVertices3D(A, b_prime, dir, best_vertex);
+
+                    // make robot's x axis align with dir
+                    Eigen::Vector3d x_axis_world = R.col(0);
+                    double align = x_axis_world.dot(dir);
+                    // weight in "meters": w_align=0.1 means 10cm worth of
+                    double w_align = 0.5;
+                    double angle_diff = std::abs(yaw - robot_yaw) + std::abs(pitch - robot_pitch) + std::abs(roll - robot_roll);
+                    double w_angle_diff = 0.1; // weight for angle difference
+                    double score = value + align * w_align - angle_diff * w_angle_diff; // weight for alignment
+                    if (score > best_value){
+                        best_value = score;
+                        current_node->replan_pos_ = best_vertex;
+                        current_node->R_ = R;
+                    }
+                }
+            }
+        }
     }
     else{
         // 2D
@@ -859,6 +980,8 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
         hyperplanes = current_node->polys_2d_.hyperplanes();
         LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
         const int m = lc.A().rows();
+        Eigen::MatrixXd A;
+        A = lc.A().cast<double>();
         Eigen::Vector2d dir = current_node->replan_pos_.head<2>() - start_pos.head<2>();
         dir.normalize();
         double best_value = -std::numeric_limits<double>::infinity();
@@ -878,7 +1001,7 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
                  std::sin(yaw),  std::cos(yaw);
             Eigen::VectorXd b_prime(m);
             for(int j = 0; j < m; ++j){
-                Eigen::Vector2d aj = lc.A().row(j).transpose();
+                Eigen::Vector2d aj = A.row(j).transpose();
                 double hj = supportValueVertices(aj, robot_shape_points_2d_, R);
                 // clearance shrink:
                 double aj_norm = aj.norm(); 
@@ -887,7 +1010,7 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
                 b_prime[j] = lc.b()[j] - hj - shrink;
             }
             Eigen::Vector2d best_vertex;
-            double value = solveLPByEnumeratingVertices2D(lc.A(), b_prime, dir, best_vertex);
+            double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, best_vertex);
 
             // make robot's x axis align with dir
             Eigen::Vector2d x_axis_world = R.col(0);
@@ -914,8 +1037,8 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
 
 double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex){
     const int m = A.rows();
-    const float det_tol = 1e-10f;
-    const float feas_tol = 1e-6f;
+    const double det_tol = 1e-10;
+    const double feas_tol = 1e-6;
     double best_value = -std::numeric_limits<double>::infinity();
 
     for (int i = 0; i < m; ++i){
@@ -954,6 +1077,72 @@ double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, 
     return best_value;
 }
 
+double PlannerManager::solveLPByEnumeratingVertices3D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex){
+    const int m = A.rows();
+    const double det_tol = 1e-10;
+    const double feas_tol = 1e-6;
+    double best_value = -std::numeric_limits<double>::infinity();
+
+    for (int i = 0; i < m; ++i){
+        for (int j = i + 1; j < m; ++j){
+            for (int k = j + 1; k < m; ++k){
+                Eigen::Vector3d a1 = A.row(i);
+                Eigen::Vector3d a2 = A.row(j);
+                Eigen::Vector3d a3 = A.row(k);
+
+                double det = a1.dot(a2.cross(a3));
+                if (std::abs(det) < det_tol) continue;
+
+                Eigen::Vector3d rhs(bprime[i], bprime[j], bprime[k]);
+
+                Eigen::Vector3d vertex;
+                vertex[0] = rhs.dot(a2.cross(a3)) / det;
+                vertex[1] = a1.dot(rhs.cross(a3)) / det;
+                vertex[2] = a1.dot(a2.cross(rhs)) / det;
+                // check feasibility
+                bool feasible = true;
+                for (int l = 0; l < m; ++l){
+                    double val = A.row(l).dot(vertex);
+                    if (val > bprime[l] + feas_tol){
+                        feasible = false;
+                        break;
+                    }
+                }
+                if (!feasible){
+                    continue;
+                }
+                double dist = dir.dot(vertex);
+                if (dist > best_value){
+                    best_value = dist;
+                    best_vertex = vertex;
+                }
+            }
+        }
+    }    
+    return best_value;
+}
+    
+void PlannerManager::expandChildrenParallel(const Eigen::Vector3d& start_pos, GraphNode* current_node, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates){
+    Eigen::setNbThreads(1);
+    const int N = (int)all_candidates.size();
+    std::vector<GraphNode*> new_children(N, nullptr);
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < N; ++i){
+        const auto& gap = all_candidates[i];
+        GraphNode* new_node = new GraphNode();
+        new_node->parent = current_node;
+        new_node->children.clear();
+        new_node->visited = false;
+        new_node->replan_pos_ = gap.dir_odom_frame;
+        if (env_type_) new_node->polys_ = polys_aniso_3d_[i];
+        else new_node->polys_2d_ = polys_aniso_2d_[i];
+        Eigen::Vector3d sp = start_pos;
+        getTargetPose(sp, new_node);
+        new_children[i] = new_node;
+    }
+    current_node->children.insert(current_node->children.end(), new_children.begin(), new_children.end());
+}
+
 void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, GraphNode* current_node) {
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> all_candidates;
     sortAllCandidatesGap(goal_pos, all_candidates);
@@ -976,22 +1165,33 @@ ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
     current_node->children.clear();
     // push all candidates as children of the current node
     int index = 0;
-    for (const auto &gap : all_candidates) {
-        GraphNode* new_node = new GraphNode();
-        new_node->parent   = current_node;
-        new_node->children.clear();
-        new_node->visited  = false;
-        new_node->replan_pos_ = gap.dir_odom_frame;
-        if (env_type_){
-            new_node->polys_ = polys_aniso_3d_[index];
+auto t2 = std::chrono::high_resolution_clock::now();
+    if (all_candidates.size() < 10 && !env_type_){
+        // if candidates are few, no need for parallel (2D does not need to parallelize)
+         for (const auto &gap : all_candidates) {
+            GraphNode* new_node = new GraphNode();
+            new_node->parent   = current_node;
+            new_node->children.clear();
+            new_node->visited  = false;
+            new_node->replan_pos_ = gap.dir_odom_frame;
+            if (env_type_){
+                new_node->polys_ = polys_aniso_3d_[index];
+            }
+            else{
+                new_node->polys_2d_ = polys_aniso_2d_[index];
+            }
+            getTargetPose(start_pos, new_node);
+            current_node->children.push_back(new_node);
+            ++index;
         }
-        else{
-            new_node->polys_2d_ = polys_aniso_2d_[index];
-        }
-        getTargetPose(start_pos, new_node);
-        current_node->children.push_back(new_node);
-        ++index;
     }
+    else{
+        // if candidates are many, expand in parallel
+        expandChildrenParallel(start_pos, current_node, all_candidates);
+    }
+auto t3 = std::chrono::high_resolution_clock::now();
+double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
+ROS_INFO("[PlannerManager] getTargetPose elapsed: %.3f ms", ms_pose);
 
     publishTestCube();
     for (int i = 0; i < current_node->children.size(); ++i) {
@@ -1014,7 +1214,51 @@ ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
 
     // parameterlize trajectory from start_pos to current_node_->replan_pos_
     if(env_type_){
-        // 3D trajectory planning can be implemented here
+        Eigen::Vector3d start_xyz(start_pos[0], start_pos[1], start_pos[2]);
+        // Eigen::Vector3d goal_xyz(current_node_->replan_pos_[0], current_node_->replan_pos_[1], current_node_->replan_pos_[2]);
+        Eigen::Vector3d goal_xyz(current_node_->children[0]->replan_pos_[0], current_node_->children[0]->replan_pos_[1], current_node_->children[0]->replan_pos_[2]);
+        Eigen::Matrix4d T_odom;
+        getOdometryInfo(T_odom);
+        Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
+        base_pos_odom = T_odom.block<3,1>(0,3);
+        // get rpy in odom frame
+        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
+        double robot_roll =  std::atan2(base_rot_mat(2,1), base_rot_mat(2,2));
+        double robot_pitch = std::atan2(-base_rot_mat(2,0), std::sqrt(base_rot_mat(2,1)*base_rot_mat(2,1) + base_rot_mat(2,2)*base_rot_mat(2,2)));
+        double robot_yaw =   std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
+        // get goal yaw based on R
+        // Eigen::Matrix3d R_goal = current_node->R_;
+        Eigen::Matrix3d R_goal = current_node_->children[0]->R_;
+        double goal_roll =  std::atan2(R_goal(2,1), R_goal(2,2));
+        double goal_pitch = std::atan2(-R_goal(2,0), std::sqrt(R_goal(2,1)*R_goal(2,1) + R_goal(2,2)*R_goal(2,2)));
+        double goal_yaw =   std::atan2(R_goal(1,0), R_goal(0,0));
+        BezierSE3 traj = BezierSE3::initFromEndpoints(start_xyz, Eigen::Vector3d(robot_roll, robot_pitch, robot_yaw),
+                                                      goal_xyz,  Eigen::Vector3d(goal_roll, goal_pitch, goal_yaw));
+
+        VerifyOptions opt;
+        opt.eps = 1e-6;
+        opt.min_dt = 1e-4;
+        opt.max_nodes = 8000;
+        opt.unit_normals = false;
+
+        std::vector<Eigen::Vector3d> verts;
+        // put robot_shape_points_ in verts
+        for (const auto &pt : robot_shape_points_){
+            verts.push_back(Eigen::Vector3d(pt[0], pt[1], pt[2]));
+        }
+        Eigen::MatrixXd A;
+        Eigen::VectorXd b;
+        // vec_E<Hyperplane3D> hyperplanes = current_node->polys_.hyperplanes();
+        vec_E<Hyperplane3D> hyperplanes = current_node_->children[0]->polys_.hyperplanes();
+        LinearConstraint3D lc(start_pos, hyperplanes);
+        A = lc.A();
+        b = lc.b();
+
+        WorstViolation wv = FindWorstViolationContinuous3D(A, b, verts, traj, opt);
+        if (wv.safe){
+            ROS_INFO("[PlannerManager] Found a safe trajectory");
+            publishTrajectoryForVisualization(traj);
+        }
     }
     else{
         Eigen::Vector2d start_xy(start_pos[0], start_pos[1]);
@@ -1053,7 +1297,7 @@ ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
         A = lc.A();
         b = lc.b();
 
-        WorstViolation2D wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
+        WorstViolation wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
         if (wv.safe){
             ROS_INFO("[PlannerManager] Found a safe trajectory");
             publishTrajectoryForVisualization(traj);
@@ -1065,8 +1309,9 @@ ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
 
             publishTrajectoryForVisualization(traj, wv.t);
         }
+// auto t4 = std::chrono::high_resolution_clock::now();
         for (int it=0; it<30; ++it) {
-            WorstViolation2D w = FindWorstViolationContinuous2D(A,b,verts,traj,opt);
+            WorstViolation w = FindWorstViolationContinuous2D(A,b,verts,traj,opt);
             ROS_INFO("[it %d] safe=%d g=%g t=%g", it, (int)w.safe, w.g, w.t);
             if (w.safe) break;
 
@@ -1082,6 +1327,9 @@ ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
                                     /*w_slack=*/1e4);
             if (!ok) { ROS_WARN("repair failed"); break; }
         } 
+// auto t5 = std::chrono::high_resolution_clock::now();
+// double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
+// ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
         publishTrajectoryAfterOptimization(traj);     
     }
 }
@@ -1160,26 +1408,47 @@ void PlannerManager::publishTestCube(){
         cube_marker.id = static_cast<int>(idx);
         cube_marker.type = visualization_msgs::Marker::CUBE;
         cube_marker.action = visualization_msgs::Marker::ADD;
-        cube_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
-        cube_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
-        cube_marker.scale.z = 0.2;
-        cube_marker.color.a = 0.5;
-        cube_marker.color.r = 1.0;
-        cube_marker.color.g = 0.0;
-        cube_marker.color.b = 0.0;
-        cube_marker.pose.position.x = child_node->replan_pos_[0];
-        cube_marker.pose.position.y = child_node->replan_pos_[1];
-        cube_marker.pose.position.z = 0;
-        // from 2D rotation matrix to quaternion (robot only has yaw)
-        Eigen::Matrix2d R = child_node->R_2d_;
-        // embed into a 3x3 rotation matrix (rotation about Z)
-        Eigen::Matrix3d R3 = Eigen::Matrix3d::Identity();
-        R3.block<2,2>(0,0) = R;
-        Eigen::Quaterniond q(R3);
-        cube_marker.pose.orientation.x = q.x();
-        cube_marker.pose.orientation.y = q.y();
-        cube_marker.pose.orientation.z = q.z();
-        cube_marker.pose.orientation.w = q.w();
+        if (env_type_){
+            cube_marker.scale.x = robot_shape_points_[0][0] - robot_shape_points_[2][0];
+            cube_marker.scale.y = robot_shape_points_[0][1] - robot_shape_points_[1][1];
+            cube_marker.scale.z = robot_shape_points_[0][2] - robot_shape_points_[4][2];
+            cube_marker.scale.z = 0.2;
+            cube_marker.color.a = 0.5;
+            cube_marker.color.r = 1.0;
+            cube_marker.color.g = 0.0;
+            cube_marker.color.b = 0.0;
+            cube_marker.pose.position.x = child_node->replan_pos_[0];
+            cube_marker.pose.position.y = child_node->replan_pos_[1];
+            cube_marker.pose.position.z = child_node->replan_pos_[2];
+            Eigen::Matrix3d R = child_node->R_;
+            Eigen::Quaterniond q(R);
+            cube_marker.pose.orientation.x = q.x();
+            cube_marker.pose.orientation.y = q.y();
+            cube_marker.pose.orientation.z = q.z();
+            cube_marker.pose.orientation.w = q.w();
+        }
+        else{
+            cube_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
+            cube_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
+            cube_marker.scale.z = 0.2;
+            cube_marker.color.a = 0.5;
+            cube_marker.color.r = 1.0;
+            cube_marker.color.g = 0.0;
+            cube_marker.color.b = 0.0;
+            cube_marker.pose.position.x = child_node->replan_pos_[0];
+            cube_marker.pose.position.y = child_node->replan_pos_[1];
+            cube_marker.pose.position.z = 0;
+            // from 2D rotation matrix to quaternion (robot only has yaw)
+            Eigen::Matrix2d R = child_node->R_2d_;
+            // embed into a 3x3 rotation matrix (rotation about Z)
+            Eigen::Matrix3d R3 = Eigen::Matrix3d::Identity();
+            R3.block<2,2>(0,0) = R;
+            Eigen::Quaterniond q(R3);
+            cube_marker.pose.orientation.x = q.x();
+            cube_marker.pose.orientation.y = q.y();
+            cube_marker.pose.orientation.z = q.z();
+            cube_marker.pose.orientation.w = q.w();
+        }
 
         cube_array.markers.push_back(cube_marker);
     }
@@ -1207,7 +1476,7 @@ void PlannerManager::publishTrajectoryForVisualization(BezierSE2 &traj, double w
         robot_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
         robot_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
         robot_marker.scale.z = 0.2;
-        robot_marker.color.a = 0.5;
+        robot_marker.color.a = 0.2;
         robot_marker.color.r = 0.0;
         robot_marker.color.g = 0.0;
         robot_marker.color.b = 1.0;
@@ -1299,6 +1568,71 @@ void PlannerManager::publishTrajectoryAfterOptimization(BezierSE2 &traj){
         traj_marker_array.markers.push_back(robot_marker);
     }
     traj_after_opt_pub_.publish(traj_marker_array);
+}
+
+void PlannerManager::publishTrajectoryForVisualization(BezierSE3 &traj, double worst_violation_time){
+    // get 10 points along the traj, and pub robot shape at those points
+    visualization_msgs::MarkerArray traj_marker_array;
+    int num_points = 9;
+    for (int i = 0; i <= num_points; ++i){
+        double t = double(i) / double(num_points);
+        Eigen::Vector3d pos = traj.pos(t);
+        // create a marker for the robot at this position
+        visualization_msgs::Marker robot_marker;
+        robot_marker.header.frame_id = "odom";
+        robot_marker.header.stamp = ros::Time::now();
+        robot_marker.ns = "traj_robot";
+        robot_marker.id = i;
+        robot_marker.type = visualization_msgs::Marker::CUBE;
+        robot_marker.action = visualization_msgs::Marker::ADD;
+        robot_marker.scale.x = robot_shape_points_[0][0] - robot_shape_points_[2][0];
+        robot_marker.scale.y = robot_shape_points_[0][1] - robot_shape_points_[1][1];
+        robot_marker.scale.z = robot_shape_points_[0][2] - robot_shape_points_[4][2];
+        robot_marker.color.a = 0.5;
+        robot_marker.color.r = 0.0;
+        robot_marker.color.g = 0.0;
+        robot_marker.color.b = 1.0;
+        robot_marker.pose.position.x = pos[0];
+        robot_marker.pose.position.y = pos[1];
+        robot_marker.pose.position.z = pos[2];
+        Eigen::Matrix3d R = traj.R(t);
+        Eigen::Quaterniond q(R);
+        robot_marker.pose.orientation.x = q.x();
+        robot_marker.pose.orientation.y = q.y();
+        robot_marker.pose.orientation.z = q.z();
+        robot_marker.pose.orientation.w = q.w();
+        traj_marker_array.markers.push_back(robot_marker);
+    }
+    // if worst_violation_time is provided, pub additional marker to indicate it
+    if (worst_violation_time >= 0.0){
+        visualization_msgs::Marker violation_marker;
+        violation_marker.header.frame_id = "odom";
+        violation_marker.header.stamp = ros::Time::now();
+        violation_marker.ns = "traj_robot";
+        violation_marker.id = 0;
+        violation_marker.type = visualization_msgs::Marker::CUBE;
+        violation_marker.action = visualization_msgs::Marker::ADD;
+        violation_marker.scale.x = robot_shape_points_[0][0] - robot_shape_points_[2][0];
+        violation_marker.scale.y = robot_shape_points_[0][1] - robot_shape_points_[1][1];
+        violation_marker.scale.z = robot_shape_points_[0][2] - robot_shape_points_[4][2];
+        violation_marker.color.a = 0.5;
+        violation_marker.color.r = 1.0;
+        violation_marker.color.g = 0.0;
+        violation_marker.color.b = 0.0;
+        Eigen::Vector3d pos = traj.pos(worst_violation_time);
+        violation_marker.pose.position.x = pos[0];
+        violation_marker.pose.position.y = pos[1];
+        violation_marker.pose.position.z = pos[2];
+        // from 2D rotation matrix to quaternion (robot only has yaw)
+        Eigen::Matrix3d R = traj.R(worst_violation_time);
+        Eigen::Quaterniond q(R);
+        violation_marker.pose.orientation.x = q.x();
+        violation_marker.pose.orientation.y = q.y();
+        violation_marker.pose.orientation.z = q.z();
+        violation_marker.pose.orientation.w = q.w();
+        traj_marker_array.markers.push_back(violation_marker);
+    }
+    traj_vis_pub_.publish(traj_marker_array);
 }
 
 void PlannerManager::debugTimerCallback(const ros::TimerEvent &event) {

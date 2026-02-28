@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.7 REQUIRED)
+find_package(OpenMP REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 
 find_package(decomp_util REQUIRED)
@@ -64,4 +65,5 @@ add_dependencies(${PROJECT_NAME}_node
 
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
+  OpenMP::OpenMP_CXX
 )

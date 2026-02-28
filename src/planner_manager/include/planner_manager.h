@@ -106,7 +106,9 @@ class PlannerManager {
 
     void publishTestCube();
     void publishTrajectoryForVisualization(BezierSE2& traj, double worst_violation_time = -1.0);
+    void publishTrajectoryForVisualization(BezierSE3& traj, double worst_violation_time = -1.0);
     void publishTrajectoryAfterOptimization(BezierSE2& traj);
+    void publishTrajectoryAfterOptimization(BezierSE3& traj);
 
     ros::Timer odom_timer_;
     ros::Timer debug_timer_;
@@ -142,6 +144,12 @@ class PlannerManager {
     GapExtractor::Ptr gap_extractor_ptr_;
 
     int num_of_yaw_samples_ = 0;
+    int num_of_roll_samples_ = 0;
+    int num_of_pitch_samples_ = 0;
+    double upper_bound_of_roll_ = 0.0;
+    double lower_bound_of_roll_ = 0.0;
+    double upper_bound_of_pitch_ = 0.0;
+    double lower_bound_of_pitch_ = 0.0;
 
     // plan trajectory function
     void planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, GraphNode* current_node);
@@ -155,11 +163,13 @@ class PlannerManager {
     void decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     
+    void expandChildrenParallel(const Eigen::Vector3d& start_pos, GraphNode* current_node, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
     bool getTargetPose(Eigen::Vector3d &start_pos, GraphNode* current_node);
     double supportValueVertices(Eigen::Vector3d &norm, vec_Vec3f &vertices, const Eigen::Matrix3d& R);
     double supportValueVertices(Eigen::Vector2d &norm, vec_Vec2f &vertices, const Eigen::Matrix2d& R);
 
     double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
+    double solveLPByEnumeratingVertices3D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex);
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* current_node);
     std::vector<Eigen::Vector3d> trajectory_points_temp_;
