@@ -876,8 +876,6 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
         Eigen::Matrix3d best_rpy;
         Eigen::Matrix4d T_odom;
         getOdometryInfo(T_odom);
-        Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-        base_pos_odom = T_odom.block<3,1>(0,3);
         // get robot roll pitch and yaw in odom frame
         const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
         const double robot_roll = std::atan2(base_rot_mat(2,1), base_rot_mat(2,2));
@@ -989,8 +987,6 @@ bool PlannerManager::getTargetPose(Eigen::Vector3d &start_pos, GraphNode* curren
         Eigen::Matrix2d best_rpy;
         Eigen::Matrix4d T_odom;
         getOdometryInfo(T_odom);
-        Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-        base_pos_odom = T_odom.block<3,1>(0,3);
         // get robot yaw in odom frame
         const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
         const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
@@ -1095,10 +1091,10 @@ double PlannerManager::solveLPByEnumeratingVertices3D(const Eigen::MatrixXd &A, 
 
                 Eigen::Vector3d rhs(bprime[i], bprime[j], bprime[k]);
 
-                Eigen::Vector3d vertex;
-                vertex[0] = rhs.dot(a2.cross(a3)) / det;
-                vertex[1] = a1.dot(rhs.cross(a3)) / det;
-                vertex[2] = a1.dot(a2.cross(rhs)) / det;
+                Eigen::Vector3d vertex =
+                    ( rhs[0] * a2.cross(a3)
+                    + rhs[1] * a3.cross(a1)
+                    + rhs[2] * a1.cross(a2) ) / det;
                 // check feasibility
                 bool feasible = true;
                 for (int l = 0; l < m; ++l){
