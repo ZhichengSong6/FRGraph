@@ -232,6 +232,109 @@ inline void remove_redundant_hyperplanes(Polyhedron3D &poly, decimal_t tol = 1e-
   poly.vs_ = kept;
 }
 
+inline void prune_near_duplicate_hyperplanes(Polyhedron2D &poly,
+                                            const Vec2f &inside_pt,
+                                            decimal_t angle_deg = 5.0,
+                                            decimal_t b_thresh  = 2e-3) {
+  if (poly.vs_.empty()) return;
+
+  const double cos_th = std::cos((double)angle_deg * M_PI / 180.0);
+
+  vec_E<Hyperplane2D> kept;
+  kept.reserve(poly.vs_.size());
+
+  std::vector<Vec2f> kept_A_unit;
+  std::vector<double> kept_b_unit;
+  kept_A_unit.reserve(poly.vs_.size());
+  kept_b_unit.reserve(poly.vs_.size());
+
+  for (const auto &hp : poly.vs_) {
+    vec_E<Hyperplane2D> one;
+    one.push_back(hp);
+
+    LinearConstraint2D lc(inside_pt, one);
+
+    Vec2f A_raw = lc.A_.row(0).transpose();
+    const double nrm = (double)A_raw.norm();
+    if (nrm < 1e-12) continue;
+
+    const Vec2f A_unit = (float)(1.0 / nrm) * A_raw;
+    const double b_unit = (double)lc.b()(0) / nrm;
+
+    bool merged = false;
+    for (size_t k = 0; k < kept.size(); ++k) {
+      const double cosang = (double)A_unit.dot(kept_A_unit[k]);
+      if (cosang > cos_th && std::abs(b_unit - kept_b_unit[k]) < (double)b_thresh) {
+        if (b_unit < kept_b_unit[k]) {
+          kept[k]         = hp;
+          kept_A_unit[k]  = A_unit;
+          kept_b_unit[k]  = b_unit;
+        }
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) {
+      kept.push_back(hp);
+      kept_A_unit.push_back(A_unit);
+      kept_b_unit.push_back(b_unit);
+    }
+  }
+
+  poly.vs_ = kept;
+}
+
+/// Prune near-duplicate hyperplanes (3D)
+inline void prune_near_duplicate_hyperplanes(Polyhedron3D &poly, const Vec3f &pt, decimal_t angle_deg = 5.0, decimal_t b_thresh = 1e-3){
+  if (poly.vs_.size() < 2){
+    return;
+  }
+
+  const double cos_th = std::cos((double)angle_deg * M_PI / 180.0);
+
+  vec_E<Hyperplane3D> kept;
+  kept.reserve(poly.vs_.size());
+
+  std::vector<Vec3f> kept_A;
+  std::vector<double> kept_b;
+  kept_A.reserve(poly.vs_.size());
+  kept_b.reserve(poly.vs_.size());
+
+  for (const auto& hp : poly.vs_){
+    vec_E<Hyperplane3D> one;
+    one.push_back(hp);
+    LinearConstraint3D lc(pt, one);
+    Vec3f A_raw = lc.A_.row(0).transpose();
+    const double nrm = A_raw.norm();
+
+    const Vec3f A_unit = (float)(1.0 / nrm) * A_raw;
+    const double b_unit = lc.b()(0) / nrm;
+
+    bool merged = false;
+    for (size_t k= 0; k < kept.size(); k++){
+      // same orientation only
+      const double cosang = (double)A_unit.dot(kept_A[k]);
+      if (cosang > cos_th && std::abs(b_unit - kept_b[k]) < (double)b_thresh){
+        // keep tighter constraint: smaller b
+        if (b_unit < kept_b[k]){
+          kept[k] = hp;
+          kept_A[k] = A_unit;
+          kept_b[k] = b_unit;
+      }
+        merged = true;
+        break;
+      }
+    }
+    if (!merged){
+      kept.push_back(hp);
+      kept_A.push_back(A_unit);
+      kept_b.push_back(b_unit);
+    }
+  }
+  poly.vs_ = kept;
+} 
+
 /// Get the convex hull of a 2D points array, use wrapping method
 inline vec_Vec2f cal_convex_hull(const vec_Vec2f &pts) {
   /// find left most point

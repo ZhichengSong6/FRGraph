@@ -128,6 +128,9 @@ class PlannerManager {
     vec_Vec2f robot_shape_points_2d_;
     Ellipsoid2D robot_ellipsoid_2d_;
 
+    std::vector<Eigen::Vector3d> robot_shape_points_d_;
+    std::vector<Eigen::Vector2d> robot_shape_points_2d_d_;
+
     vec_E<Polyhedron2D> polys_aniso_2d_;
     vec_E<Polyhedron2D> polys_2d_;
     vec_E<Polyhedron3D> polys_aniso_3d_;
@@ -165,11 +168,11 @@ class PlannerManager {
     
     void expandChildrenParallel(const Eigen::Vector3d& start_pos, GraphNode* current_node, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
     bool getTargetPose(Eigen::Vector3d &start_pos, GraphNode* current_node);
-    double supportValueVertices(Eigen::Vector3d &norm, vec_Vec3f &vertices, const Eigen::Matrix3d& R);
-    double supportValueVertices(Eigen::Vector2d &norm, vec_Vec2f &vertices, const Eigen::Matrix2d& R);
+    double supportValueVertices(const Eigen::Vector3d &norm, const std::vector<Eigen::Vector3d> &vertices, const Eigen::Matrix3d& R);
+    double supportValueVertices(const Eigen::Vector2d &norm, const std::vector<Eigen::Vector2d> &vertices, const Eigen::Matrix2d& R);
 
     double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
-    double solveLPByEnumeratingVertices3D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex);
+    double solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex);
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     bool getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* current_node);
     std::vector<Eigen::Vector3d> trajectory_points_temp_;

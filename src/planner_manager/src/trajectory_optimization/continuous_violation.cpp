@@ -8,16 +8,23 @@ static WorstViolation evalAtT(double t, const Eigen::MatrixXd& A, const Eigen::V
     const Eigen::Vector2d p = traj.pos(t);
     const Eigen::Matrix2d R = traj.R(t);
 
-    const int m = A.rows();
-    for (int k = 0; k < m; ++k){
+    for (int k = 0; k < A.rows(); ++k){
         const Eigen::Vector2d a = A.row(k).transpose();
+        const Eigen::Vector2d a_body = R.transpose() * a; 
+        // support vertex in body frame
+        double h = -1e-100;
+        int vert_i = -1;
         for(int i = 0; i < vertices.size(); ++i){
-            const Eigen::Vector2d x = p + R * vertices[i];
-            const double g = a.dot(x) - b[k];
+            double val = a_body.dot(vertices[i]);
+            if (val > h){
+                h = val;
+                vert_i = i;
+            }
+            const double g = a.dot(p) + h - b[k];
             if (g > out.g){
                 out.g = g;
                 out.plane_k = k;
-                out.vert_i = i;
+                out.vert_i = vert_i;
             }
         }
     }
@@ -35,13 +42,21 @@ static WorstViolation evalAtT(double t, const Eigen::MatrixXd& A, const Eigen::V
     const int m = A.rows();
     for (int k = 0; k < m; ++k){
         const Eigen::Vector3d a = A.row(k).transpose();
+        const Eigen::Vector3d a_body = R.transpose() * a; 
+        // support vertex in body frame
+        double h = -1e-100;
+        int vert_i = -1;
         for(int i = 0; i < vertices.size(); ++i){
-            const Eigen::Vector3d x = p + R * vertices[i];
-            const double g = a.dot(x) - b[k];
+            double val = a_body.dot(vertices[i]);
+            if (val > h){
+                h = val;
+                vert_i = i;
+            }
+            const double g = a.dot(p) + h - b[k];
             if (g > out.g){
                 out.g = g;
                 out.plane_k = k;
-                out.vert_i = i;
+                out.vert_i = vert_i;
             }
         }
     }
@@ -222,7 +237,6 @@ WorstViolation FindWorstViolationContinuous2D(
         pq.push(makeNode(cur.tL, tm, A, b, robot_vertices, traj, L));
         pq.push(makeNode(tm, cur.tR, A, b, robot_vertices, traj, L));
     }
-
     // if pq is empty all intervals are safe
     if(pq.empty() && worst.g <= opt.eps){
         worst.safe = true;
@@ -304,38 +318,41 @@ std::vector<ViolatedPlaneAtT> collectViolatedPlanesAtT(
     int topK)
 {
     std::vector<ViolatedPlaneAtT> violated_planes;
+
+    const int m = A.rows();
+    const int V = (int)verts_body.size();
+    // build verts matrix for vectorized computation: 2 x V
+    Eigen::Matrix<double, 2, Eigen::Dynamic> Vmat(2, V);
+    for (int i = 0; i < V; ++i){
+        Vmat.col(i) = verts_body[i];
+    }
+
     const Eigen::Vector2d p = traj.pos(t_star);
     const Eigen::Matrix2d R = traj.R(t_star);
     const Eigen::Matrix2d S = S2D();
 
-    const int m = A.rows();
+    // precompute R * verts_body for all vertices: 2 x V
+    Eigen::Matrix<double, 2, Eigen::Dynamic> RV = R * Vmat;
     violated_planes.reserve(m);
 
     for (int k = 0; k < m; ++k){
         Eigen::Vector2d a = A.row(k).transpose();
-        double bk = b[k];
+        Eigen::RowVectorXd dots = a.transpose() * RV; // size V
 
-        int best_i = -1;
-        double best_val = -std::numeric_limits<double>::infinity();
-        for(int i = 0; i < (int)verts_body.size(); ++i){
-            // double val = a.dot(p + R * verts_body[i]);
-            double val = a.dot(R * verts_body[i]);
-            if (val > best_val){
-                best_val = val;
-                best_i = i;
-            }
-        }
-
-        const Eigen::Vector2d x = p + R * verts_body[best_i];
-        const double g = a.dot(x) - bk;
+        // find argmax
+        Eigen::Index best_i;
+        double best_val = dots.maxCoeff(&best_i);
+        double val_at_x = a.dot(p) + best_val; // a.dot(p) + a.dot(R * v) = a.dot(p) + best_val
+        double g = val_at_x - b[k];
         if (g > eps_add) {
             ViolatedPlaneAtT vp;
             vp.k = k;
             vp.i = best_i;
             vp.g = g;
             vp.a = a;
-            vp.b = bk;
-            vp.dgdtheta = a.dot(R * (S * verts_body[best_i])); // a^T R S v
+            vp.b = b[k];
+            Eigen::Vector2d S_v(-Vmat(1, best_i), Vmat(0, best_i)); // S * v
+            vp.dgdtheta = a.dot(R * S_v); // a^T R S v
             violated_planes.push_back(vp);
         }
     }
@@ -367,34 +384,37 @@ std::vector<ViolatedPlaneAtT3D> collectViolatedPlanesAtT(
     const Eigen::Matrix3d R = traj.R(t_star);
 
     const int m = A.rows();
+    const int V = (int)verts_body.size();
+    // build verts matrix: 3xV
+    Eigen::Matrix<double, 3, Eigen::Dynamic> Vmat(3, V);
+    for (int i = 0; i < V; ++i){
+        Vmat.col(i) = verts_body[i];
+    }
+    // precompute R * verts_body for all vertices: 3 x V
+    Eigen::Matrix<double, 3, Eigen::Dynamic> RV = R * Vmat;
+
     violated_planes.reserve(m);
 
     for (int k = 0; k < m; ++k){
         Eigen::Vector3d a = A.row(k).transpose();
-        double bk = b[k];
 
-        int best_i = -1;
-        double best_val = -std::numeric_limits<double>::infinity();
-        for(int i = 0; i < (int)verts_body.size(); ++i){
-            double val = a.dot(p + R * verts_body[i]);
-            if (val > best_val){
-                best_val = val;
-                best_i = i;
-            }
-        }
+        // dots = a^T (R*v_i) for all i
+        Eigen::RowVectorXd dots = a.transpose() * RV; // size V
+        Eigen::Index best_i;
+        const double bset_val = dots.maxCoeff(&best_i);
 
-        const Eigen::Vector3d x = p + R * verts_body[best_i];
-        const double g = a.dot(x) - bk;
+        const double g = a.dot(p) + bset_val - b[k];
+
         if (g > eps_add) {
             ViolatedPlaneAtT3D vp;
             vp.k = k;
             vp.i = best_i;
             vp.g = g;
             vp.a = a;
-            vp.b = bk;
+            vp.b = b[k];
             // ---- attitude gradient wrt small body rotation delta_phi (body frame) ----
             // d g ≈ (v × (R^T a))^T delta_phi   
-            const Eigen::Vector3d v = verts_body[best_i];
+            const Eigen::Vector3d v = verts_body[(int)best_i];
             const Eigen::Vector3d a_body = R.transpose() * a;
             vp.dgdphi_body = v.cross(a_body);
 
@@ -416,6 +436,15 @@ std::vector<ViolatedPlaneAtT3D> collectViolatedPlanesAtT(
 // choose Top-K among internal control points {1,2,3,4} by Bernstein weight B[j]
 std::vector<int> selectTopKControlPoints(double t_star, int Kcp) {
     auto B = BezierSE2::bernstein5(t_star);
+    std::vector<int> idx = {1,2,3,4};
+    std::sort(idx.begin(), idx.end(), [&](int a, int b){ return B[a] > B[b]; });
+    if (Kcp < (int)idx.size()) idx.resize(Kcp);
+    return idx;
+}
+
+std::vector<int> selectTopKControlPoints3D(double t_star, int Kcp){
+    // 3d
+    auto B = BezierSE3::bernstein5(t_star);
     std::vector<int> idx = {1,2,3,4};
     std::sort(idx.begin(), idx.end(), [&](int a, int b){ return B[a] > B[b]; });
     if (Kcp < (int)idx.size()) idx.resize(Kcp);
@@ -521,7 +550,7 @@ static bool solveRepairQP_PIQP(
     }
     x_l(n-1) = 0.0; // slack >= 0
 
-        // ---- Solve with PIQP ----
+    // ---- Solve with PIQP ----
     piqp::DenseSolver<double> solver;
     solver.settings().verbose = false;
     solver.settings().compute_timings = false;
@@ -545,6 +574,7 @@ bool RepairOnce_PIQP(
     const std::vector<Eigen::Vector2d>& robot_vertices,
     BezierSE2& traj,
     const VerifyOptions& opt,
+    const WorstViolation& w0,
     int Kcp,
     int topKplanes,
     double eps_add,
@@ -555,11 +585,6 @@ bool RepairOnce_PIQP(
     double w_th,
     double w_slack)
 {
-    WorstViolation w0 = FindWorstViolationContinuous2D(A, b, robot_vertices, traj, opt);
-    if (w0.safe) {
-        return true; // already safe
-    }
-
     // collect violated planes at t*
     std::vector<ViolatedPlaneAtT> violated = collectViolatedPlanesAtT(w0.t, A, b, robot_vertices, traj, eps_add, topKplanes);
     if (violated.empty()) {
@@ -591,12 +616,105 @@ bool RepairOnce_PIQP(
     return false; // failed to find improvement
 }
 
+static bool solveRepairQP3D_PIQP(
+    double t_star,
+    const std::vector<int>& ctrl_idx,                  // selected CP indices in {1..4}
+    const std::vector<ViolatedPlaneAtT3D>& violated,     // usually Top-K planes by g
+    double margin,
+    double delta_p,
+    double delta_th,
+    double w_p,
+    double w_th,
+    double w_slack,
+    Eigen::VectorXd& x_sol)
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    const int Kcp = (int)ctrl_idx.size();
+    const int n = 6 * Kcp + 1; // decision variables: [dPx, dPy, dPz, dRoll, dPitch, dYaw for each CP] + slack
+    const int m = (int)violated.size();
+
+    // Build QP matrices
+    Eigen::MatrixXd P = Eigen::MatrixXd::Zero(n, n);
+    Eigen::VectorXd c = Eigen::VectorXd::Zero(n);
+    for (int cpi = 0; cpi < Kcp; ++cpi){
+        P(6*cpi + 0, 6*cpi + 0) = w_p;   // weight for dPx^2
+        P(6*cpi + 1, 6*cpi + 1) = w_p;   // weight for dPy^2
+        P(6*cpi + 2, 6*cpi + 2) = w_p;   // weight for dPz^2
+        P(6*cpi + 3, 6*cpi + 3) = w_th;  // weight for dRoll^2
+        P(6*cpi + 4, 6*cpi + 4) = w_th;  // weight for dPitch^2
+        P(6*cpi + 5, 6*cpi + 5) = w_th;  // weight for dYaw^2
+    }
+    P(n-1, n-1) = w_slack; // weight for slack
+
+    // tiny regularization to avoid singular P if you set some weights 0
+    for (int i = 0; i < n; ++i) P(i,i) += 1e-9;
+
+    // ---- Build inequality Gx <= h_u (and h_l = -inf) ----
+    Eigen::MatrixXd G = Eigen::MatrixXd::Zero(m, n);
+    Eigen::VectorXd h_l = Eigen::VectorXd::Constant(m, -inf);
+    Eigen::VectorXd h_u = Eigen::VectorXd::Zero(m);
+
+    auto B = BezierSE3::bernstein5(t_star);
+
+    for (int r = 0; r < m; ++r){
+        const auto& vp = violated[r];
+        for (int cpi = 0; cpi < Kcp; ++cpi){
+            const int j = ctrl_idx[cpi];
+            const double bj = B[j];
+            G(r, 6*cpi + 0) = bj * vp.a.x();
+            G(r, 6*cpi + 1) = bj * vp.a.y();
+            G(r, 6*cpi + 2) = bj * vp.a.z();
+            G(r, 6*cpi + 3) = bj * vp.dgdphi_body.x(); // roll
+            G(r, 6*cpi + 4) = bj * vp.dgdphi_body.y(); // pitch
+            G(r, 6*cpi + 5) = bj * vp.dgdphi_body.z(); // yaw
+        }
+        // slack with -1
+        G(r, n-1) = -1.0;
+        // RHS: -g - margin
+        h_u(r) = -vp.g - margin;
+    }
+    // Box constraints x_l <= x <= x_u (trust region + slack >= 0
+    Eigen::VectorXd x_l = Eigen::VectorXd::Constant(n, -inf);
+    Eigen::VectorXd x_u = Eigen::VectorXd::Constant(n, inf);
+    for (int cpi = 0; cpi < Kcp; ++cpi){
+        x_l(6*cpi + 0) = -delta_p; // dPx >= -delta_p
+        x_u(6*cpi + 0) = delta_p;  // dPx <= delta_p
+        x_l(6*cpi + 1) = -delta_p; // dPy >= -delta_p
+        x_u(6*cpi + 1) = delta_p;  // dPy <= delta_p
+        x_l(6*cpi + 2) = -delta_p; // dPz >= -delta_p
+        x_u(6*cpi + 2) = delta_p;  // dPz <= delta_p
+        x_l(6*cpi + 3) = -delta_th; // dRoll >= -delta_th
+        x_u(6*cpi + 3) = delta_th;  // dRoll <= delta_th
+        x_l(6*cpi + 4) = -delta_th; // dPitch >= -delta_th
+        x_u(6*cpi + 4) = delta_th;  // dPitch <= delta_th
+        x_l(6*cpi + 5) = -delta_th; // dYaw >= -delta_th
+        x_u(6*cpi + 5) = delta_th;  // dYaw <= delta_th
+    }
+    x_l(n-1) = 0.0; // slack >= 0
+
+    // ---- Solve with PIQP ----
+    piqp::DenseSolver<double> solver;
+    solver.settings().verbose = false;
+    solver.settings().compute_timings = false;
+
+    // no equality constraints => pass piqp::nullopt for A,b
+    solver.setup(P, c, piqp::nullopt, piqp::nullopt, G, h_l, h_u, x_l, x_u);
+    piqp::Status status = solver.solve();
+    if (status != piqp::Status::PIQP_SOLVED) {
+        // ROS_WARN("PIQP failed, status=%d", (int)status);
+        return false;
+    }
+    x_sol = solver.result().x;
+    return true;
+}
+
 bool RepairOnce_PIQP(
     const Eigen::MatrixXd& A,
     const Eigen::VectorXd& b,
     const std::vector<Eigen::Vector3d>& robot_vertices,
     BezierSE3& traj,
     const VerifyOptions& opt,
+    const WorstViolation& w0,
     int Kcp,
     int topKplanes,
     double eps_add,
@@ -607,38 +725,33 @@ bool RepairOnce_PIQP(
     double w_th,
     double w_slack)
 {
-    // WorstViolation w0 = FindWorstViolationContinuous3D(A, b, robot_vertices, traj, opt);
-    // if (w0.safe) {
-    //     return true; // already safe
-    // }
+    // collect violated planes at t*
+    std::vector<ViolatedPlaneAtT3D> violated3d = collectViolatedPlanesAtT(w0.t, A, b, robot_vertices, traj, eps_add, topKplanes);
+    if (violated3d.empty()) {
+        std::cout << "[RepairOnce_PIQP] Warning: no violated planes found at t*=" << w0.t << " even though w0 is violated. This should not happen." << std::endl;
+        return true; // no violated planes found (should not happen since w0 is violated)
+    }
 
-    // // collect violated planes at t*
-    // std::vector<ViolatedPlaneAtT> violated = collectViolatedPlanesAtT(w0.t, A, b, robot_vertices, traj, eps_add, topKplanes);
-    // if (violated.empty()) {
-    //     std::cout << "[RepairOnce_PIQP] Warning: no violated planes found at t*=" << w0.t << " even though w0 is violated. This should not happen." << std::endl;
-    //     return true; // no violated planes found (should not happen since w0 is violated)
-    // }
-
-    // // select Top-K control points near t*
-    // std::vector<int> ctrl_idx = selectTopKControlPoints(w0.t, Kcp);
+    // select Top-K control points near t*
+    std::vector<int> ctrl_idx = selectTopKControlPoints3D(w0.t, Kcp);
 
     // // solve QP to get delta
-    // Eigen::VectorXd x_sol;
-    // if (!solveRepairQP_PIQP(w0.t, ctrl_idx, violated, margin, delta_p, delta_th, w_p, w_th, w_slack, x_sol)){
-    //     return false; // QP failed
-    // }
+    Eigen::VectorXd x_sol;
+    if (!solveRepairQP3D_PIQP(w0.t, ctrl_idx, violated3d, margin, delta_p, delta_th, w_p, w_th, w_slack, x_sol)){
+        return false; // QP failed
+    }
 
-    // // line search to apply delta
-    // double alpha = 1.0;
-    // for (int ls = 0; ls < 6; ++ls){
-    //     BezierSE3 traj_candidate = traj; 
-    //     applyDeltaToBezier(traj_candidate, ctrl_idx, x_sol, alpha);
-    //     WorstViolation w_candidate = FindWorstViolationContinuous3D(A, b, robot_vertices, traj_candidate, opt);
-    //     if (w_candidate.g < w0.g){
-    //         traj = traj_candidate; // accept
-    //         return true;
-    //     }
-    //     alpha *= 0.5; // reduce step size
-    // }
-    // return false; // failed to find improvement
+    // line search to apply delta
+    double alpha = 1.0;
+    for (int ls = 0; ls < 6; ++ls){
+        BezierSE3 traj_candidate = traj; 
+        applyDeltaToBezier(traj_candidate, ctrl_idx, x_sol, alpha);
+        WorstViolation w_candidate = FindWorstViolationContinuous3D(A, b, robot_vertices, traj_candidate, opt);
+        if (w_candidate.g < w0.g){
+            traj = traj_candidate; // accept
+            return true;
+        }
+        alpha *= 0.5; // reduce step size
+    }
+    return false; // failed to find improvement
 }

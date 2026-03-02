@@ -51,10 +51,13 @@ class LineSegment : public DecompBase<Dim> {
     void dilate_aniso_full(const Vecf<Dim> &center, const float radius){
       set_ellipsoid(center, radius);
       find_polyhedron_for_seed(center, radius);
+// std::cout << "Initial polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
       obs_pruning(center, radius);
       find_polyhedron_aniso_full(radius, center);
       add_local_bbox_aniso(this->polyhedron_);
 // std::cout << "Aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
+      prune_near_duplicate_hyperplanes(this->polyhedron_, p1_, 5.0, 1e-3);
+// std::cout << "After pruning near-duplicate hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
       remove_redundant_hyperplanes(this->polyhedron_);
 // std::cout << "After removing redundant hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
     }
@@ -435,7 +438,7 @@ counter++;
               best_hp = hp;
             }
             
-            if (removed >10) break;
+            if (removed >50) break;
 
             if (lambda >= lambda_max) break;
             lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
@@ -533,9 +536,18 @@ counter++;
         double d_lat = rvec.norm();
 
         // switch threshold
-        double d_sw = 0.7 * radius;  
         double w_max = 1.0;
+        double s_pos = std::max(0.0, s);
 
+        // --------- d_sw schedule (near -> far) ----------
+        const double d_sw_far  = 0.8 * radius;          
+        const double d_sw_near = 1.2 * radius;          
+        const double s0        = 1.5 * radius;          
+
+        double alpha = 1.0 - std::min(1.0, s_pos / s0); 
+        alpha = alpha * alpha;                           
+
+        double d_sw = d_sw_far + alpha * (d_sw_near - d_sw_far);
         // weight schedule
         double w = 0.0;
         if (d_lat < d_sw) {
@@ -592,7 +604,7 @@ counter++;
           sol = solver_.result().x;
         }
         else{
-          std::cout << "PIQP failed to solve the QP and the status is " << static_cast<int>(result) << std::endl;
+          std::cout << "[Free Space generation] In get_hyperplane(2d) PIQP failed to solve the QP and the status is " << static_cast<int>(result) << std::endl;
           return;
         }
         Hyperplane2D hp_tmp(obstacle_pt, Vec2f(sol(0), sol(1)));
@@ -615,9 +627,18 @@ counter++;
         double d_lat = rvec.norm();
 
         // switch threshold
-        double d_sw = 0.7 * radius;  
         double w_max = 1.0;
+        double s_pos = std::max(0.0, s);
 
+        // --------- d_sw schedule (near -> far) ----------
+        const double d_sw_far  = 0.8 * radius;          
+        const double d_sw_near = 1.2 * radius;          
+        const double s0        = 1.5 * radius;          
+
+        double alpha = 1.0 - std::min(1.0, s_pos / s0); 
+        alpha = alpha * alpha;                           
+
+        double d_sw = d_sw_far + alpha * (d_sw_near - d_sw_far);
         // weight schedule
         double w = 0.0;
         if (d_lat < d_sw) {
@@ -674,7 +695,7 @@ counter++;
           sol = solver_.result().x;
         }
         else{
-          std::cout << "PIQP failed to solve the QP and the status is " << static_cast<int>(result) << std::endl;
+          std::cout << "[Free Space generation] In get_hyperplane(3d) PIQP failed to solve the QP and the status is " << static_cast<int>(result) << std::endl;
           return;
         }
         Hyperplane3D hp_tmp(obstacle_pt, Vec3f(sol(0), sol(1), sol(2)));
@@ -752,7 +773,7 @@ counter++;
         if (result == piqp::Status::PIQP_SOLVED){
           sol = solver_.result().x;
         } else {
-          std::cout << "PIQP failed to solve the QP and the status is "
+          std::cout << "[Free Space generation]In get hyperplane seed(2d) PIQP failed to solve the QP and the status is "
                     << static_cast<int>(result) << std::endl;
           return;
         }
@@ -833,7 +854,7 @@ counter++;
         if (result == piqp::Status::PIQP_SOLVED){
           sol = solver_.result().x;
         } else {
-          std::cout << "PIQP failed to solve the QP and the status is "
+          std::cout << "[Free Space generation] In get_hyperplane_seed(3d) PIQP failed to solve the QP and the status is "
                     << static_cast<int>(result) << std::endl;
           return;
         }
@@ -1124,24 +1145,81 @@ counter++;
           }
 
           if(use_qp){
-            Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
-            get_hyperplane(pw, center, v_qp, radius);
+            // Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
+            // get_hyperplane(pw, center, v_qp, radius);
             
-            vec_E<Hyperplane3D> hp_vec;
-            hp_vec.push_back(v_qp);
-            LinearConstraint3D lc(center, hp_vec);
+            // vec_E<Hyperplane3D> hp_vec;
+            // hp_vec.push_back(v_qp);
+            // LinearConstraint3D lc(center, hp_vec);
 
-            Vec3f A_raw = lc.A_.row(0);
-            double nrm = A_raw.norm();
-            Vec3f A = A_raw / nrm;
-            double b0 = lc.b()(0) / nrm;
+            // Vec3f A_raw = lc.A_.row(0);
+            // double nrm = A_raw.norm();
+            // Vec3f A = A_raw / nrm;
+            // double b0 = lc.b()(0) / nrm;
 
-            const double eps_robot = 1e-4;  
-            const double eps_obs = 1e-4;    
-            double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+            // const double eps_robot = 1e-4;  
+            // const double eps_obs = 1e-4;    
+            // double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
 
-            v.n_ = A;
-            v.p_ = A * b;
+            // v.n_ = A;
+            // v.p_ = A * b;
+            const double lambda_max = 8.0;
+            double lambda = 0.0;
+            int best_removed = -1;
+            Hyperplane3D best_hp(Vec3f::Zero(), Vec3f::Zero());
+
+            vec_Vecf<Dim> tmp_kept;
+            tmp_kept.reserve(obs_remain.size());
+
+            for(;;){
+
+              Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
+              get_hyperplane_seed(pw, center, hp, radius, lambda);
+
+
+              vec_E<Hyperplane3D> hp_vec;
+              hp_vec.push_back(hp);
+              LinearConstraint3D lc(center, hp_vec);
+
+              Vec3f A_raw = lc.A_.row(0);
+              double nrm = A_raw.norm();
+              if(nrm < 1e-12) {
+
+              } else {
+                Vec3f A = A_raw / nrm;
+                double b0 = lc.b()(0) / nrm;
+
+          
+                const double eps_robot = 1e-4;
+                const double eps_obs   = 1e-4;
+                double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+
+                hp.n_ = A;
+                hp.p_ = A * b;
+
+
+                tmp_kept.clear();
+                for(const auto &it : obs_remain){
+                  if(hp.signed_dist(it) < -1e-10){
+                    tmp_kept.push_back(it);
+                  }
+                }
+                const int removed = (int)obs_remain.size() - (int)tmp_kept.size();
+
+                if(removed > best_removed){
+                  best_removed = removed;
+                  best_hp = hp;
+                }
+
+                if(removed > 10) break;  
+              }
+
+              if(lambda >= lambda_max) break;
+              lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
+            }
+
+
+            v = best_hp;
           }
 
           Vs.add(v);
