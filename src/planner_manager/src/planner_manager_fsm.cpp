@@ -167,12 +167,15 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
             if (!have_odom_){
                 return;
             }
-            Eigen::Vector3d start_pos = odom_pos_;
-            planner_manager_->graph_points_for_visualization_.clear();
-            planner_manager_->free_regions_graph_ptr_->setRootNode(start_pos);
-            // planner_manager_->current_node_ = planner_manager_->free_regions_graph_ptr_->getRootNode();
-            planner_manager_->current_node_id_ = planner_manager_->free_regions_graph_ptr_->root_id_;
-
+            // initialize the graph with current pos as root node
+            if(!graph_inited_){
+                Eigen::Vector3d start_pos = odom_pos_;
+                planner_manager_->graph_points_for_visualization_.clear();
+                planner_manager_->free_regions_graph_ptr_->setRootNode(start_pos);
+                planner_manager_->current_node_id_ = planner_manager_->free_regions_graph_ptr_->root_id_;
+                planner_manager_->current_edge_id_ = -1;
+                graph_inited_ = true;
+            }
             if (!have_goal_){
                 return;
             }

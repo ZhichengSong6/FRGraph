@@ -179,6 +179,8 @@ class PlannerManager {
     double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
     double solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex);
     
+    static double computeEdgeCost(const Eigen::Vector3d& start_pos, const Eigen::Vector3d& global_goal, const GraphEdge& e);
+    EdgeId selectBestEdgeAtNode(NodeId nid, const Eigen::Vector3d& start_pos, const Eigen::Vector3d& global_goal);
     EdgeId getSubgoalEdgeId(NodeId current_id) const;
 
     bool planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, EdgeId edge_id);

@@ -42,11 +42,7 @@ struct GraphNode {
     Polyhedron3D polys_;
     Polyhedron2D polys_2d_;
 
-    // bool root = false;
     bool deadend_ = false;
-
-    // GraphNode *parent;
-    // std::vector<GraphNode*> children;
 
     NodeId id_ = -1;
     NodeId parent_id_ = -1;

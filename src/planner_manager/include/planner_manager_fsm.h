@@ -28,6 +28,7 @@ class PlannerManagerFSM {
     int env_type_;
 
     bool have_odom_, have_goal_;
+    bool graph_inited_ = false;
     Eigen::Vector3d size_of_cropped_pointcloud_;
 
     Eigen::Vector3d odom_pos_, odom_vel_;

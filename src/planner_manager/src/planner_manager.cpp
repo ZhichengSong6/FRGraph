@@ -1206,6 +1206,42 @@ void PlannerManager::expandChildrenParallel(const Eigen::Vector3d& start_pos, No
     }
 }
 
+double PlannerManager::computeEdgeCost(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &global_goal, const GraphEdge &edge){
+    //
+    Eigen::Vector3d dir = edge.goal_ - start_pos;
+    if (dir.norm() < 1e-6) dir = edge.replan_pos_ - start_pos;
+    if (dir.norm() < 1e-6) dir = Eigen::Vector3d::UnitX();
+    dir.normalize();
+
+    const double pg = (edge.goal_  - start_pos).norm();
+    const double pr = (edge.replan_pos_ - start_pos).norm();
+
+    const Eigen::Vector3d g = (pr > pg) ? edge.replan_pos_ : edge.goal_;
+    return (start_pos - edge.replan_pos_).norm() + (edge.replan_pos_ - g).norm() + (g - global_goal).norm();
+}
+
+EdgeId PlannerManager::selectBestEdgeAtNode(NodeId nid, const Eigen::Vector3d &start_pos, const Eigen::Vector3d &global_goal){
+    auto* node = free_regions_graph_ptr_->getNode(nid);
+
+    if (!node || node->edge_ids_.empty()) return -1;
+
+    EdgeId best_edge_id = -1;
+    double best_cost = std::numeric_limits<double>::infinity();
+    for (EdgeId eid : node->edge_ids_){
+        auto* edge = free_regions_graph_ptr_->getEdge(eid);
+        if (!edge) continue;
+        if (edge->tried_) continue; // only consider edges that have not been tried
+
+        const double c = computeEdgeCost(start_pos, global_goal, *edge);
+        edge->cost_ = c;
+        if (c < best_cost){
+            best_cost = c;
+            best_edge_id = eid;
+        }
+    }
+    return best_edge_id;
+}
+
 EdgeId PlannerManager::getSubgoalEdgeId(NodeId current_id) const {
     auto* current_node = free_regions_graph_ptr_->getNode(current_id);
     if (!current_node || current_node->edge_ids_.empty()) return -1;
@@ -1416,29 +1452,29 @@ ROS_INFO("[PlannerManager] expandChildren and getTargetPose elapsed: %.3f ms", m
     }
 
     // choose the best candidate which has not been visited
-    // for (const auto &child_node : current_node->children) {
-    //     if (!child_node->visited) {
-    //         ROS_INFO("[PlannerManager] New node selected for replanning.");
-    //         child_node->visited = true;
-    //         current_node_ = child_node;
-    //         break;
-    //     }
-    // }
-    // print goal pos and the selected replan pos
-    // ROS_INFO("[PlannerManager] Goal position: (%.2f, %.2f, %.2f)", goal_pos[0], goal_pos[1], goal_pos[2]);
-    // ROS_INFO("[PlannerManager] Selected replan position: (%.2f, %.2f, %.2f)", current_node_->replan_pos_[0], current_node_->replan_pos_[1], current_node_->replan_pos_[2]);
-
-    // parameterlize trajectory from start_pos to current_node_->replan_pos_
-    EdgeId eid0 = getSubgoalEdgeId(current_id);
-    if (eid0 < 0) {
-        ROS_WARN("[PlannerManager] No valid edge found for trajectory planning.");
+    current_edge_id_ = selectBestEdgeAtNode(current_id, start_pos, goal_pos);
+std::cout << "Selected edge ID: " << current_edge_id_ << std::endl;
+    if(current_edge_id_ < 0){
+        ROS_WARN("[PlannerManager] No valid edge found after selection.");
+        // backtrack TBD
         return;
     }
+    auto *e0 = free_regions_graph_ptr_->getEdge(current_edge_id_);
+    e0->tried_ = true; // mark as tried
+
+    // parameterlize trajectory from start_pos to current_node_->replan_pos_
+    // EdgeId eid0 = getSubgoalEdgeId(current_id);
+    // if (eid0 < 0) {
+    //     ROS_WARN("[PlannerManager] No valid edge found for trajectory planning.");
+    //     return;
+    // }
     if (env_type_){
-        planTrajectoryToEdge3D(start_pos, eid0);
+        // planTrajectoryToEdge3D(start_pos, eid0);
+        planTrajectoryToEdge3D(start_pos, current_edge_id_);
     }
     else{
-        planTrajectoryToEdge2D(start_pos, eid0);
+        // planTrajectoryToEdge2D(start_pos, eid0);
+        planTrajectoryToEdge2D(start_pos, current_edge_id_);
     }
 }
 
