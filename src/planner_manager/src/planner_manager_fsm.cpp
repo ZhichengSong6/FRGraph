@@ -121,7 +121,23 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
     if (current_state_ != EXEC_TRAJECTORY){
         return;
     }
-    double distance_to_subgoal = (odom_pos_ - planner_manager_->current_node_->replan_pos_).norm();
+    // double distance_to_subgoal = (odom_pos_ - planner_manager_->current_node_->replan_pos_).norm();
+    auto* current_node = planner_manager_->free_regions_graph_ptr_->getNode(planner_manager_->current_node_id_);
+
+    if (!current_node || current_node->edge_ids.empty()) {
+        ROS_WARN("No subgoal edge available.");
+        return;
+    }
+
+    EdgeId eid = current_node->edge_ids[0];
+    auto* edge = planner_manager_->free_regions_graph_ptr_->getEdge(eid);
+
+    if (!edge) {
+        ROS_WARN("Edge pointer invalid.");
+        return;
+    }
+
+    double distance_to_subgoal = (odom_pos_ - edge->replan_pos_).norm();
     // if (distance_to_subgoal < 0.1){
     //     ROS_INFO("[FSM]: Reached subgoal, replanning...");
     //     changeFSMState(PLAN_TRAJECTORY, "replanCheckCallback");
@@ -154,7 +170,8 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
             Eigen::Vector3d start_pos = odom_pos_;
             planner_manager_->graph_points_for_visualization_.clear();
             planner_manager_->free_regions_graph_ptr_->setRootNode(start_pos);
-            planner_manager_->current_node_ = planner_manager_->free_regions_graph_ptr_->getRootNode();
+            // planner_manager_->current_node_ = planner_manager_->free_regions_graph_ptr_->getRootNode();
+            planner_manager_->current_node_id_ = planner_manager_->free_regions_graph_ptr_->root_id_;
 
             if (!have_goal_){
                 return;
@@ -176,7 +193,7 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
         {
             // set current pos as start pos
             start_pos_ = odom_pos_;
-            planner_manager_->planTrajectory(start_pos_, goal_pos_, planner_manager_->current_node_);
+            planner_manager_->planTrajectory(start_pos_, goal_pos_, planner_manager_->current_node_id_);
             changeFSMState(EXEC_TRAJECTORY, "FSM");
             break;
         }

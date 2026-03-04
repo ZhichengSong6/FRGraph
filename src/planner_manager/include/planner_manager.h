@@ -142,7 +142,8 @@ class PlannerManager {
     vec_E<Polyhedron3D> polys_FRTree_3d_;
 
     FreeRegionsGraph::Ptr free_regions_graph_ptr_;
-    GraphNode *current_node_;
+    // GraphNode *current_node_;
+    NodeId current_node_id_ = -1;
 
     GapExtractor::Ptr gap_extractor_ptr_;
 
@@ -155,7 +156,7 @@ class PlannerManager {
     double lower_bound_of_pitch_ = 0.0;
 
     // plan trajectory function
-    void planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, GraphNode* current_node);
+    void planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_node_id);
     void sortAllCandidatesGap(Eigen:: Vector3d &start_pos,
                               std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void reorderCandidatesGapWithGoal(Eigen:: Vector3d &goal_pos, 
@@ -166,15 +167,23 @@ class PlannerManager {
     void decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     
-    void expandChildrenParallel(const Eigen::Vector3d& start_pos, GraphNode* current_node, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
-    bool getTargetPose(Eigen::Vector3d &start_pos, GraphNode* current_node);
+    void expandChildrenParallel(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
+    void expandChildren(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
+    bool getTargetPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix3d& out_R);
+    bool getTargetPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix2d& out_R);
+
     double supportValueVertices(const Eigen::Vector3d &norm, const std::vector<Eigen::Vector3d> &vertices, const Eigen::Matrix3d& R);
     double supportValueVertices(const Eigen::Vector2d &norm, const std::vector<Eigen::Vector2d> &vertices, const Eigen::Matrix2d& R);
 
     double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
     double solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex);
+    
+    EdgeId getSubgoalEdgeId(NodeId current_id) const;
+
+    bool planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, EdgeId edge_id);
+    bool planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id);
+
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    bool getTrajectoryTemp(Eigen::Vector3d &start_pos, GraphNode* current_node);
     std::vector<Eigen::Vector3d> trajectory_points_temp_;
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
