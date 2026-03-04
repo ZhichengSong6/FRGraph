@@ -3,8 +3,8 @@
 NodeId FreeRegionsGraph::createNode(){
     NodeId id = static_cast<NodeId>(nodes_.size());
     nodes_.emplace_back(std::make_unique<GraphNode>());
-    nodes_.back()->id = id;
-    nodes_.back()->edge_ids.clear();
+    nodes_.back()->id_ = id;
+    nodes_.back()->edge_ids_.clear();
     return id;
 }
 
@@ -14,15 +14,15 @@ void FreeRegionsGraph::setRootNode(Eigen::Vector3d start_pos) {
     // root_->children.clear();
     // root_->replan_pos_ = start_pos;
     // root_->root = true;
-    // root_->visited = true;
+    // root_->deadend_ = true;
     root_id_ = createNode();
 
     auto* root = getNode(root_id_);
     root->parent_id_ = -1;
-    root->children_ids.clear();
-    root->edge_ids.clear();
+    root->children_ids_.clear();
+    root->edge_ids_.clear();
     root->state_pos_ = start_pos;
-    root->visited = true;
+    root->deadend_ = true;
 }
 
 EdgeId FreeRegionsGraph::addEdge(NodeId from, NodeId to, const Eigen::Vector3d& dir) {
@@ -34,13 +34,27 @@ EdgeId FreeRegionsGraph::addEdge(NodeId from, NodeId to, const Eigen::Vector3d& 
     edges_.emplace_back(std::make_unique<GraphEdge>());
     auto* e = edges_.back().get();
 
-    e->id = eid;
-    e->from = from;
-    e->to = to;
-    e->goal = dir;
+    e->id_ = eid;
+    e->from_ = from;
+    e->to_ = to;
+    e->goal_ = dir;
 
-    nodes_[from]->edge_ids.push_back(eid);
+    nodes_[from]->edge_ids_.push_back(eid);
 
+    return eid;
+}
+
+EdgeId FreeRegionsGraph::addEdge(NodeId from, const Eigen::Vector3d& dir) {
+    if (from < 0 || static_cast<size_t>(from) >= nodes_.size()) return -1;
+    EdgeId eid = static_cast<EdgeId>(edges_.size());
+    edges_.emplace_back(std::make_unique<GraphEdge>());
+    auto* e = edges_.back().get();
+    e->id_ = eid;
+    e->from_ = from;
+    e->to_ = -1; // to be determined when the child node is created
+    e->goal_ = dir;
+
+    nodes_[from]->edge_ids_.push_back(eid);
     return eid;
 }
 
@@ -89,10 +103,10 @@ NodeId FreeRegionsGraph::upsertNode(const Eigen::Vector3d& state_pos,
     auto* nn = getNode(nid);
     nn->state_pos_ = state_pos;
     nn->polys_ = local_poly_3d;
-    nn->visited = false;
+    nn->deadend_ = false;
     nn->parent_id_ = -1;
-    nn->children_ids.clear();
-    nn->edge_ids.clear();
+    nn->children_ids_.clear();
+    nn->edge_ids_.clear();
     return nid;
 }
 
@@ -133,9 +147,9 @@ NodeId FreeRegionsGraph::upsertNode(const Eigen::Vector2d& state_pos,
     nn->state_pos_.head<2>() = state_pos;
     nn->state_pos_(2) = 0.0;
     nn->polys_2d_ = local_poly_2d;
-    nn->visited = false;
+    nn->deadend_ = false;
     nn->parent_id_ = -1;
-    nn->children_ids.clear();
-    nn->edge_ids.clear();
+    nn->children_ids_.clear();
+    nn->edge_ids_.clear();
     return nid;
 }

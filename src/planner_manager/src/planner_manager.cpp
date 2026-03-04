@@ -1123,14 +1123,9 @@ void PlannerManager::expandChildren(const Eigen::Vector3d& start_pos, NodeId cur
         Eigen::Vector3d replan_pos;
         Eigen::Matrix3d R;
         bool ok = getTargetPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
-        
-        NodeId to_id = free_regions_graph_ptr_->createNode();
-        auto* to_node = free_regions_graph_ptr_->getNode(to_id);
-        to_node->state_pos_ = replan_pos;
-        to_node->visited = false;
 
         // build edge
-        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, to_id, gap.dir_odom_frame);
+        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, gap.dir_odom_frame);
         auto *e = free_regions_graph_ptr_->getEdge(edge_id);
         e->corridor_3d_ = corridor_poly;
         e->replan_pos_ = replan_pos;
@@ -1141,14 +1136,9 @@ void PlannerManager::expandChildren(const Eigen::Vector3d& start_pos, NodeId cur
         Eigen::Vector3d replan_pos;
         Eigen::Matrix2d R;
         bool ok = getTargetPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
-        
-        NodeId to_id = free_regions_graph_ptr_->createNode();
-        auto* to_node = free_regions_graph_ptr_->getNode(to_id);
-        to_node->state_pos_ = replan_pos;
-        to_node->visited = false;
 
         // build edge
-        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, to_id, gap.dir_odom_frame);
+        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, gap.dir_odom_frame);
         auto *e = free_regions_graph_ptr_->getEdge(edge_id);
         e->corridor_2d_ = corridor_poly;
         e->replan_pos_ = replan_pos;
@@ -1199,16 +1189,9 @@ void PlannerManager::expandChildrenParallel(const Eigen::Vector3d& start_pos, No
     // update graph
     for(int i = 0; i < N; ++i){
         if (!results[i].ok) continue;
-
-        NodeId to_id = free_regions_graph_ptr_->createNode();
-        auto* to_node = free_regions_graph_ptr_->getNode(to_id);
-        if (!to_node) continue;
-
-        to_node->state_pos_ = results[i].replan;
-        to_node->visited = false;
         // build edge
         const auto& gap = all_candidates[i];
-        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, to_id, results[i].goal);
+        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, results[i].goal);
         auto *e = free_regions_graph_ptr_->getEdge(edge_id);
         if (!e) continue;
         e->replan_pos_ = results[i].replan;
@@ -1221,29 +1204,12 @@ void PlannerManager::expandChildrenParallel(const Eigen::Vector3d& start_pos, No
             e->corridor_2d_ = polys_aniso_2d_[i];
         }
     }
-
-    // std::vector<GraphNode*> new_children(N, nullptr);
-    // #pragma omp parallel for schedule(dynamic)
-    // for (int i = 0; i < N; ++i){
-    //     const auto& gap = all_candidates[i];
-    //     GraphNode* new_node = new GraphNode();
-    //     new_node->parent = current_node;
-    //     new_node->children.clear();
-    //     new_node->visited = false;
-    //     new_node->replan_pos_ = gap.dir_odom_frame;
-    //     if (env_type_) new_node->polys_ = polys_aniso_3d_[i];
-    //     else new_node->polys_2d_ = polys_aniso_2d_[i];
-    //     Eigen::Vector3d sp = start_pos;
-    //     getTargetPose(sp, new_node);
-    //     new_children[i] = new_node;
-    // }
-    // current_node->children.insert(current_node->children.end(), new_children.begin(), new_children.end());
 }
 
 EdgeId PlannerManager::getSubgoalEdgeId(NodeId current_id) const {
     auto* current_node = free_regions_graph_ptr_->getNode(current_id);
-    if (!current_node || current_node->edge_ids.empty()) return -1;
-    return current_node->edge_ids[0];
+    if (!current_node || current_node->edge_ids_.empty()) return -1;
+    return current_node->edge_ids_[0];
 }
 
 bool PlannerManager::planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, EdgeId edge_id) {
@@ -1263,7 +1229,6 @@ bool PlannerManager::planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, Ed
     double robot_pitch = std::atan2(-base_rot_mat(2,0), std::sqrt(base_rot_mat(2,1)*base_rot_mat(2,1) + base_rot_mat(2,2)*base_rot_mat(2,2)));
     double robot_yaw =   std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
     // get goal yaw based on R
-    // Eigen::Matrix3d R_goal = current_node->R_;
     Eigen::Matrix3d R_goal = e0->R_;
     double goal_roll =  std::atan2(R_goal(2,1), R_goal(2,2));
     double goal_pitch = std::atan2(-R_goal(2,0), std::sqrt(R_goal(2,1)*R_goal(2,1) + R_goal(2,2)*R_goal(2,2)));
@@ -1343,7 +1308,6 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
     double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
     // get goal yaw based on R
-    // Eigen::Matrix2d R_goal = current_node->R_2d_;
     Eigen::Matrix2d R_goal = e0->R_2d_;
     double goal_yaw = std::atan2(R_goal(1,0), R_goal(0,0));
 
@@ -1427,9 +1391,9 @@ auto t1 = std::chrono::high_resolution_clock::now();
 double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
 ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
 
-    current_node->edge_ids.clear();
+    current_node->edge_ids_.clear();
     // push all candidates as children of the current node
-    auto t2 = std::chrono::high_resolution_clock::now();
+auto t2 = std::chrono::high_resolution_clock::now();
     if (all_candidates.size() < 4){
         // if candidates are few, no need for parallel
         expandChildren(start_pos, current_id, all_candidates);
@@ -1440,10 +1404,10 @@ ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
     }
 auto t3 = std::chrono::high_resolution_clock::now();
 double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
-ROS_INFO("[PlannerManager] getTargetPose elapsed: %.3f ms", ms_pose);
+ROS_INFO("[PlannerManager] expandChildren and getTargetPose elapsed: %.3f ms", ms_pose);
 
     publishTestCube();
-    for (EdgeId eid : current_node->edge_ids) {
+    for (EdgeId eid : current_node->edge_ids_) {
         auto* e = free_regions_graph_ptr_->getEdge(eid);
         if (!e) continue;
 
@@ -1544,12 +1508,12 @@ void PlannerManager::publishTestCube(){
     if (!free_regions_graph_ptr_) return;
     auto* current_node = free_regions_graph_ptr_->getNode(current_node_id_);
     if (current_node == nullptr) return;
-    if (current_node->edge_ids.empty()) return;
+    if (current_node->edge_ids_.empty()) return;
 
     visualization_msgs::MarkerArray cube_array;
-    for(size_t idx = 0; idx < current_node->edge_ids.size(); ++idx){
+    for(size_t idx = 0; idx < current_node->edge_ids_.size(); ++idx){
         // GraphNode* child_node = current_node_->children[idx];
-        EdgeId eid = current_node->edge_ids[idx];
+        EdgeId eid = current_node->edge_ids_[idx];
         auto* e = free_regions_graph_ptr_->getEdge(eid);
         if (!e) continue;
 

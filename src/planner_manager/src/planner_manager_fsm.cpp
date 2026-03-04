@@ -124,12 +124,12 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
     // double distance_to_subgoal = (odom_pos_ - planner_manager_->current_node_->replan_pos_).norm();
     auto* current_node = planner_manager_->free_regions_graph_ptr_->getNode(planner_manager_->current_node_id_);
 
-    if (!current_node || current_node->edge_ids.empty()) {
+    if (!current_node || current_node->edge_ids_.empty()) {
         ROS_WARN("No subgoal edge available.");
         return;
     }
 
-    EdgeId eid = current_node->edge_ids[0];
+    EdgeId eid = current_node->edge_ids_[0];
     auto* edge = planner_manager_->free_regions_graph_ptr_->getEdge(eid);
 
     if (!edge) {

@@ -144,6 +144,7 @@ class PlannerManager {
     FreeRegionsGraph::Ptr free_regions_graph_ptr_;
     // GraphNode *current_node_;
     NodeId current_node_id_ = -1;
+    EdgeId current_edge_id_ = -1;
 
     GapExtractor::Ptr gap_extractor_ptr_;
 
