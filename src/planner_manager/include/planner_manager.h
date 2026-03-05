@@ -18,6 +18,7 @@
 #include <decomp_geometry/ellipsoid.h>
 #include <decomp_geometry/polyhedron.h>
 #include <decomp_util/line_segment.h>
+#include <decomp_util/seed_decomp.h>
 
 #include "math_utils/min_enclosing_ball.h"
 
@@ -159,6 +160,7 @@ class PlannerManager {
 
     // plan trajectory function
     void planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_node_id);
+    void generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& start_pos);
     void sortAllCandidatesGap(Eigen:: Vector3d &start_pos,
                               std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void filterBackwardGaps(const Eigen::Vector3d &start_pos,
@@ -178,6 +180,9 @@ class PlannerManager {
     bool getTargetPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix2d& out_R);
     bool getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_goal_pos, Eigen::Matrix3d& out_R);
     bool getGoalPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_goal_pos, Eigen::Matrix2d& out_R);
+
+    bool poseContainedInParentPoly3D(const Eigen::Vector3d &parent_state, const Polyhedron3D &parent_poly, const Eigen::Vector3d &p, const Eigen::Matrix3d &R, double margin);
+    bool poseContainedInParentPoly2D(const Eigen::Vector3d &parent_state, const Polyhedron2D &parent_poly, const Eigen::Vector3d &p, const Eigen::Matrix2d &R, double margin);
 
     double supportValueVertices(const Eigen::Vector3d &norm, const std::vector<Eigen::Vector3d> &vertices, const Eigen::Matrix3d& R);
     double supportValueVertices(const Eigen::Vector2d &norm, const std::vector<Eigen::Vector2d> &vertices, const Eigen::Matrix2d& R);

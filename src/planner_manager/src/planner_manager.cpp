@@ -280,7 +280,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         std::vector<Polyhedron3D, Eigen::aligned_allocator<Polyhedron3D>> results(N);
         results.resize(N);
 
-        #pragma omp parallel for schedule(static)
+        #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < N; ++i){
             const auto &gap = all_candidates[i];
             const Vec3f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1], gap.dir_odom_frame[2]);
@@ -340,7 +340,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
         const int N = static_cast<int>(all_candidates.size());
         std::vector<Polyhedron2D, Eigen::aligned_allocator<Polyhedron2D>> results(N);
         results.resize(N);
-        #pragma omp parallel for schedule(static)
+        #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < N; i++){
             const auto &gap = all_candidates[i];
             const Vec2f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1]);
@@ -646,6 +646,30 @@ void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &sta
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_frtree_pub_.publish(poly_msg);
+    }
+}
+
+void PlannerManager::generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& start_pos) {
+    auto* current_node = free_regions_graph_ptr_->getNode(nid);
+    if(env_type_){
+        // 3D
+        SeedDecomp3D seed_decomp_3d(start_pos);
+        seed_decomp_3d.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f));
+        seed_decomp_3d.set_obs(pointcloud_cropped_odom_frame_);
+        seed_decomp_3d.dilate(0.1);  
+        Polyhedron3D node_poly = seed_decomp_3d.get_polyhedron();
+        current_node->polys_ = node_poly;
+        current_node->state_pos_ = start_pos;
+    }
+    else{
+        // 2D
+        SeedDecomp2D seed_decomp_2d(start_pos.head<2>());
+        seed_decomp_2d.set_local_bbox(Vec2f(0.5f, 0.5f));
+        seed_decomp_2d.set_obs(pointcloud_cropped_odom_frame_2d_);
+        seed_decomp_2d.dilate(0.1);  
+        Polyhedron2D node_poly = seed_decomp_2d.get_polyhedron();
+        current_node->polys_2d_ = node_poly;
+        current_node->state_pos_ = start_pos;
     }
 }
 
@@ -1260,6 +1284,36 @@ bool PlannerManager::getGoalPose2D(const Eigen::Vector3d &start_pos, const Eigen
     return true;
 } 
 
+bool PlannerManager::poseContainedInParentPoly3D(const Eigen::Vector3d &parent_pos, const Polyhedron3D &parent_poly, const Eigen::Vector3d &p, const Eigen::Matrix3d &R, double margin){
+    vec_E<Hyperplane3D> hps = parent_poly.hyperplanes();
+    LinearConstraint3D lc(parent_pos, hps);
+    const Eigen::MatrixXd A = lc.A();
+    const Eigen::VectorXd b = lc.b();
+
+    for (int i = 0; i < A.rows(); ++i) {
+        const Eigen::Vector3d a = A.row(i).transpose();
+        const double sup = supportValueVertices(a, robot_shape_points_d_, R);
+        const double lhs = a.dot(p) + sup;
+        if (lhs > b[i] - margin) return false;
+    }
+    return true;   
+}
+    
+bool PlannerManager::poseContainedInParentPoly2D(const Eigen::Vector3d &parent_pos, const Polyhedron2D &parent_poly, const Eigen::Vector3d &p, const Eigen::Matrix2d &R, double margin){
+    vec_E<Hyperplane2D> hps = parent_poly.hyperplanes();
+    LinearConstraint2D lc(parent_pos.head<2>(), hps);
+    const Eigen::MatrixXd A = lc.A();
+    const Eigen::VectorXd b = lc.b();
+
+    for (int i = 0; i < A.rows(); ++i) {
+        const Eigen::Vector2d a = A.row(i).transpose();
+        const double sup = supportValueVertices(a, robot_shape_points_2d_d_, R);
+        const double lhs = a.dot(p.head<2>()) + sup;
+        if (lhs > b[i] - margin) return false;
+    }
+    return true;    
+}
+
 double PlannerManager::solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex){
     const int m = A.rows();
     const double det_tol = 1e-10;
@@ -1349,6 +1403,10 @@ double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, 
 }
 
 void PlannerManager::expandChildren(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates){
+    auto* parent = free_regions_graph_ptr_->getNode(current_node_id);
+    if (!parent) return;
+
+    const double contain_margin = 0.0; 
     int index = 0;
     for (const auto &gap : all_candidates) {
     if (env_type_){
@@ -1360,6 +1418,10 @@ void PlannerManager::expandChildren(const Eigen::Vector3d& start_pos, NodeId cur
         }
         else{
             bool ok = getTargetPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+        }
+        if (poseContainedInParentPoly3D(start_pos, parent->polys_, replan_pos, R, contain_margin)) {
+            index++;
+            continue; // skip if the replan position is still contained in the parent corridor
         }
 
         // build edge
@@ -1378,6 +1440,10 @@ void PlannerManager::expandChildren(const Eigen::Vector3d& start_pos, NodeId cur
         }
         else{
             bool ok = getTargetPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+        }
+        if (poseContainedInParentPoly2D(start_pos, parent->polys_2d_, replan_pos, R, contain_margin)) {
+            index++;
+            continue; // skip if the replan position is still contained in the parent corridor
         }
 
         // build edge
@@ -1444,6 +1510,16 @@ void PlannerManager::expandChildrenParallel(const Eigen::Vector3d& start_pos, No
     // update graph
     for(int i = 0; i < N; ++i){
         if (!results[i].ok) continue;
+        if(env_type_){
+            if (poseContainedInParentPoly3D(start_pos, current_node->polys_, results[i].replan, results[i].R, 0.0)) {
+                continue; // skip if the replan position is still contained in the parent corridor
+            }
+        }
+        else{
+            if (poseContainedInParentPoly2D(start_pos, current_node->polys_2d_, results[i].replan, results[i].R2, 0.0)) {
+                continue; // skip if the replan position is still contained in the parent corridor
+            }
+        }
         // build edge
         const auto& gap = all_candidates[i];
         EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, results[i].goal);
@@ -1671,7 +1747,8 @@ ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
 }
 
 void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id) {
-    auto* current_node = free_regions_graph_ptr_->getNode(current_id);
+    // generate a node polyhedron at start pos
+    generateNodePolyhedron(current_id, start_pos);
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> all_candidates;
     filterBackwardGaps(start_pos, current_id, all_candidates);
     sortAllCandidatesGap(goal_pos, all_candidates);
@@ -1679,9 +1756,9 @@ void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d 
         ROS_WARN("[PlannerManager] No gap candidates available for planning.");
         return;
     }
-
+    
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
-
+    
     // test
     // decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
     // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
@@ -1691,7 +1768,8 @@ auto t0 = std::chrono::high_resolution_clock::now();
 auto t1 = std::chrono::high_resolution_clock::now();
 double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
 ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
-
+    
+    auto* current_node = free_regions_graph_ptr_->getNode(current_id);
     current_node->edge_ids_.clear();
     // push all candidates as children of the current node
 auto t2 = std::chrono::high_resolution_clock::now();
