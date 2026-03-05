@@ -161,6 +161,9 @@ class PlannerManager {
     void planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_node_id);
     void sortAllCandidatesGap(Eigen:: Vector3d &start_pos,
                               std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+    void filterBackwardGaps(const Eigen::Vector3d &start_pos,
+                            NodeId current_node_id, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+
     void reorderCandidatesGapWithGoal(Eigen:: Vector3d &goal_pos, 
                                      std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
 
@@ -173,6 +176,8 @@ class PlannerManager {
     void expandChildren(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
     bool getTargetPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix3d& out_R);
     bool getTargetPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix2d& out_R);
+    bool getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_goal_pos, Eigen::Matrix3d& out_R);
+    bool getGoalPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_goal_pos, Eigen::Matrix2d& out_R);
 
     double supportValueVertices(const Eigen::Vector3d &norm, const std::vector<Eigen::Vector3d> &vertices, const Eigen::Matrix3d& R);
     double supportValueVertices(const Eigen::Vector2d &norm, const std::vector<Eigen::Vector2d> &vertices, const Eigen::Matrix2d& R);

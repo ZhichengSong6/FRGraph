@@ -275,18 +275,21 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
     const double pos_threshold = 0.1; // meters
     const double angle_threshold = 10.0 * M_PI / 180.0;
     if (distance_to_subgoal < pos_threshold && angle_to_subgoal < angle_threshold){
-        // TBD polyhedron for node
+        // ！！！！！！！！！！！！！！！！！！！！！！！！！！TBD polyhedron for node
+        NodeId nid = -1;
         if (env_type_){
             Polyhedron3D poly;
-            NodeId nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_, poly);
-            edge->to_ = nid;
-            planner_manager_->current_node_id_ = nid;
+            nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_, poly);
         }
         else{
             Polyhedron2D poly;
-            NodeId nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_.head<2>(), poly);
-            edge->to_ = nid;
-            planner_manager_->current_node_id_ = nid;
+            nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_.head<2>(), poly);
+        }
+        edge->to_ = nid;
+        planner_manager_->current_node_id_ = nid;
+
+        if (auto* new_node = planner_manager_->free_regions_graph_ptr_->getNode(nid)) {
+            new_node->incoming_edge_id_ = planner_manager_->current_edge_id_;
         }
         planner_manager_->current_edge_id_ = -1; // reset current edge id 
         ROS_INFO("[FSM]: Reached subgoal, pos=%.2f m, ang=%.2f deg. Replanning...",

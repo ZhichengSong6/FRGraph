@@ -19,7 +19,6 @@ void FreeRegionsGraph::setRootNode(Eigen::Vector3d start_pos) {
 
     auto* root = getNode(root_id_);
     root->parent_id_ = -1;
-    root->children_ids_.clear();
     root->edge_ids_.clear();
     root->state_pos_ = start_pos;
     root->deadend_ = true;
@@ -105,7 +104,6 @@ NodeId FreeRegionsGraph::upsertNode(const Eigen::Vector3d& state_pos,
     nn->polys_ = local_poly_3d;
     nn->deadend_ = false;
     nn->parent_id_ = -1;
-    nn->children_ids_.clear();
     nn->edge_ids_.clear();
     return nid;
 }
@@ -149,7 +147,6 @@ NodeId FreeRegionsGraph::upsertNode(const Eigen::Vector2d& state_pos,
     nn->polys_2d_ = local_poly_2d;
     nn->deadend_ = false;
     nn->parent_id_ = -1;
-    nn->children_ids_.clear();
     nn->edge_ids_.clear();
     return nid;
 }

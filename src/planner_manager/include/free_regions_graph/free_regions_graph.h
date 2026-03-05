@@ -52,7 +52,7 @@ struct GraphNode {
 
     NodeId id_ = -1;
     NodeId parent_id_ = -1;
-    std::vector<NodeId> children_ids_;
+    EdgeId incoming_edge_id_ = -1;
 
     std::vector<EdgeId> edge_ids_;
 };
