@@ -67,6 +67,7 @@ class PlannerManager {
     PlannerManager() {}
     ~PlannerManager() {}
     void setEnvType(int env_type) { env_type_ = env_type; }
+    void getEnvType(int &env_type) { env_type = env_type_; }
     void setSizeOfCroppedPointcloud(const Eigen::Vector3d &size) { size_of_cropped_pointcloud_ = size; }
 
     typedef std::unique_ptr<PlannerManager> Ptr;

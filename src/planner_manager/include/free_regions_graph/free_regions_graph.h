@@ -6,6 +6,7 @@
 #include <memory>
 
 #include <decomp_ros_utils/data_ros_utils.h>
+#include "trajectory_optimization/trajectory.h"
 
 using NodeId = int;
 using EdgeId = int;
@@ -25,6 +26,11 @@ struct GraphEdge{
 
     Eigen::Matrix2d R_2d_;
     Eigen::Matrix3d R_;
+
+    bool has_traj_ = false;
+    bool traj_is_se3_ = false;
+    BezierSE2 traj2_;
+    BezierSE3 traj3_;
 
     Eigen::Vector3d replan_pos_;
 

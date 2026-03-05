@@ -41,6 +41,7 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
 void PlannerManagerFSM::odomCallback(const nav_msgs::OdometryConstPtr &msg) {
     odom_pos_ = Eigen::Vector3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
     odom_vel_ = Eigen::Vector3d(msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z);
+    odom_omega_ = Eigen::Vector3d(msg->twist.twist.angular.x, msg->twist.twist.angular.y, msg->twist.twist.angular.z);
     odom_ori_ = Eigen::Quaterniond(msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z);
     quaternionToRPY(odom_ori_, odom_roll_, odom_pitch_, odom_yaw_);
 
@@ -72,46 +73,153 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e) {
     if (current_state_ == INIT || current_state_ == WAIT_GOAL){
         return;
     }
-    if (planner_manager_->trajectory_points_temp_.empty()){
-        ROS_WARN_THROTTLE(2.0, "[FSM]: No trajectory points to follow!");
+    // if (planner_manager_->trajectory_points_temp_.empty()){
+    //     ROS_WARN_THROTTLE(2.0, "[FSM]: No trajectory points to follow!");
+    //     return;
+    // }
+
+    const EdgeId eid = planner_manager_->current_edge_id_;
+    if (eid < 0) {
+        ROS_WARN_THROTTLE(2.0, "[FSM]: No current edge to execute!");
         return;
     }
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // based on trajectory_points_temp_ and current odom_pos_, publish cmd_vel
-    int traj_point_index = 0;
-    double min_distance = 1000;
-    for (int i = 1; i < planner_manager_->trajectory_points_temp_.size(); ++i) {
-        double distance = (planner_manager_->trajectory_points_temp_[i] - odom_pos_).norm();
-        if (distance < min_distance) {
-            min_distance = distance;
-            traj_point_index = i;
-        }
+
+    auto* edge = planner_manager_->free_regions_graph_ptr_->getEdge(eid);
+    if (!edge) {
+        ROS_WARN_THROTTLE(2.0, "[FSM]: current edge pointer invalid!");
+        return;
     }
-    geometry_msgs::Twist twist_cmd;
-    if (traj_point_index + 2 > planner_manager_->trajectory_points_temp_.size()){
-        twist_cmd.linear.x = (planner_manager_->trajectory_points_temp_.back()[0] - odom_pos_[0]) * 1.5 + (-odom_vel_[0]) * 0.5;
-        twist_cmd.linear.y = (planner_manager_->trajectory_points_temp_.back()[1] - odom_pos_[1]) * 1.5 + (-odom_vel_[1]) * 0.5;
-        twist_cmd.linear.z = (planner_manager_->trajectory_points_temp_.back()[2] - odom_pos_[2]) * 1.5 + (-odom_vel_[2]) * 0.5;
-        twist_cmd.angular.x = 0.0;
-        twist_cmd.angular.y = 0.0;
-        twist_cmd.angular.z = 0.0;
-    }else{
-        twist_cmd.linear.x = (planner_manager_->trajectory_points_temp_[traj_point_index + 1][0] - odom_pos_[0]) * 1.5 + (-odom_vel_[0]) * 0.5;
-        twist_cmd.linear.y = (planner_manager_->trajectory_points_temp_[traj_point_index + 1][1] - odom_pos_[1]) * 1.5 + (-odom_vel_[1]) * 0.5;
-        twist_cmd.linear.z = (planner_manager_->trajectory_points_temp_[traj_point_index + 1][2] - odom_pos_[2]) * 1.5 + (-odom_vel_[2]) * 0.5;
-        twist_cmd.angular.x = 0.0;
-        twist_cmd.angular.y = 0.0;
-        twist_cmd.angular.z = 0.0;
+
+    if (!edge->has_traj_) {
+        ROS_WARN_THROTTLE(2.0, "[FSM]: Edge has no cached trajectory!");
+        return;
     }
-    // currently thecmd_vel is in odom frame, need to transform it to base_link frame
-    Eigen::Vector3d vel_odom(twist_cmd.linear.x, twist_cmd.linear.y, twist_cmd.linear.z);
-    Eigen::Matrix3d R_odom_base = odom_ori_.toRotationMatrix().transpose();
-    Eigen::Vector3d vel_base = R_odom_base * vel_odom;
-    twist_cmd.linear.x = vel_base[0];;
-    twist_cmd.linear.y = vel_base[1];
-    twist_cmd.linear.z = vel_base[2];
-// ROS_INFO("[FSM]: Publishing cmd_vel: linear=(%.2f, %.2f, %.2f)", twist_cmd.linear.x, twist_cmd.linear.y, twist_cmd.linear.z);
-    cmd_vel_pub_.publish(twist_cmd);
+    // Current robot state in odom
+    const Eigen::Vector3d p_w = odom_pos_;
+    const Eigen::Matrix3d R_wb = odom_ori_.toRotationMatrix(); // base in world(odom)
+    const Eigen::Matrix3d R_bw = R_wb.transpose();
+
+    // Measured linear vel in base frame
+    const Eigen::Vector3d v_b = odom_vel_;
+    // Measured angular vel in base frame
+    const Eigen::Vector3d w_meas_b = odom_omega_;
+
+    geometry_msgs::Twist cmd;
+
+    // gains & limits 
+    const double vmax_xy = 0.8;   // m/s
+    const double vmax_z  = 0.5;   // m/s
+    const double wmax    = 1.5;   // rad/s
+    const double lookahead_s = 0.6; // meters
+
+    // PD gains
+    const double kp_pos = 1.5;
+    const double kd_pos = 0.4;
+
+    // 2D yaw gains
+    const double kp_yaw = 2.0;
+    const double kd_yaw = 0.2;
+
+    // 3D orientation gains
+    const double kp_rot = 2.5;
+    const double kd_rot = 0.3;
+    if (!env_type_) {
+        const BezierSE2& traj = edge->traj2_;
+
+        const Eigen::Vector2d p2_w(p_w.x(), p_w.y());
+
+        // 1) project to curve and pick lookahead parameter
+        const double t_star = projectToBezierSE2(traj, p2_w, 80);
+        const Eigen::Vector2d dp = traj.dpos(t_star);
+        const double speed_ref = std::max(0.2, dp.norm());
+        double dt = lookahead_s / speed_ref;
+        dt = clampd(dt, 0.02, 0.25);
+        const double t_ref = clampd(t_star + dt, 0.0, 1.0);
+
+        // 2) reference pose
+        const Eigen::Vector2d pref_w = traj.pos(t_ref);
+        const double yaw_ref = traj.yaw(t_ref);
+
+        // current yaw from R_wb
+        const double yaw = std::atan2(R_wb(1,0), R_wb(0,0));
+
+        // 3) errors in base frame
+        const Eigen::Vector2d epos_w = pref_w - p2_w;
+        const Eigen::Vector2d epos_b = (R_bw.block<2,2>(0,0)) * epos_w; // 2D part
+
+        const double eyaw = wrapToPi(yaw_ref - yaw);
+
+        // 4) PD in base frame
+        Eigen::Vector2d vcmd_b = kp_pos * epos_b - kd_pos * v_b.head<2>();
+
+        double wz = kp_yaw * eyaw - kd_yaw * w_meas_b.z();
+
+        // 5) clamp
+        vcmd_b.x() = clampd(vcmd_b.x(), -vmax_xy, vmax_xy);
+        vcmd_b.y() = clampd(vcmd_b.y(), -vmax_xy, vmax_xy);
+        wz = clampd(wz, -wmax, wmax);
+
+        cmd.linear.x = vcmd_b.x();
+        cmd.linear.y = vcmd_b.y();
+        cmd.linear.z = 0.0;
+        cmd.angular.x = 0.0;
+        cmd.angular.y = 0.0;
+        cmd.angular.z = wz;
+
+        cmd_vel_pub_.publish(cmd);
+        return;
+    }
+
+    // ------------------- SE3 -------------------
+    {
+        const BezierSE3& traj = edge->traj3_;
+
+        // 1) project & lookahead
+        const double t_star = projectToBezierSE3(traj, p_w, 80);
+        const Eigen::Vector3d dp = traj.dpos(t_star);
+        const double speed_ref = std::max(0.2, dp.norm());
+        double dt = lookahead_s / speed_ref;
+        dt = clampd(dt, 0.02, 0.25);
+        const double t_ref = clampd(t_star + dt, 0.0, 1.0);
+
+        // 2) reference pose
+        const Eigen::Vector3d pref_w = traj.pos(t_ref);
+        const Eigen::Matrix3d Rref_wb = traj.R(t_ref);
+
+        // 3) errors (in base frame)
+        const Eigen::Vector3d epos_w = pref_w - p_w;
+        const Eigen::Vector3d epos_b = R_bw * epos_w;
+
+        // orientation error: R_err = R^T * R_ref, log gives rotation vector in base frame
+        const Eigen::Matrix3d R_err = R_bw * Rref_wb;
+        const Eigen::Vector3d e_rot_b = so3Log(R_err);
+
+        // 4) PD commands
+        Eigen::Vector3d vcmd_b = kp_pos * epos_b - kd_pos * v_b;
+
+        // If you have measured angular velocity in base frame, subtract kd_rot*w_meas.
+        // For now we assume unavailable -> 0.
+        Eigen::Vector3d wcmd_b = kp_rot * e_rot_b - kd_rot * w_meas_b;
+
+        // 5) clamp
+        vcmd_b.x() = clampd(vcmd_b.x(), -vmax_xy, vmax_xy);
+        vcmd_b.y() = clampd(vcmd_b.y(), -vmax_xy, vmax_xy);
+        vcmd_b.z() = clampd(vcmd_b.z(), -vmax_z,  vmax_z);
+
+        wcmd_b.x() = clampd(wcmd_b.x(), -wmax, wmax);
+        wcmd_b.y() = clampd(wcmd_b.y(), -wmax, wmax);
+        wcmd_b.z() = clampd(wcmd_b.z(), -wmax, wmax);
+
+        cmd.linear.x = vcmd_b.x();
+        cmd.linear.y = vcmd_b.y();
+        cmd.linear.z = vcmd_b.z();
+        cmd.angular.x = wcmd_b.x();
+        cmd.angular.y = wcmd_b.y();
+        cmd.angular.z = wcmd_b.z();
+
+        cmd_vel_pub_.publish(cmd);
+        return;
+    }
 }
 
 void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
@@ -129,20 +237,63 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
         return;
     }
 
-    EdgeId eid = current_node->edge_ids_[0];
+    EdgeId eid = planner_manager_->current_edge_id_;
+    if (eid < 0) {
+        ROS_WARN_THROTTLE(2.0, "[FSM]: current_edge_id_ invalid.");
+        return;
+    }
     auto* edge = planner_manager_->free_regions_graph_ptr_->getEdge(eid);
 
     if (!edge) {
         ROS_WARN("Edge pointer invalid.");
         return;
     }
+    // pos error
+    double distance_to_subgoal = 0.0;
+    // orientation error
+    double angle_to_subgoal = 0.0;
+    
+    if (env_type_){
+        distance_to_subgoal = (odom_pos_ - edge->replan_pos_).norm();
+        // 3D
+        const Eigen::Matrix3d R_cur = odom_ori_.toRotationMatrix();
+        const Eigen::Matrix3d R_ref = edge->R_;
+        const Eigen::Matrix3d R_err = R_cur.transpose() * R_ref;
+        angle_to_subgoal = so3Angle(R_err);
+    }
+    else{
+        distance_to_subgoal = (odom_pos_.head<2>() - edge->replan_pos_.head<2>()).norm();
+        Eigen::Matrix2d R_cur;
+        R_cur << std::cos(odom_yaw_), -std::sin(odom_yaw_),
+                 std::sin(odom_yaw_),  std::cos(odom_yaw_);
+        Eigen::Matrix2d R_ref = edge->R_2d_;
+        Eigen::Matrix2d R_err = R_cur.transpose() * R_ref;
+        angle_to_subgoal = so2Angle(R_err);
+    }
 
-    double distance_to_subgoal = (odom_pos_ - edge->replan_pos_).norm();
-    // if (distance_to_subgoal < 0.1){
-    //     ROS_INFO("[FSM]: Reached subgoal, replanning...");
-    //     changeFSMState(PLAN_TRAJECTORY, "replanCheckCallback");
-    //     return;
-    // }
+    // thresholds
+    const double pos_threshold = 0.1; // meters
+    const double angle_threshold = 10.0 * M_PI / 180.0;
+    if (distance_to_subgoal < pos_threshold && angle_to_subgoal < angle_threshold){
+        // TBD polyhedron for node
+        if (env_type_){
+            Polyhedron3D poly;
+            NodeId nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_, poly);
+            edge->to_ = nid;
+            planner_manager_->current_node_id_ = nid;
+        }
+        else{
+            Polyhedron2D poly;
+            NodeId nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_.head<2>(), poly);
+            edge->to_ = nid;
+            planner_manager_->current_node_id_ = nid;
+        }
+        planner_manager_->current_edge_id_ = -1; // reset current edge id 
+        ROS_INFO("[FSM]: Reached subgoal, pos=%.2f m, ang=%.2f deg. Replanning...",
+                 distance_to_subgoal, angle_to_subgoal * 180.0 / M_PI);
+        changeFSMState(PLAN_TRAJECTORY, "replanCheckCallback");
+        return;
+    }
 }
 
 void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
@@ -259,6 +410,109 @@ void PlannerManagerFSM::stopRobot() {
     twist_cmd.linear.y = 0.0;
     twist_cmd.linear.z = 0.0;
     cmd_vel_pub_.publish(twist_cmd);
+}
+
+double PlannerManagerFSM::clampd(double x, double lo, double hi) {
+    return std::max(lo, std::min(x, hi));
+}
+
+double PlannerManagerFSM::wrapToPi(double a) {
+    a = std::fmod(a + M_PI, 2 * M_PI);
+    if (a < 0)        a += 2 * M_PI;
+    return a - M_PI;
+}
+
+double PlannerManagerFSM::projectToBezierSE2(const BezierSE2& traj, const Eigen::Vector2d& p, int M) {
+    double best_t = 0.0;
+    double best_d2 = std::numeric_limits<double>::infinity();
+    for (int i = 0; i <= M; ++i){
+        double t = double(i) / double(M);
+        const Eigen::Vector2d pt = traj.pos(t);
+        const double d2 = (pt - p).squaredNorm();
+        if (d2 < best_d2){
+            best_d2 = d2;
+            best_t = t;
+        }
+    }
+    // local refinement
+    double t0 = best_t;
+    double step = 1.0 / double(M);
+    for (int it = 0; it < 8; ++it) {
+        double ta = clampd(t0 - step, 0.0, 1.0);
+        double tb = t0;
+        double tc = clampd(t0 + step, 0.0, 1.0);
+        double da = (traj.pos(ta) - p).squaredNorm();
+        double db = (traj.pos(tb) - p).squaredNorm();
+        double dc = (traj.pos(tc) - p).squaredNorm();
+        if (da < db && da < dc) t0 = ta;
+        else if (dc < db && dc < da) t0 = tc;
+        step *= 0.5;
+    }
+    return t0;
+}
+
+double PlannerManagerFSM::projectToBezierSE3(const BezierSE3& traj, const Eigen::Vector3d& p, int M) {
+    double best_t = 0.0;
+    double best_d2 = std::numeric_limits<double>::infinity();
+    for (int i = 0; i <= M; ++i){
+        double t = double(i) / double(M);
+        const Eigen::Vector3d pt = traj.pos(t);
+        const double d2 = (pt - p).squaredNorm();
+        if (d2 < best_d2){
+            best_d2 = d2;
+            best_t = t;
+        }
+    }
+    double t0 = best_t;
+    double step = 1.0 / double(M);
+    for (int it = 0; it < 8; ++it) {
+        double ta = clampd(t0 - step, 0.0, 1.0);
+        double tb = t0;
+        double tc = clampd(t0 + step, 0.0, 1.0);
+        double da = (traj.pos(ta) - p).squaredNorm();
+        double db = (traj.pos(tb) - p).squaredNorm();
+        double dc = (traj.pos(tc) - p).squaredNorm();
+        if (da < db && da < dc) t0 = ta;
+        else if (dc < db && dc < da) t0 = tc;
+        step *= 0.5;
+    }
+    return t0;
+}
+
+Eigen::Vector3d PlannerManagerFSM::so3Log(const Eigen::Matrix3d& R) {
+    // Robust log map (small-angle safe)
+    double cos_theta = (R.trace() - 1.0) * 0.5;
+    cos_theta = std::max(-1.0, std::min(1.0, cos_theta));
+    const double theta = std::acos(cos_theta);
+
+    Eigen::Vector3d w;
+    if (theta < 1e-6) {
+        // first-order approximation: vee(R - R^T)/2
+        w << (R(2,1) - R(1,2)),
+            (R(0,2) - R(2,0)),
+            (R(1,0) - R(0,1));
+        w *= 0.5;
+        return w;
+    }
+
+    // w = theta/(2*sin(theta)) * vee(R - R^T)
+    const double s = std::sin(theta);
+    Eigen::Vector3d vee;
+    vee << (R(2,1) - R(1,2)),
+            (R(0,2) - R(2,0)),
+            (R(1,0) - R(0,1));
+    w = (theta / (2.0 * s)) * vee;
+    return w;    
+}
+
+double PlannerManagerFSM::so3Angle(const Eigen::Matrix3d& R) {
+    double cos_theta = (R.trace() - 1.0) * 0.5;
+    cos_theta = std::max(-1.0, std::min(1.0, cos_theta));
+    return std::acos(cos_theta);
+}
+
+double PlannerManagerFSM::so2Angle(const Eigen::Matrix2d& R) {
+    return std::atan2(R(1,0), R(0,0));
 }
 
 void PlannerManagerFSM::publishGoalMarker() {

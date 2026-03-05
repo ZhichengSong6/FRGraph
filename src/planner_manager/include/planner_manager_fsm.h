@@ -31,7 +31,7 @@ class PlannerManagerFSM {
     bool graph_inited_ = false;
     Eigen::Vector3d size_of_cropped_pointcloud_;
 
-    Eigen::Vector3d odom_pos_, odom_vel_;
+    Eigen::Vector3d odom_pos_, odom_vel_, odom_omega_;
     Eigen::Quaterniond odom_ori_;
     double odom_roll_, odom_pitch_, odom_yaw_;
     Eigen::Vector3d goal_pos_;
@@ -73,6 +73,13 @@ class PlannerManagerFSM {
     /* Helper functions */
     void quaternionToRPY(const Eigen::Quaterniond &q, double &roll, double &pitch, double &yaw);
     void stopRobot();
+    double clampd(double x, double lo, double hi);
+    double wrapToPi(double a);
+    double projectToBezierSE2(const BezierSE2& traj, const Eigen::Vector2d& p, int M = 80);
+    double projectToBezierSE3(const BezierSE3& traj, const Eigen::Vector3d& p, int M = 80);
+    Eigen::Vector3d so3Log(const Eigen::Matrix3d& R);
+    double so3Angle(const Eigen::Matrix3d& R);
+    double so2Angle(const Eigen::Matrix2d& R);
 
     /* Visualization */
     void publishGoalMarker();

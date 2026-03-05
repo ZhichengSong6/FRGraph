@@ -1325,6 +1325,10 @@ auto t5 = std::chrono::high_resolution_clock::now();
 double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
 ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
     }
+    e0->has_traj_ = true;
+    e0->traj_is_se3_ = true;
+    e0->traj3_ = traj;
+    e0->tried_ = true;
     publishTrajectoryAfterOptimization(traj);
     return true;
 }
@@ -1403,6 +1407,10 @@ auto t5 = std::chrono::high_resolution_clock::now();
 double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
 ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
     }
+    e0->has_traj_ = true;
+    e0->traj_is_se3_ = false;
+    e0->traj2_ = traj;
+    e0->tried_ = true;
     publishTrajectoryAfterOptimization(traj);
     return true;
 }
@@ -1459,8 +1467,6 @@ std::cout << "Selected edge ID: " << current_edge_id_ << std::endl;
         // backtrack TBD
         return;
     }
-    auto *e0 = free_regions_graph_ptr_->getEdge(current_edge_id_);
-    e0->tried_ = true; // mark as tried
 
     // parameterlize trajectory from start_pos to current_node_->replan_pos_
     // EdgeId eid0 = getSubgoalEdgeId(current_id);
