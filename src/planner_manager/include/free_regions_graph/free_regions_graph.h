@@ -84,8 +84,7 @@ class FreeRegionsGraph {
     NodeId upsertNode(const Eigen::Vector2d& state_pos,
                   const Polyhedron2D& local_poly_2d);
 
-    // GraphNode* getRootNode() { return root_; }
-    // GraphNode* getParentNode(GraphNode* node) { return node->parent; }
+    int numNodes() const { return static_cast<int>(nodes_.size()); }
 
     private:
     // GraphNode* root_;

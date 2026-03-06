@@ -158,8 +158,25 @@ class PlannerManager {
     double upper_bound_of_pitch_ = 0.0;
     double lower_bound_of_pitch_ = 0.0;
 
-    // plan trajectory function
-    void planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_node_id);
+    std::vector<EdgeId> planned_path_edges_;
+    size_t planned_path_index_ = 0;
+
+    NodeId target_frontier_node_id_ = -1;
+    EdgeId target_expand_edge_id_ = -1;
+
+    enum class EdgeExecType {
+        NONE = 0,
+        PATH_EDGE = 1,
+        EXPAND_EDGE = 2
+    };
+    EdgeExecType current_edge_exec_type_ = EdgeExecType::NONE;
+
+    // expand node
+    void expandNode(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_node_id);
+    // action selection
+    bool planGlobalBestAction(const Eigen::Vector3d &global_goal);
+    bool prepareTrajectoryForCurrentEdge(const Eigen::Vector3d &start_pos);
+
     void generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& start_pos);
     void sortAllCandidatesGap(Eigen:: Vector3d &start_pos,
                               std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
@@ -190,9 +207,17 @@ class PlannerManager {
     double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
     double solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex);
     
-    static double computeEdgeCost(const Eigen::Vector3d& start_pos, const Eigen::Vector3d& global_goal, const GraphEdge& e);
-    EdgeId selectBestEdgeAtNode(NodeId nid, const Eigen::Vector3d& start_pos, const Eigen::Vector3d& global_goal);
+    EdgeId selectBestEdgeAtNode(NodeId nid);
     EdgeId getSubgoalEdgeId(NodeId current_id) const;
+
+    bool isFrontierNode(NodeId nid);
+    bool isTraversableEdge(EdgeId eid);
+    NodeId otherEndpoint(EdgeId eid, NodeId nid);
+    double edgeTravelCost(NodeId nid, EdgeId eid);
+    void runDijkstraFrom(NodeId start_nid, std::vector<double>& dist, std::vector<NodeId>& parent_node, std::vector<EdgeId>& parent_edge);
+    bool selectBestFrontierNode(NodeId current_nid, const Eigen::Vector3d& global_goal, NodeId& out_frontier_nid, std::vector<EdgeId>& out_path_edges, EdgeId& out_expand_edge_id);
+
+    bool reconstructPathToNode(NodeId start_nid, NodeId target_nid, const std::vector<NodeId>& parent_node, const std::vector<EdgeId>& parent_edge, std::vector<EdgeId>& out_path_edges);        
 
     bool planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, EdgeId edge_id);
     bool planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id);

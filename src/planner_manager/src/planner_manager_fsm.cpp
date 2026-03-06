@@ -1,5 +1,25 @@
 #include "planner_manager_fsm.h"
 
+static BezierSE2 reverseBezierSE2(const BezierSE2& traj)
+{
+    BezierSE2 rev;
+    for (int i = 0; i < BezierSE2::K; ++i) {
+        rev.P[i] = traj.P[BezierSE2::K - 1 - i];
+        rev.Theta[i] = traj.Theta[BezierSE2::K - 1 - i];
+    }
+    return rev;
+}
+
+static BezierSE3 reverseBezierSE3(const BezierSE3& traj)
+{
+    BezierSE3 rev;
+    for (int i = 0; i < BezierSE3::K; ++i) {
+        rev.P[i] = traj.P[BezierSE3::K - 1 - i];
+        rev.Theta[i] = traj.Theta[BezierSE3::K - 1 - i];
+    }
+    return rev;
+}
+
 void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     node_ = nh;
     current_state_ = INIT;
@@ -68,15 +88,11 @@ void PlannerManagerFSM::goalCallback(const geometry_msgs::PoseStampedPtr &msg) {
     have_goal_ = true;
 }
 
-void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e) {
-    // publish cmd vel
-    if (current_state_ == INIT || current_state_ == WAIT_GOAL){
+void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e)
+{
+    if (current_state_ == INIT || current_state_ == WAIT_GOAL) {
         return;
     }
-    // if (planner_manager_->trajectory_points_temp_.empty()){
-    //     ROS_WARN_THROTTLE(2.0, "[FSM]: No trajectory points to follow!");
-    //     return;
-    // }
 
     const EdgeId eid = planner_manager_->current_edge_id_;
     if (eid < 0) {
@@ -94,37 +110,68 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e) {
         ROS_WARN_THROTTLE(2.0, "[FSM]: Edge has no cached trajectory!");
         return;
     }
+
     // Current robot state in odom
     const Eigen::Vector3d p_w = odom_pos_;
-    const Eigen::Matrix3d R_wb = odom_ori_.toRotationMatrix(); // base in world(odom)
+    const Eigen::Matrix3d R_wb = odom_ori_.toRotationMatrix();
     const Eigen::Matrix3d R_bw = R_wb.transpose();
 
-    // Measured linear vel in base frame
+    // Measured velocities in base frame
     const Eigen::Vector3d v_b = odom_vel_;
-    // Measured angular vel in base frame
     const Eigen::Vector3d w_meas_b = odom_omega_;
 
     geometry_msgs::Twist cmd;
 
-    // gains & limits 
-    const double vmax_xy = 0.8;   // m/s
-    const double vmax_z  = 0.5;   // m/s
-    const double wmax    = 1.5;   // rad/s
-    const double lookahead_s = 0.6; // meters
+    // gains & limits
+    const double vmax_xy = 0.8;
+    const double vmax_z  = 0.5;
+    const double wmax    = 1.5;
+    const double lookahead_s = 0.6;
 
-    // PD gains
     const double kp_pos = 1.5;
     const double kd_pos = 0.4;
 
-    // 2D yaw gains
     const double kp_yaw = 2.0;
     const double kd_yaw = 0.2;
 
-    // 3D orientation gains
     const double kp_rot = 2.5;
     const double kd_rot = 0.3;
+
+    // ------------------------------------------------------------------
+    // Determine whether the current edge trajectory should be followed
+    // in forward direction or reverse direction.
+    //
+    // EXPAND_EDGE: always use forward stored trajectory.
+    // PATH_EDGE:
+    //   - if current_node_id_ == edge->from_ -> forward
+    //   - if current_node_id_ == edge->to_   -> reverse
+    // ------------------------------------------------------------------
+    bool reverse_traj = false;
+
+    if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
+        reverse_traj = false;
+    }
+    else if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
+        const NodeId cur_nid = planner_manager_->current_node_id_;
+        if (cur_nid == edge->from_) {
+            reverse_traj = false;
+        }
+        else if (cur_nid == edge->to_) {
+            reverse_traj = true;
+        }
+        else {
+            ROS_WARN_THROTTLE(2.0, "[FSM]: PATH_EDGE but current node is not an endpoint of current edge.");
+            return;
+        }
+    }
+    else {
+        ROS_WARN_THROTTLE(2.0, "[FSM]: current_edge_exec_type_ is NONE while publishing command.");
+        return;
+    }
+
+    // ============================ SE2 ============================
     if (!env_type_) {
-        const BezierSE2& traj = edge->traj2_;
+        BezierSE2 traj = reverse_traj ? reverseBezierSE2(edge->traj2_) : edge->traj2_;
 
         const Eigen::Vector2d p2_w(p_w.x(), p_w.y());
 
@@ -140,18 +187,16 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e) {
         const Eigen::Vector2d pref_w = traj.pos(t_ref);
         const double yaw_ref = traj.yaw(t_ref);
 
-        // current yaw from R_wb
         const double yaw = std::atan2(R_wb(1,0), R_wb(0,0));
 
         // 3) errors in base frame
         const Eigen::Vector2d epos_w = pref_w - p2_w;
-        const Eigen::Vector2d epos_b = (R_bw.block<2,2>(0,0)) * epos_w; // 2D part
+        const Eigen::Vector2d epos_b = R_bw.block<2,2>(0,0) * epos_w;
 
         const double eyaw = wrapToPi(yaw_ref - yaw);
 
-        // 4) PD in base frame
+        // 4) PD command
         Eigen::Vector2d vcmd_b = kp_pos * epos_b - kd_pos * v_b.head<2>();
-
         double wz = kp_yaw * eyaw - kd_yaw * w_meas_b.z();
 
         // 5) clamp
@@ -170,9 +215,9 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e) {
         return;
     }
 
-    // ------------------- SE3 -------------------
+    // ============================ SE3 ============================
     {
-        const BezierSE3& traj = edge->traj3_;
+        BezierSE3 traj = reverse_traj ? reverseBezierSE3(edge->traj3_) : edge->traj3_;
 
         // 1) project & lookahead
         const double t_star = projectToBezierSE3(traj, p_w, 80);
@@ -186,19 +231,15 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e) {
         const Eigen::Vector3d pref_w = traj.pos(t_ref);
         const Eigen::Matrix3d Rref_wb = traj.R(t_ref);
 
-        // 3) errors (in base frame)
+        // 3) errors in base frame
         const Eigen::Vector3d epos_w = pref_w - p_w;
         const Eigen::Vector3d epos_b = R_bw * epos_w;
 
-        // orientation error: R_err = R^T * R_ref, log gives rotation vector in base frame
         const Eigen::Matrix3d R_err = R_bw * Rref_wb;
         const Eigen::Vector3d e_rot_b = so3Log(R_err);
 
         // 4) PD commands
         Eigen::Vector3d vcmd_b = kp_pos * epos_b - kd_pos * v_b;
-
-        // If you have measured angular velocity in base frame, subtract kd_rot*w_meas.
-        // For now we assume unavailable -> 0.
         Eigen::Vector3d wcmd_b = kp_rot * e_rot_b - kd_rot * w_meas_b;
 
         // 5) clamp
@@ -227,13 +268,6 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
     // A: achieved subgoal
     // B: no more gap above (TBD)
     if (current_state_ != EXEC_TRAJECTORY){
-        return;
-    }
-    // double distance_to_subgoal = (odom_pos_ - planner_manager_->current_node_->replan_pos_).norm();
-    auto* current_node = planner_manager_->free_regions_graph_ptr_->getNode(planner_manager_->current_node_id_);
-
-    if (!current_node || current_node->edge_ids_.empty()) {
-        ROS_WARN("No subgoal edge available.");
         return;
     }
 
@@ -275,27 +309,116 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
     const double pos_threshold = 0.1; // meters
     const double angle_threshold = 10.0 * M_PI / 180.0;
     if (distance_to_subgoal < pos_threshold && angle_to_subgoal < angle_threshold){
-        // ！！！！！！！！！！！！！！！！！！！！！！！！！！TBD polyhedron for node
-        NodeId nid = -1;
-        if (env_type_){
-            Polyhedron3D poly;
-            nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_, poly);
-        }
-        else{
-            Polyhedron2D poly;
-            nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_.head<2>(), poly);
-        }
-        edge->to_ = nid;
-        planner_manager_->current_node_id_ = nid;
-
-        if (auto* new_node = planner_manager_->free_regions_graph_ptr_->getNode(nid)) {
-            new_node->incoming_edge_id_ = planner_manager_->current_edge_id_;
-        }
-        planner_manager_->current_edge_id_ = -1; // reset current edge id 
         ROS_INFO("[FSM]: Reached subgoal, pos=%.2f m, ang=%.2f deg. Replanning...",
                  distance_to_subgoal, angle_to_subgoal * 180.0 / M_PI);
-        changeFSMState(PLAN_TRAJECTORY, "replanCheckCallback");
-        return;
+        // ============================================================
+        // Case 1: current edge is a graph path edge
+        // ============================================================
+        if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
+
+            NodeId cur_nid = planner_manager_->current_node_id_;
+            NodeId next_nid = planner_manager_->otherEndpoint(eid, cur_nid);
+            if (next_nid < 0) {
+                ROS_WARN("[FSM]: PATH_EDGE reached, but failed to find the other endpoint.");
+                stopRobot();
+                return;
+            }
+
+            // Move to the already-realized node at the other endpoint
+            planner_manager_->current_node_id_ = next_nid;
+
+            // Advance along the precomputed graph path
+            planner_manager_->planned_path_index_++;
+
+            // --------------------------------------------------------
+            // Still have more path edges to follow:
+            // keep EXEC_TRAJECTORY, do not go back to PLAN_TRAJECTORY
+            // --------------------------------------------------------
+            if (planner_manager_->planned_path_index_ < planner_manager_->planned_path_edges_.size()) {
+                planner_manager_->current_edge_id_ =
+                    planner_manager_->planned_path_edges_[planner_manager_->planned_path_index_];
+                planner_manager_->current_edge_exec_type_ = PlannerManager::EdgeExecType::PATH_EDGE;
+
+                ROS_INFO("[FSM]: Continue along graph path. next path edge = %d",
+                        planner_manager_->current_edge_id_);
+
+                // IMPORTANT:
+                // stay in EXEC_TRAJECTORY
+                // later the controller should directly use the cached bezier of this edge
+                return;
+            }
+
+            // --------------------------------------------------------
+            // Path finished: now we are at the target frontier node.
+            // Next step is to execute the chosen expand edge.
+            // We go back to PLAN_TRAJECTORY, but this time only to
+            // prepare trajectory for the already selected expand edge.
+            // --------------------------------------------------------
+            planner_manager_->current_edge_id_ = planner_manager_->target_expand_edge_id_;
+            planner_manager_->current_edge_exec_type_ = PlannerManager::EdgeExecType::EXPAND_EDGE;
+
+            ROS_INFO("[FSM]: Graph path finished. Switch to expand edge = %d at frontier node %d",
+                    planner_manager_->current_edge_id_,
+                    planner_manager_->target_frontier_node_id_);
+
+            changeFSMState(PLAN_TRAJECTORY, "replanCheckCallback(PATH_EDGE finished)");
+            return;
+        }
+
+        // ============================================================
+        // Case 2: current edge is an expand edge
+        // ============================================================
+        if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
+
+            NodeId nid = -1;
+
+            // Realize a new node at current robot pose
+            if (env_type_) {
+                Polyhedron3D poly; // Update the poly in expandNode
+                nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_, poly);
+            }
+            else {
+                Polyhedron2D poly; // Update the poly in expandNode
+                nid = planner_manager_->free_regions_graph_ptr_->upsertNode(odom_pos_.head<2>(), poly);
+            }
+
+            if (nid < 0) {
+                ROS_WARN("[FSM]: Failed to realize a new node after expand edge.");
+                stopRobot();
+                return;
+            }
+
+            // Bind this expand edge to the newly realized node
+            edge->to_ = nid;
+            planner_manager_->current_node_id_ = nid;
+
+            if (auto* new_node = planner_manager_->free_regions_graph_ptr_->getNode(nid)) {
+                new_node->incoming_edge_id_ = eid;
+                new_node->edge_ids_.push_back(eid);
+            }
+
+            // Reset current execution state
+            planner_manager_->current_edge_id_ = -1;
+            planner_manager_->current_edge_exec_type_ = PlannerManager::EdgeExecType::NONE;
+
+            // Clear previous frontier/path bookkeeping;
+            // a new node means a new planning round.
+            planner_manager_->planned_path_edges_.clear();
+            planner_manager_->planned_path_index_ = 0;
+            planner_manager_->target_frontier_node_id_ = -1;
+            planner_manager_->target_expand_edge_id_ = -1;
+
+            changeFSMState(PLAN_TRAJECTORY, "replanCheckCallback(EXPAND_EDGE)");
+            return;
+        }
+
+        // ============================================================
+        // Fallback
+        // ============================================================
+        ROS_WARN("[FSM]: current_edge_exec_type_ is NONE or unknown at subgoal.");
+        planner_manager_->current_edge_id_ = -1;
+        planner_manager_->current_edge_exec_type_ = PlannerManager::EdgeExecType::NONE;
+        stopRobot();
     }
 }
 
@@ -328,6 +451,7 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
                 planner_manager_->free_regions_graph_ptr_->setRootNode(start_pos);
                 planner_manager_->current_node_id_ = planner_manager_->free_regions_graph_ptr_->root_id_;
                 planner_manager_->current_edge_id_ = -1;
+                planner_manager_->current_edge_exec_type_ = PlannerManager::EdgeExecType::NONE;
                 graph_inited_ = true;
             }
             if (!have_goal_){
@@ -350,10 +474,74 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
         {
             // set current pos as start pos
             start_pos_ = odom_pos_;
-            planner_manager_->planTrajectory(start_pos_, goal_pos_, planner_manager_->current_node_id_);
-            changeFSMState(EXEC_TRAJECTORY, "FSM");
-            break;
-        }
+            // ------------------------------------------------------------
+            // Case 1: current node is newly realized
+            // Need to expand this node and choose the globally best next action
+            // ------------------------------------------------------------
+            if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::NONE) {
+
+                planner_manager_->expandNode(start_pos_, goal_pos_, planner_manager_->current_node_id_);
+
+                bool ok = planner_manager_->planGlobalBestAction(goal_pos_);
+                if (!ok) {
+                    ROS_WARN("[FSM]: No valid global action found.");
+                    stopRobot();
+                    return;
+                }
+
+                // If the selected action is an expand edge, we need to optimize a new trajectory
+                if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
+                    bool ok2 = planner_manager_->prepareTrajectoryForCurrentEdge(start_pos_);
+                    if (!ok2) {
+                        ROS_WARN("[FSM]: Failed to prepare trajectory for current expand edge.");
+                        stopRobot();
+                        return;
+                    }
+                }
+                // If the selected action is a graph path edge, do NOT replan trajectory here.
+                // Later the EXEC state will directly use the cached bezier stored in the edge.
+                else if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
+                    ROS_INFO("[FSM]: Selected action is a graph path edge, skip trajectory replanning.");
+                }
+                else {
+                    ROS_WARN("[FSM]: current_edge_exec_type_ is NONE after planGlobalBestAction.");
+                    stopRobot();
+                    return;
+                }
+
+                changeFSMState(EXEC_TRAJECTORY, "FSM");
+                break;
+            }
+
+            // ------------------------------------------------------------
+            // Case 2: path is finished, and now we are ready to execute
+            // the already-selected expand edge at the frontier node
+            // ------------------------------------------------------------
+            if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
+                bool ok = planner_manager_->prepareTrajectoryForCurrentEdge(start_pos_);
+                if (!ok) {
+                    ROS_WARN("[FSM]: Failed to prepare trajectory for expand edge.");
+                    stopRobot();
+                    return;
+                }
+
+                changeFSMState(EXEC_TRAJECTORY, "FSM");
+                break;
+            }
+
+            // ------------------------------------------------------------
+            // Case 3: PATH_EDGE should normally never enter PLAN_TRAJECTORY
+            // ------------------------------------------------------------
+            if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
+                ROS_WARN("[FSM]: PATH_EDGE should not normally enter PLAN_TRAJECTORY.");
+                stopRobot();
+                return;
+            }
+
+            ROS_WARN("[FSM]: Unknown planning state in PLAN_TRAJECTORY.");
+            stopRobot();
+            return;
+}
         case EXEC_TRAJECTORY:
         {
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

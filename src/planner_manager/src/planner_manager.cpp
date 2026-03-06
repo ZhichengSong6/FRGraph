@@ -1430,6 +1430,7 @@ void PlannerManager::expandChildren(const Eigen::Vector3d& start_pos, NodeId cur
         e->corridor_3d_ = corridor_poly;
         e->replan_pos_ = replan_pos;
         e->R_ = R;
+        e->cost_ = (e->replan_pos_ - parent->state_pos_).norm();
     }
     else{
         const Polyhedron2D& corridor_poly = polys_aniso_2d_[index];
@@ -1452,6 +1453,7 @@ void PlannerManager::expandChildren(const Eigen::Vector3d& start_pos, NodeId cur
         e->corridor_2d_ = corridor_poly;
         e->replan_pos_ = replan_pos;
         e->R_2d_ = R;
+        e->cost_ = (e->replan_pos_.head<2>() - parent->state_pos_.head<2>()).norm();
     }
     ++index;
 }
@@ -1529,54 +1531,221 @@ void PlannerManager::expandChildrenParallel(const Eigen::Vector3d& start_pos, No
         if (env_type_){
             e->R_ = results[i].R;
             e->corridor_3d_ = polys_aniso_3d_[i];
+            e->cost_ = (e->replan_pos_ - current_node->state_pos_).norm();
         }
         else{
             e->R_2d_ = results[i].R2;
             e->corridor_2d_ = polys_aniso_2d_[i];
+            e->cost_ = (e->replan_pos_.head<2>() - current_node->state_pos_.head<2>()).norm();
         }
     }
 }
 
-double PlannerManager::computeEdgeCost(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &global_goal, const GraphEdge &edge){
-    //
-    Eigen::Vector3d dir = edge.goal_ - start_pos;
-    if (dir.norm() < 1e-6) dir = edge.replan_pos_ - start_pos;
-    if (dir.norm() < 1e-6) dir = Eigen::Vector3d::UnitX();
-    dir.normalize();
-
-    const double pg = (edge.goal_  - start_pos).norm();
-    const double pr = (edge.replan_pos_ - start_pos).norm();
-
-    const Eigen::Vector3d g = (pr > pg) ? edge.replan_pos_ : edge.goal_;
-    return (start_pos - edge.replan_pos_).norm() + (edge.replan_pos_ - g).norm() + (g - global_goal).norm();
-}
-
-EdgeId PlannerManager::selectBestEdgeAtNode(NodeId nid, const Eigen::Vector3d &start_pos, const Eigen::Vector3d &global_goal){
+EdgeId PlannerManager::selectBestEdgeAtNode(NodeId nid){
     auto* node = free_regions_graph_ptr_->getNode(nid);
-
     if (!node || node->edge_ids_.empty()) return -1;
 
-    EdgeId best_edge_id = -1;
-    double best_cost = std::numeric_limits<double>::infinity();
-    for (EdgeId eid : node->edge_ids_){
+    for (EdgeId eid : node->edge_ids_) {
         auto* edge = free_regions_graph_ptr_->getEdge(eid);
         if (!edge) continue;
-        if (edge->tried_) continue; // only consider edges that have not been tried
-
-        const double c = computeEdgeCost(start_pos, global_goal, *edge);
-        edge->cost_ = c;
-        if (c < best_cost){
-            best_cost = c;
-            best_edge_id = eid;
-        }
+        if (edge->tried_) continue;
+        return eid;
     }
-    return best_edge_id;
+    return -1;
 }
 
 EdgeId PlannerManager::getSubgoalEdgeId(NodeId current_id) const {
     auto* current_node = free_regions_graph_ptr_->getNode(current_id);
     if (!current_node || current_node->edge_ids_.empty()) return -1;
     return current_node->edge_ids_[0];
+}
+
+bool PlannerManager::isFrontierNode(NodeId nid)
+{
+    auto* node = free_regions_graph_ptr_->getNode(nid);
+    if (!node) return false;
+    if (node->deadend_) return false;
+    for (EdgeId eid : node->edge_ids_) {
+        auto* edge = free_regions_graph_ptr_->getEdge(eid);
+        if (!edge) continue;
+        if (!edge->tried_) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PlannerManager::isTraversableEdge(EdgeId eid)
+{
+    auto* edge = free_regions_graph_ptr_->getEdge(eid);
+    if (!edge) return false;
+    if (!edge->tried_) return false;
+    if (edge->from_ < 0 || edge->to_ < 0) return false;
+    return true;
+}
+
+NodeId PlannerManager::otherEndpoint(EdgeId eid, NodeId u)
+{
+    auto* edge = free_regions_graph_ptr_->getEdge(eid);
+    if (!edge) return -1;
+
+    if (edge->from_ == u) return edge->to_;
+    if (edge->to_ == u) return edge->from_;
+    return -1;
+}
+
+double PlannerManager::edgeTravelCost(NodeId u, EdgeId eid)
+{
+    auto* node = free_regions_graph_ptr_->getNode(u);
+    auto* edge = free_regions_graph_ptr_->getEdge(eid);
+
+    if (!node || !edge) {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    return (node->state_pos_ - edge->replan_pos_).norm();
+}
+
+void PlannerManager::runDijkstraFrom(NodeId start_nid, std::vector<double>& dist, std::vector<NodeId>& parent_node, std::vector<EdgeId>& parent_edge){
+    const int N = free_regions_graph_ptr_->numNodes();
+    
+    dist.assign(N, std::numeric_limits<double>::infinity());
+    parent_node.assign(N, -1);
+    parent_edge.assign(N, -1);
+
+    if (start_nid < 0 || start_nid >= N){
+        ROS_WARN("[PlannerManager] runDijkstraFrom: invalid start_nid");
+        return;
+    }
+
+    using QueueItem = std::pair<double, NodeId>; // (dist, node_id)
+    std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> pq;
+
+    dist[start_nid] = 0.0;
+    pq.push({0.0, start_nid});
+
+    while (!pq.empty()){
+        const auto [cur_dist, u] = pq.top();
+        pq.pop();
+
+        if (cur_dist > dist[u])           continue;
+
+        auto* node_u = free_regions_graph_ptr_->getNode(u);
+        if (!node_u) continue;
+
+        for (EdgeId eid : node_u->edge_ids_){
+            if (!isTraversableEdge(eid)) continue;
+
+            NodeId v = otherEndpoint(eid, u);
+            if (v < 0) continue;
+
+            const double w = edgeTravelCost(u, eid);
+            if(!std::isfinite(w)) continue;
+
+            const double new_dist = dist[u] + w;
+            if (new_dist < dist[v]){
+                dist[v] = new_dist;
+                parent_node[v] = u;
+                parent_edge[v] = eid;
+                pq.push({new_dist, v});
+            }
+        }
+    }
+}
+
+bool PlannerManager::reconstructPathToNode(NodeId start_nid, NodeId target_nid, const std::vector<NodeId>& parent_node, const std::vector<EdgeId>& parent_edge, std::vector<EdgeId>& out_path_edges){
+    out_path_edges.clear();
+    
+    if (start_nid < 0 || target_nid < 0) return false;
+    if (start_nid == target_nid) return true;
+
+    std::vector<EdgeId> rev_edgees;
+    NodeId cur = target_nid;
+    while (cur != start_nid){
+        if (cur < 0 || cur >= static_cast<NodeId>(parent_node.size())) return false;
+
+        const NodeId pn = parent_node[cur];
+        const EdgeId pe = parent_edge[cur];
+        if (pn < 0 || pe < 0) return false;
+        rev_edgees.push_back(pe);
+        cur = pn;
+    }
+    // Reverse the path
+    out_path_edges.assign(rev_edgees.rbegin(), rev_edgees.rend());
+    return true;
+}
+
+bool PlannerManager::selectBestFrontierNode(NodeId current_nid, const Eigen::Vector3d &global_goal, NodeId &out_frontier_nid, std::vector<EdgeId> &out_path_edges, EdgeId &out_expand_edge_id){
+    out_frontier_nid = -1;
+    out_path_edges.clear();
+    out_expand_edge_id = -1;
+
+    if (!free_regions_graph_ptr_) {
+        ROS_WARN("[PlannerManager] selectBestFrontierNode: graph ptr is null.");
+        return false;
+    }
+
+    auto* current_node = free_regions_graph_ptr_->getNode(current_nid);
+    if (!current_node) {
+        ROS_WARN("[PlannerManager] selectBestFrontierNode: current node invalid.");
+        return false;
+    }    
+    
+    // run Dijkstra from current node
+    std::vector<double> dist;
+    std::vector<NodeId> parent_node;
+    std::vector<EdgeId> parent_edge;
+    runDijkstraFrom(current_nid, dist, parent_node, parent_edge);
+
+    const int N = free_regions_graph_ptr_->numNodes();
+
+    // scan all reachable frontier nodes and choose the globally best one
+    double best_cost = std::numeric_limits<double>::infinity();
+    NodeId best_nid = -1;
+    EdgeId best_local_eid = -1;
+
+    for (NodeId nid = 0; nid < N; ++nid){
+        auto* node = free_regions_graph_ptr_->getNode(nid);
+        if (!node) continue;
+        if (node->deadend_) continue;
+        if (!isFrontierNode(nid)) continue;
+        if (!std::isfinite(dist[nid])) continue;
+
+        EdgeId local_eid = selectBestEdgeAtNode(nid);
+        if (local_eid < 0) continue;
+        auto* edge = free_regions_graph_ptr_->getEdge(local_eid);
+        if (!edge) continue;
+
+        const double score = dist[nid] + (node->state_pos_ - edge->goal_).norm() + (edge->goal_ - global_goal).norm();
+        if (score < best_cost){
+            best_cost = score;
+            best_nid = nid;
+            best_local_eid = local_eid;
+        }
+    }
+    if (best_nid < 0 || best_local_eid < 0){
+        ROS_WARN("[PlannerManager] selectBestFrontierNode: no frontier node found");
+        return false;
+    }
+    // reconstruct path
+    std::vector<EdgeId> path_edges;
+    if (!reconstructPathToNode(current_nid, best_nid, parent_node, parent_edge, path_edges)){
+        ROS_WARN("[PlannerManager] selectBestFrontierNode: failed to reconstruct path");
+        return false;
+    }
+
+    out_frontier_nid = best_nid;
+    out_path_edges = path_edges;
+    out_expand_edge_id = best_local_eid;
+
+    ROS_INFO("[PlannerManager] selectBestFrontierNode: best frontier node = %d, "
+            "path_len = %zu, expand_edge = %d, score = %.3f",
+            out_frontier_nid,
+            out_path_edges.size(),
+            out_expand_edge_id,
+            best_cost);
+
+    return true;
 }
 
 bool PlannerManager::planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, EdgeId edge_id) {
@@ -1746,7 +1915,7 @@ ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
     return true;
 }
 
-void PlannerManager::planTrajectory(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id) {
+void PlannerManager::expandNode(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id) {
     // generate a node polyhedron at start pos
     generateNodePolyhedron(current_id, start_pos);
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> all_candidates;
@@ -1794,29 +1963,81 @@ ROS_INFO("[PlannerManager] expandChildren and getTargetPose elapsed: %.3f ms", m
         graph_points_for_visualization_.push_back(e->replan_pos_);
     }
 
-    // choose the best candidate which has not been visited
-    current_edge_id_ = selectBestEdgeAtNode(current_id, start_pos, goal_pos);
-std::cout << "Selected edge ID: " << current_edge_id_ << std::endl;
-    if(current_edge_id_ < 0){
-        ROS_WARN("[PlannerManager] No valid edge found after selection.");
+    if (current_node->edge_ids_.empty()) {
+        ROS_WARN("[PlannerManager] expandNode: no valid edge generated at node %d.", current_id);
+        current_node->deadend_ = true;
         // backtrack TBD
         return;
     }
+}
 
-    // parameterlize trajectory from start_pos to current_node_->replan_pos_
-    // EdgeId eid0 = getSubgoalEdgeId(current_id);
-    // if (eid0 < 0) {
-    //     ROS_WARN("[PlannerManager] No valid edge found for trajectory planning.");
-    //     return;
-    // }
-    if (env_type_){
-        // planTrajectoryToEdge3D(start_pos, eid0);
-        planTrajectoryToEdge3D(start_pos, current_edge_id_);
+bool PlannerManager::planGlobalBestAction(const Eigen::Vector3d &global_goal)
+{
+    planned_path_edges_.clear();
+    planned_path_index_ = 0;
+    target_frontier_node_id_ = -1;
+    target_expand_edge_id_ = -1;
+    current_edge_id_ = -1;
+    current_edge_exec_type_ = EdgeExecType::NONE;
+
+    NodeId frontier_nid = -1;
+    std::vector<EdgeId> path_edges;
+    EdgeId expand_eid = -1;
+
+    bool ok = selectBestFrontierNode(current_node_id_,
+                                     global_goal,
+                                     frontier_nid,
+                                     path_edges,
+                                     expand_eid);
+    if (!ok) {
+        ROS_WARN("[PlannerManager] planGlobalBestAction: failed to find best frontier.");
+        return false;
     }
-    else{
-        // planTrajectoryToEdge2D(start_pos, eid0);
-        planTrajectoryToEdge2D(start_pos, current_edge_id_);
+
+    target_frontier_node_id_ = frontier_nid;
+    target_expand_edge_id_ = expand_eid;
+    planned_path_edges_ = path_edges;
+    planned_path_index_ = 0;
+
+    // Case A: already at the best frontier node
+    if (planned_path_edges_.empty()) {
+        current_edge_id_ = target_expand_edge_id_;
+        current_edge_exec_type_ = EdgeExecType::EXPAND_EDGE;
+        ROS_INFO("[PlannerManager] planGlobalBestAction: already at frontier node %d, execute edge %d.",
+                 target_frontier_node_id_, current_edge_id_);
+        return true;
     }
+
+    // Case B: need to move along graph path first
+    current_edge_id_ = planned_path_edges_[0];
+    current_edge_exec_type_ = EdgeExecType::PATH_EDGE;
+    ROS_INFO("[PlannerManager] planGlobalBestAction: move along graph path first. "
+             "frontier node = %d, path_len = %zu, first edge = %d, final expand edge = %d",
+             target_frontier_node_id_,
+             planned_path_edges_.size(),
+             current_edge_id_,
+             target_expand_edge_id_);
+
+    return true;
+}
+
+bool PlannerManager::prepareTrajectoryForCurrentEdge(const Eigen::Vector3d &start_pos){
+    if (current_edge_id_ < 0) {
+        ROS_WARN("[PlannerManager] planTrajectoryToCurrentEdge: current_edge_id_ invalid.");
+        return false;
+    }
+
+    auto* edge = free_regions_graph_ptr_->getEdge(current_edge_id_);
+    if (!edge) {
+        ROS_WARN("[PlannerManager] planTrajectoryToCurrentEdge: current edge invalid.");
+        return false;
+    }
+
+    if (env_type_) {
+        return planTrajectoryToEdge3D(start_pos, current_edge_id_);
+    } else {
+        return planTrajectoryToEdge2D(start_pos, current_edge_id_);
+    }   
 }
 
 void PlannerManager::publishRobotPoints() {

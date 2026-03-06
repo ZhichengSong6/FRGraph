@@ -21,7 +21,7 @@ void FreeRegionsGraph::setRootNode(Eigen::Vector3d start_pos) {
     root->parent_id_ = -1;
     root->edge_ids_.clear();
     root->state_pos_ = start_pos;
-    root->deadend_ = true;
+    root->deadend_ = false;
 }
 
 EdgeId FreeRegionsGraph::addEdge(NodeId from, NodeId to, const Eigen::Vector3d& dir) {
