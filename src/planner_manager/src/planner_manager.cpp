@@ -654,7 +654,7 @@ void PlannerManager::generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& s
     if(env_type_){
         // 3D
         SeedDecomp3D seed_decomp_3d(start_pos);
-        seed_decomp_3d.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f));
+        seed_decomp_3d.set_local_bbox(Vec3f(0.3f, 0.3f, 0.3f));
         seed_decomp_3d.set_obs(pointcloud_cropped_odom_frame_);
         seed_decomp_3d.dilate(0.1);  
         Polyhedron3D node_poly = seed_decomp_3d.get_polyhedron();
@@ -664,7 +664,7 @@ void PlannerManager::generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& s
     else{
         // 2D
         SeedDecomp2D seed_decomp_2d(start_pos.head<2>());
-        seed_decomp_2d.set_local_bbox(Vec2f(0.5f, 0.5f));
+        seed_decomp_2d.set_local_bbox(Vec2f(0.3f, 0.3f));
         seed_decomp_2d.set_obs(pointcloud_cropped_odom_frame_2d_);
         seed_decomp_2d.dilate(0.1);  
         Polyhedron2D node_poly = seed_decomp_2d.get_polyhedron();
@@ -1963,12 +1963,11 @@ ROS_INFO("[PlannerManager] expandChildren and getTargetPose elapsed: %.3f ms", m
         graph_points_for_visualization_.push_back(e->replan_pos_);
     }
 
-    if (current_node->edge_ids_.empty()) {
-        ROS_WARN("[PlannerManager] expandNode: no valid edge generated at node %d.", current_id);
+    if (current_node->edge_ids_.empty() || !isFrontierNode(current_id)) {
         current_node->deadend_ = true;
-        // backtrack TBD
         return;
     }
+    current_node->deadend_ = false;
 }
 
 bool PlannerManager::planGlobalBestAction(const Eigen::Vector3d &global_goal)
