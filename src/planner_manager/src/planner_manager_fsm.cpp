@@ -307,7 +307,13 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
 
     // thresholds
     const double pos_threshold = 0.1; // meters
-    const double angle_threshold = 10.0 * M_PI / 180.0;
+    double angle_threshold;
+    if(env_type_){
+        angle_threshold = 15.0 * M_PI / 180.0; // 15 degrees for 3D
+    }
+    else{
+        angle_threshold = 10.0 * M_PI / 180.0; // 10 degrees for 2D
+    }
     if (distance_to_subgoal < pos_threshold && angle_to_subgoal < angle_threshold){
         ROS_INFO("[FSM]: Reached subgoal, pos=%.2f m, ang=%.2f deg. Replanning...",
                  distance_to_subgoal, angle_to_subgoal * 180.0 / M_PI);

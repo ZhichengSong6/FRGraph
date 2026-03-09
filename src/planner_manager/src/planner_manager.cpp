@@ -286,7 +286,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
             const Vec3f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1], gap.dir_odom_frame[2]);
             LineSegment3D line_segment_aniso(p1, p2);
             // check the type of gap to set different local bbox
-            if (gap.type == 1){ // limited gap
+            if (gap.type == 1 || gap.type == 3){ // limited gap
                 line_segment_aniso.set_local_bbox_aniso(Vec3f(0.5f, 0.5f, 0.5f),
                                                        Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
             }

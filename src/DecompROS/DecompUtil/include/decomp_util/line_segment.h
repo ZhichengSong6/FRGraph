@@ -324,66 +324,52 @@ class LineSegment : public DecompBase<Dim> {
         Polyhedron<Dim> Vs;
         // first check whether there is obstacle inside the seed circle
         auto obs_inside = points_inside_seed(center, radius, this->obs_);
+        const double lambda_front = 0.0;
+        const double lambda_back  = 0.0;
+
 
 int counter = 0;
 // Vec2f e = (p2_ - p1_).normalized();
         while (!obs_inside.empty()) {
-          // find the closest point to the seed center
-          const auto pw = closest_point_in_seed(center, obs_inside);
+          // select one obstacle point inside the seed
+          const auto pw = select_point_in_seed(center, obs_inside);
 // std::cout << "[seed] closest point to seed center: " << pw.transpose() << std::endl;
 // std::cout << "[seed] (pw - center).dot(e): " << (pw - center).dot(e) << std::endl;
 
-          const double lambda_max = 10.0;
-          double lambda = 0.0;
-          int best_removed = -1;
-          Hyperplane2D best_hp(Vec2f::Zero(), Vec2f::Zero());
+          Hyperplane2D hp(Vec2f::Zero(), Vec2f::Zero());
+          get_hyperplane_seed_front_back(pw, center, hp, lambda_front, lambda_back);
 
-          vec_Vecf<Dim> tmp_kept;
-          tmp_kept.reserve(obs_inside.size());
-          for(;;){
-            Hyperplane2D hp(Vec2f::Zero(), Vec2f::Zero());
-            get_hyperplane_seed(pw, center, hp, radius, lambda);
+          vec_E<Hyperplane2D> hp_vec;
+          hp_vec.push_back(hp);
+          LinearConstraint2D lc(center, hp_vec);
 
-            vec_E<Hyperplane2D> hp_vec;
-            hp_vec.push_back(hp);
-            LinearConstraint2D lc(center, hp_vec);
-            Vec2f A_raw = lc.A_.row(0);
-            double nrm = A_raw.norm();
-            Vec2f A = A_raw / nrm;
-            double b0 = lc.b()(0) / nrm;
-            const double eps_robot = 1e-4;  
-            const double eps_obs = 1e-4;    
-            double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
-            hp.n_ = A;
-            hp.p_ = A * b;
-
-            tmp_kept.clear();
-            for (const auto &it : obs_inside){
-              if (hp.signed_dist(it) < -1e-10){
-                tmp_kept.push_back(it);
-              }
-            }
-            const int removed = static_cast<int>(obs_inside.size() - tmp_kept.size());
-            if(removed > best_removed){
-              best_removed = removed;
-              best_hp = hp;
-            }
-            
-            if (removed >1) break;
-
-            if (lambda >= lambda_max) break;
-            lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
+          Vec2f A_raw = lc.A_.row(0);
+          double nrm = A_raw.norm();
+          if (nrm < 1e-12) {
+            std::cout << "[Free Space generation] In find_polyhedron_for_seed(2d), hyperplane normal norm is too small." << std::endl;
+            break;
           }
-          Vs.add(best_hp);
 
-// std::cout << "[seed] hyperplane normal: " << best_hp.n_.transpose() << ", point: " << best_hp.p_.transpose() << std::endl;
+          Vec2f A = A_raw / nrm;
+          double b0 = lc.b()(0) / nrm;
+
+          const double eps_robot = 1e-4;
+          const double eps_obs   = 1e-4;
+          double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
+
+          hp.n_ = A;
+          hp.p_ = A * b;
+
+          Vs.add(hp);
+
+// std::cout << "[seed] hyperplane normal: " << hp.n_.transpose() << ", point: " << hp.p_.transpose() << std::endl;
 counter++;
           // remove the points which are on the negative side of the hyperplane
           vec_Vecf<Dim> obs_new;
           obs_new.reserve(obs_inside.size());
           int size_before = obs_inside.size();
           for (const auto &it : obs_inside) {
-            if (best_hp.signed_dist(it) < -1e-10)
+            if (hp.signed_dist(it) < -1e-10)
               obs_new.push_back(it);
           }
           obs_inside.swap(obs_new);
@@ -399,55 +385,40 @@ counter++;
         Polyhedron<Dim> Vs;
         // first check whether there is obstacle inside the seed circle
         auto obs_inside = points_inside_seed(center, radius, this->obs_);
+        const double lambda_front = 0.0;
+        const double lambda_back  = 0.0;
         while (!obs_inside.empty()) {
-          // find the closest point to the seed center
-          const auto pw = closest_point_in_seed(center, obs_inside);
-          const double lambda_max = 10.0;
-          double lambda = 0.0;
-          int best_removed = -1;
-          Hyperplane3D best_hp(Vec3f::Zero(), Vec3f::Zero());
+          // select one obstacle point inside the seed
+          const auto pw = select_point_in_seed(center, obs_inside);
+          Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
+          get_hyperplane_seed_front_back(pw, center, hp, lambda_front, lambda_back);
 
-          vec_Vecf<Dim> tmp_kept;
-          tmp_kept.reserve(obs_inside.size());
-          for(;;){
-            Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
-            get_hyperplane_seed(pw, center, hp, radius, lambda);
+          vec_E<Hyperplane3D> hp_vec;
+          hp_vec.push_back(hp);
+          LinearConstraint3D lc(center, hp_vec);
 
-            vec_E<Hyperplane3D> hp_vec;
-            hp_vec.push_back(hp);
-            LinearConstraint3D lc(center, hp_vec);
-            Vec3f A_raw = lc.A_.row(0);
-            double nrm = A_raw.norm();
-            Vec3f A = A_raw / nrm;
-            double b0 = lc.b()(0) / nrm;
-            const double eps_robot = 1e-4;  
-            const double eps_obs = 1e-4;    
-            double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
-            hp.n_ = A;
-            hp.p_ = A * b;
-
-            tmp_kept.clear();
-            for (const auto &it : obs_inside){
-              if (hp.signed_dist(it) < -1e-10){
-                tmp_kept.push_back(it);
-              }
-            }
-            const int removed = static_cast<int>(obs_inside.size() - tmp_kept.size());
-            if(removed > best_removed){
-              best_removed = removed;
-              best_hp = hp;
-            }
-            
-            if (removed >50) break;
-
-            if (lambda >= lambda_max) break;
-            lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
+          Vec3f A_raw = lc.A_.row(0);
+          double nrm = A_raw.norm();
+          if (nrm < 1e-12) {
+            std::cout << "[Free Space generation] In find_polyhedron_for_seed(3d), hyperplane normal norm is too small." << std::endl;
+            break;
           }
-          Vs.add(best_hp);
+
+          Vec3f A = A_raw / nrm;
+          double b0 = lc.b()(0) / nrm;
+
+          const double eps_robot = 1e-4;
+          const double eps_obs   = 1e-4;
+          double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
+
+          hp.n_ = A;
+          hp.p_ = A * b;
+
+          Vs.add(hp);
           // remove the points which are on the negative side of the hyperplane
           vec_Vecf<Dim> obs_new;
           for (const auto &it : obs_inside) {
-            if (best_hp.signed_dist(it) < -1e-10)
+            if (hp.signed_dist(it) < -1e-10)
               obs_new.push_back(it);
           }
           obs_inside.swap(obs_new);
@@ -506,16 +477,52 @@ counter++;
       this->obs_ = new_obs;
     }
 
-    Vecf<Dim> closest_point_in_seed(const Vecf<Dim> &center, const vec_Vecf<Dim> &obs){
+    Vecf<Dim> select_point_in_seed(const Vecf<Dim> &center, const vec_Vecf<Dim> &obs){
       Vecf<Dim> pt = Vecf<Dim>::Zero();
-      decimal_t min_dist = std::numeric_limits<decimal_t>::max();
+
+      if (obs.empty()) {
+        return pt;
+      }
+
+      const Vecf<Dim> e = (p2_ - p1_).normalized();
+
+      // ---------- 1) first try front-half candidates ----------
+      bool found_front = false;
+      decimal_t best_front_score = std::numeric_limits<decimal_t>::max();
+
       for (const auto &it : obs) {
-        decimal_t d = (it - center).norm();
-        if (d < min_dist) {
-          min_dist = d;
+        const Vecf<Dim> d = it - center;
+        const decimal_t s = d.dot(e);
+
+        // front half: projection on forward direction is non-negative
+        if (s >= 0) {
+          const Vecf<Dim> lateral_vec = d - s * e;
+          const decimal_t d_lat = lateral_vec.norm();
+
+          if (d_lat < best_front_score) {
+            best_front_score = d_lat;
+            pt = it;
+            found_front = true;
+          }
+        }
+      }
+
+      if (found_front) {
+        return pt;
+      }
+
+      // ---------- 2) if no front-half point, use back-half candidates ----------
+      decimal_t best_back_score = std::numeric_limits<decimal_t>::max();
+
+      for (const auto &it : obs) {
+        const decimal_t d_center = (it - center).norm();
+
+        if (d_center < best_back_score) {
+          best_back_score = d_center;
           pt = it;
         }
       }
+
       return pt;
     }
 
@@ -702,6 +709,186 @@ counter++;
         hp = hp_tmp;
       }
     
+    template<int U = Dim>
+      typename std::enable_if<U == 2>::type
+      get_hyperplane_seed_front_back(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp,
+                                     double lambda_front = 0.0,
+                                     double lambda_back  = 0.0) {
+        Eigen::Vector2d e = (p2_ - p1_).normalized();
+        Eigen::Vector2d obs_pt = obstacle_pt;
+        Eigen::Vector2d seed_center = center;
+
+        Eigen::Vector2d a = obs_pt - seed_center;
+        double a_norm = a.norm();
+
+        double eps = 1e-4;
+
+        Eigen::Matrix2d Q = Eigen::Matrix2d::Zero();
+        Eigen::Vector2d c = Eigen::Vector2d::Zero();
+
+        const double signed_proj = a.dot(e);
+        const bool is_front = (signed_proj >= 0.0);
+
+        const double reg = 1e-8;
+        Eigen::Matrix2d I = Eigen::Matrix2d::Identity();
+
+        // if obstacle_pt is too close to center, fall back to original style
+        if (a_norm < 1e-8) {
+          Q = 2.0 * I;
+        }
+        else {
+          Eigen::Vector2d a_hat = a / a_norm;
+          Eigen::Matrix2d P_prep = I - a_hat * a_hat.transpose();
+
+          if (is_front) { // Front half: prefer hyperplane parallel to e
+            Q = 2.0 * ( (e * e.transpose()) + lambda_front * P_prep );
+          } else {        // Back half: prefer hyperplane perpendicular to e
+            Q = 2.0 * ( (I - e * e.transpose()) + lambda_back * P_prep );
+          }
+        }
+
+        Q += 2.0 * reg * I;
+
+        // ---------- Constraints ----------
+        const int Nr = robot_pts_mat_.rows();
+        if(!qp_cache_init_){
+          A_ineq_cache_.resize(Nr, Dim);
+          u_ineq_cache_.resize(Nr);
+          A_eq_cache_.resize(1, Dim);
+          b_eq_cache_.resize(1);
+          qp_cache_init_ = true;
+        }
+
+        // robot points must be strictly on negative side of plane through obs_pt:
+        // (r_i - obs)^T n <= -eps
+        for (int i = 0; i < Nr; i++){
+          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
+          u_ineq_cache_(i) = -eps;
+        }
+
+        // scaling + sign fixing:
+        // (center - obs)^T n = -1
+        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
+        b_eq_cache_(0) = -1.0;
+
+        // ---------- Solve ----------
+        if (!solver_init_){
+          solver_.setup(Q, c,
+                        A_eq_cache_, b_eq_cache_,
+                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                        piqp::nullopt, piqp::nullopt);
+          solver_init_ = true;
+        } else {
+          solver_.update(Q, c,
+                        A_eq_cache_, b_eq_cache_,
+                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                        piqp::nullopt, piqp::nullopt);
+        }
+
+        const auto result = solver_.solve();
+        Eigen::VectorXd sol;
+        if (result == piqp::Status::PIQP_SOLVED){
+          sol = solver_.result().x;
+        } else {
+          std::cout << "[Free Space generation] In get_hyperplane_seed_front_back(2d) PIQP failed to solve the QP and the status is "
+                    << static_cast<int>(result) << std::endl;
+          return;
+        }
+
+        Hyperplane2D hp_tmp(obstacle_pt, Vec2f(sol(0), sol(1)));
+        hp = hp_tmp;
+      }
+
+    template<int U = Dim>
+      typename std::enable_if<U == 3>::type
+      get_hyperplane_seed_front_back(Vec3f obstacle_pt, Vec3f center, Hyperplane3D &hp,
+                                     double lambda_front = 0.0,
+                                     double lambda_back  = 0.0) {
+        Eigen::Vector3d e = (p2_ - p1_).normalized();
+        Eigen::Vector3d obs_pt = obstacle_pt;
+        Eigen::Vector3d seed_center = center;
+
+        Eigen::Vector3d a = obs_pt - seed_center;
+        double a_norm = a.norm();
+
+        double eps = 1e-4;
+
+        Eigen::Matrix3d Q = Eigen::Matrix3d::Zero();
+        Eigen::Vector3d c = Eigen::Vector3d::Zero();
+
+        const double signed_proj = a.dot(e);
+        const bool is_front = (signed_proj >= 0.0);
+
+        const double reg = 1e-8;
+        Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
+
+        // if obstacle_pt is too close to center, fall back to isotropic regularization
+        if (a_norm < 1e-8) {
+          Q = 2.0 * I;
+        }
+        else {
+          Eigen::Vector3d a_hat = a / a_norm;
+          Eigen::Matrix3d P_prep = I - a_hat * a_hat.transpose();
+
+          if (is_front) { // Front half: prefer hyperplane parallel to e
+            Q = 2.0 * ( (e * e.transpose()) + lambda_front * P_prep );
+          } else {        // Back half: prefer hyperplane perpendicular to e
+            Q = 2.0 * ( (I - e * e.transpose()) + lambda_back * P_prep );
+          }
+        }
+
+        Q += 2.0 * reg * I;
+
+        // ---------- Constraints ----------
+        const int Nr = robot_pts_mat_.rows();
+        if(!qp_cache_init_){
+          A_ineq_cache_.resize(Nr, Dim);
+          u_ineq_cache_.resize(Nr);
+          A_eq_cache_.resize(1, Dim);
+          b_eq_cache_.resize(1);
+          qp_cache_init_ = true;
+        }
+
+        // robot points must be strictly on negative side of plane through obs_pt:
+        // (r_i - obs)^T n <= -eps
+        for (int i = 0; i < Nr; i++){
+          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
+          u_ineq_cache_(i) = -eps;
+        }
+
+        // scaling + sign fixing:
+        // (center - obs)^T n = -1
+        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
+        b_eq_cache_(0) = -1.0;
+
+        // ---------- Solve ----------
+        if (!solver_init_){
+          solver_.setup(Q, c,
+                        A_eq_cache_, b_eq_cache_,
+                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                        piqp::nullopt, piqp::nullopt);
+          solver_init_ = true;
+        } else {
+          solver_.update(Q, c,
+                        A_eq_cache_, b_eq_cache_,
+                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
+                        piqp::nullopt, piqp::nullopt);
+        }
+
+        const auto result = solver_.solve();
+        Eigen::VectorXd sol;
+        if (result == piqp::Status::PIQP_SOLVED){
+          sol = solver_.result().x;
+        } else {
+          std::cout << "[Free Space generation] In get_hyperplane_seed_front_back(3d) PIQP failed to solve the QP and the status is "
+                    << static_cast<int>(result) << std::endl;
+          return;
+        }
+
+        Hyperplane3D hp_tmp(obstacle_pt, Vec3f(sol(0), sol(1), sol(2)));
+        hp = hp_tmp;
+      }      
+
     template<int U = Dim>
       typename std::enable_if<U == 2>::type
       get_hyperplane_seed(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp, double radius, double lambda_prep = 0.0){
@@ -1145,81 +1332,81 @@ counter++;
           }
 
           if(use_qp){
-            // Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
-            // get_hyperplane(pw, center, v_qp, radius);
+            Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
+            get_hyperplane(pw, center, v_qp, radius);
             
-            // vec_E<Hyperplane3D> hp_vec;
-            // hp_vec.push_back(v_qp);
-            // LinearConstraint3D lc(center, hp_vec);
+            vec_E<Hyperplane3D> hp_vec;
+            hp_vec.push_back(v_qp);
+            LinearConstraint3D lc(center, hp_vec);
 
-            // Vec3f A_raw = lc.A_.row(0);
-            // double nrm = A_raw.norm();
-            // Vec3f A = A_raw / nrm;
-            // double b0 = lc.b()(0) / nrm;
+            Vec3f A_raw = lc.A_.row(0);
+            double nrm = A_raw.norm();
+            Vec3f A = A_raw / nrm;
+            double b0 = lc.b()(0) / nrm;
 
-            // const double eps_robot = 1e-4;  
-            // const double eps_obs = 1e-4;    
-            // double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+            const double eps_robot = 1e-4;  
+            const double eps_obs = 1e-4;    
+            double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
 
-            // v.n_ = A;
-            // v.p_ = A * b;
-            const double lambda_max = 8.0;
-            double lambda = 0.0;
-            int best_removed = -1;
-            Hyperplane3D best_hp(Vec3f::Zero(), Vec3f::Zero());
+            v.n_ = A;
+            v.p_ = A * b;
+            // const double lambda_max = 8.0;
+            // double lambda = 0.0;
+            // int best_removed = -1;
+            // Hyperplane3D best_hp(Vec3f::Zero(), Vec3f::Zero());
 
-            vec_Vecf<Dim> tmp_kept;
-            tmp_kept.reserve(obs_remain.size());
+            // vec_Vecf<Dim> tmp_kept;
+            // tmp_kept.reserve(obs_remain.size());
 
-            for(;;){
+            // for(;;){
 
-              Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
-              get_hyperplane_seed(pw, center, hp, radius, lambda);
+            //   Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
+            //   get_hyperplane_seed(pw, center, hp, radius, lambda);
 
 
-              vec_E<Hyperplane3D> hp_vec;
-              hp_vec.push_back(hp);
-              LinearConstraint3D lc(center, hp_vec);
+            //   vec_E<Hyperplane3D> hp_vec;
+            //   hp_vec.push_back(hp);
+            //   LinearConstraint3D lc(center, hp_vec);
 
-              Vec3f A_raw = lc.A_.row(0);
-              double nrm = A_raw.norm();
-              if(nrm < 1e-12) {
+            //   Vec3f A_raw = lc.A_.row(0);
+            //   double nrm = A_raw.norm();
+            //   if(nrm < 1e-12) {
 
-              } else {
-                Vec3f A = A_raw / nrm;
-                double b0 = lc.b()(0) / nrm;
+            //   } else {
+            //     Vec3f A = A_raw / nrm;
+            //     double b0 = lc.b()(0) / nrm;
 
           
-                const double eps_robot = 1e-4;
-                const double eps_obs   = 1e-4;
-                double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+            //     const double eps_robot = 1e-4;
+            //     const double eps_obs   = 1e-4;
+            //     double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
 
-                hp.n_ = A;
-                hp.p_ = A * b;
-
-
-                tmp_kept.clear();
-                for(const auto &it : obs_remain){
-                  if(hp.signed_dist(it) < -1e-10){
-                    tmp_kept.push_back(it);
-                  }
-                }
-                const int removed = (int)obs_remain.size() - (int)tmp_kept.size();
-
-                if(removed > best_removed){
-                  best_removed = removed;
-                  best_hp = hp;
-                }
-
-                if(removed > 10) break;  
-              }
-
-              if(lambda >= lambda_max) break;
-              lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
-            }
+            //     hp.n_ = A;
+            //     hp.p_ = A * b;
 
 
-            v = best_hp;
+            //     tmp_kept.clear();
+            //     for(const auto &it : obs_remain){
+            //       if(hp.signed_dist(it) < -1e-10){
+            //         tmp_kept.push_back(it);
+            //       }
+            //     }
+            //     const int removed = (int)obs_remain.size() - (int)tmp_kept.size();
+
+            //     if(removed > best_removed){
+            //       best_removed = removed;
+            //       best_hp = hp;
+            //     }
+
+            //     if(removed > 10) break;  
+            //   }
+
+            //   if(lambda >= lambda_max) break;
+            //   lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
+            // }
+
+
+            // v = best_hp;
           }
 
           Vs.add(v);

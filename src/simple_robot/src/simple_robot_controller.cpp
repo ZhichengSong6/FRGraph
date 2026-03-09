@@ -101,6 +101,9 @@ int main(int argc, char **argv)
         double vx = g_cmd.linear.x;
         double vy = g_cmd.linear.y;
         double vz = g_cmd.linear.z;
+
+        double wx = g_cmd.angular.x;
+        double wy = g_cmd.angular.y;
         double wz = g_cmd.angular.z;
 
         // Convert (vx, vy) from body frame to world frame
@@ -110,12 +113,16 @@ int main(int argc, char **argv)
         // Our own z integration, independent of gravity
         g_z_ctrl += vz * dt;
 
+        double droll  = wx * dt;
+        double dpitch = wy * dt;
         double dyaw = wz * dt;
 
-        // Build new yaw
+        // Build new rpy
+        roll += droll;
+        pitch += dpitch;
         yaw += dyaw;
         tf::Quaternion q_new;
-        q_new.setRPY(0, 0, yaw);
+        q_new.setRPY(roll, pitch, yaw);
 
         // Target pose
         geometry_msgs::Pose new_pose = g_pose;
