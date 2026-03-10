@@ -1189,8 +1189,9 @@ int counter = 0;
 // std::cout << "closest point to seed center: " << pw.transpose() << std::endl;
           Hyperplane2D v(Vec2f::Zero(), Vec2f::Zero());
           v = this->aniso_ellipsoid_.closest_hyperplane(pw);
-          // gate for whether use qp to solve hyperplane
+          // gate for whether use qp to solve hyperplane !!!!!!!!!!!!!!disabled for now
           bool use_qp = false;
+          seed_has_constraints = false;
           if(seed_has_constraints){
             const double s_center = (center - p1_).dot(e);
             const double s_pw = (pw - p1_).dot(e);
@@ -1220,6 +1221,7 @@ int counter = 0;
               }
             }
           }
+          use_qp = false;
           if (use_qp){
             Hyperplane2D v_qp(Vec2f::Zero(), Vec2f::Zero());
             get_hyperplane(pw, center, v_qp, radius);
@@ -1300,8 +1302,9 @@ counter++;
           const auto pw = this->aniso_ellipsoid_.closest_point(obs_remain);
           Hyperplane3D v(Vec3f::Zero(), Vec3f::Zero());
           v = this->aniso_ellipsoid_.closest_hyperplane(pw);
-          // gate for whether use qp to solve hyperplane
+          // gate for whether use qp to solve hyperplane   !!!!!!!!!!!!!!!!!disabled for now
           bool use_qp = false;
+          bool seed_has_constraints = false;
           if (seed_has_constraints){
             const double s_center = (center - p1_).dot(e);
             const double s_pw = (pw - p1_).dot(e);
@@ -1330,7 +1333,7 @@ counter++;
               }
             }
           }
-
+          use_qp = false;
           if(use_qp){
             Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
             get_hyperplane(pw, center, v_qp, radius);
