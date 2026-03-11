@@ -211,7 +211,7 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e)
         cmd.angular.y = 0.0;
         cmd.angular.z = wz;
 
-        cmd_vel_pub_.publish(cmd);
+        // cmd_vel_pub_.publish(cmd);
         return;
     }
 
@@ -258,7 +258,7 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e)
         cmd.angular.y = wcmd_b.y();
         cmd.angular.z = wcmd_b.z();
 
-        cmd_vel_pub_.publish(cmd);
+        // cmd_vel_pub_.publish(cmd);
         return;
     }
 }

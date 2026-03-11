@@ -70,6 +70,8 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
 
     poly_pub_aniso_full_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_aniso_full_array", 1, true);
     poly_frtree_pub_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_frtree_array", 1, true);
+    poly_frtree2_pub_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_frtree_array2", 1, true);
+    poly_frtree3_pub_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_frtree_array3", 1, true);
 
     test_cube_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_test_cube", 1, true);
     traj_vis_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_traj_vis", 1, true);
@@ -375,9 +377,7 @@ void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std
 
 void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
     /* TEST */
-    polys_aniso_2d_.clear();
     polys_2d_.clear();
-    polys_aniso_3d_.clear();
     polys_3d_.clear();
 
     polys_aniso_full_.clear();
@@ -396,17 +396,6 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
     ROS_INFO("[PlannerManager] dilate elapsed: %.3f ms", ms);
 
-        LineSegment3D line_segment_aniso(p1, p2);
-        if (all_candidates[0].type == 1){ // limited gap
-            line_segment_aniso.set_local_bbox_aniso(Vec3f(0.2f, 0.5f, 0.5f),
-                                                   Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
-        }
-        else{
-            line_segment_aniso.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
-                                                    Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
-        }
-        line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
-
         // get robot shape in odom frame
         Eigen::Matrix4d T_odom;
         getOdometryInfo(T_odom);
@@ -422,7 +411,6 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
                 static_cast<float>(rotated_pt[1]),
                 static_cast<float>(rotated_pt[2]));
         }
-        line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
 
         const Eigen::Vector3d center_base = robot_ellipsoid_.d().cast<double>();
         const Eigen::Vector4d center_base_homo(center_base[0], center_base[1], center_base[2], 1.0);
@@ -431,11 +419,6 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
         const Eigen::Vector3d center_odom = center_odom_homo.head<3>();
 
         const double radius = robot_ellipsoid_.C()(0,0);
-    auto t2 = std::chrono::high_resolution_clock::now();
-        line_segment_aniso.dilate_aniso(Vec3f(center_odom[0], center_odom[1], center_odom[2]), radius);
-    auto t3 = std::chrono::high_resolution_clock::now();
-    double ms_1 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
-    ROS_INFO("[PlannerManager]  dilate_aniso elapsed: %.3f ms", ms_1);
 
         LineSegment3D line_segment_aniso_full(p1, p2);
         if (all_candidates[0].type == 1){ // limited gap
@@ -455,17 +438,12 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     ROS_INFO("[PlannerManager]  dilate_aniso_full elapsed: %.3f ms", ms_2);
 
         polys_3d_.push_back(line_segment.get_polyhedron());
-        polys_aniso_3d_.push_back(line_segment_aniso.get_polyhedron());
         polys_aniso_full_.push_back(line_segment_aniso_full.get_polyhedron());
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_3d_);
-        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
         decomp_ros_msgs::PolyhedronArray poly_msg_aniso_full = DecompROS::polyhedron_array_to_ros(polys_aniso_full_);
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_pub_.publish(poly_msg);
-        poly_msg_aniso.header.stamp = ros::Time::now();
-        poly_msg_aniso.header.frame_id = "odom";
-        poly_pub_aniso_.publish(poly_msg_aniso);
         poly_msg_aniso_full.header.stamp = ros::Time::now();
         poly_msg_aniso_full.header.frame_id = "odom";
         poly_pub_aniso_full_.publish(poly_msg_aniso_full);
@@ -484,17 +462,6 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
     ROS_INFO("[PlannerManager] dilate elapsed: %.3f ms", ms);
 
-        LineSegment2D line_segment_aniso(p1, p2);
-        if (all_candidates[0].type == 1){ // limited gap
-            line_segment_aniso.set_local_bbox_aniso(Vec2f(0.2f, 0.5f),
-                                                   Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
-        }
-        else{
-            line_segment_aniso.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
-                                                    Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
-        }
-        line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
-
         // get robot shape in odom frame
         Eigen::Matrix4d T_odom;
         getOdometryInfo(T_odom);
@@ -511,18 +478,13 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
                 static_cast<float>(rotated_pt[0]),
                 static_cast<float>(rotated_pt[1]));
         }
-        line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
         const Eigen::Vector2d center_base = robot_ellipsoid_2d_.d().cast<double>();
         const Eigen::Vector3d center_base_homo(center_base[0], center_base[1], 0.0);
         const Eigen::Affine3d T_odom_base = tf2::transformToEigen(*odom_base_ptr_);
         const Eigen::Vector3d center_odom = T_odom_base * center_base_homo;
 
         const double radius = robot_ellipsoid_2d_.C()(0, 0);
-    auto t2 = std::chrono::high_resolution_clock::now();
-        line_segment_aniso.dilate_aniso(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
-    auto t3 = std::chrono::high_resolution_clock::now();
-    double ms_1 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
-    ROS_INFO("[PlannerManager] dilate_aniso elapsed: %.3f ms", ms_1);
+
 
         LineSegment2D line_segment_aniso_full(p1, p2);
         if (all_candidates[0].type == 1){ // limited gap
@@ -542,17 +504,12 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     ROS_INFO("[PlannerManager] dilate_aniso_full elapsed: %.3f ms", ms_2);
 
         polys_aniso_full_2d_.push_back(line_segment_aniso_full.get_polyhedron());
-        polys_aniso_2d_.push_back(line_segment_aniso.get_polyhedron());
         polys_2d_.push_back(line_segment.get_polyhedron());
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_2d_);
-        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_2d_);
         decomp_ros_msgs::PolyhedronArray poly_msg_aniso_full = DecompROS::polyhedron_array_to_ros(polys_aniso_full_2d_);
         poly_msg.header.stamp = ros::Time::now();
         poly_msg.header.frame_id = "odom";
         poly_pub_.publish(poly_msg);
-        poly_msg_aniso.header.stamp = ros::Time::now();
-        poly_msg_aniso.header.frame_id = "odom";
-        poly_pub_aniso_.publish(poly_msg_aniso);
         poly_msg_aniso_full.header.stamp = ros::Time::now();
         poly_msg_aniso_full.header.frame_id = "odom";
         poly_pub_aniso_full_.publish(poly_msg_aniso_full);
@@ -599,10 +556,28 @@ void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &sta
         line_segment3.dilate(0.1f);
         polys_FRTree_2d_.push_back(line_segment3.get_polyhedron()); 
 
-        decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_FRTree_2d_);
-        poly_msg.header.stamp = ros::Time::now();
-        poly_msg.header.frame_id = "odom";
-        poly_frtree_pub_.publish(poly_msg);
+        // decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_FRTree_2d_);
+        // poly_msg.header.stamp = ros::Time::now();
+        // poly_msg.header.frame_id = "odom";
+        // poly_frtree_pub_.publish(poly_msg);
+        vec_E<Polyhedron2D> single_poly1;
+        single_poly1.push_back(polys_FRTree_2d_[0]);
+        vec_E<Polyhedron2D> single_poly2;
+        single_poly2.push_back(polys_FRTree_2d_[1]);
+        vec_E<Polyhedron2D> single_poly3;
+        single_poly3.push_back(polys_FRTree_2d_[2]);
+        decomp_ros_msgs::PolyhedronArray poly_msg1 = DecompROS::polyhedron_array_to_ros(single_poly1);
+        decomp_ros_msgs::PolyhedronArray poly_msg2 = DecompROS::polyhedron_array_to_ros(single_poly2);
+        decomp_ros_msgs::PolyhedronArray poly_msg3 = DecompROS::polyhedron_array_to_ros(single_poly3);
+        poly_msg1.header.stamp = ros::Time::now();
+        poly_msg1.header.frame_id = "odom";
+        poly_frtree_pub_.publish(poly_msg1);
+        poly_msg2.header.stamp = ros::Time::now();
+        poly_msg2.header.frame_id = "odom";
+        poly_frtree2_pub_.publish(poly_msg2);
+        poly_msg3.header.stamp = ros::Time::now();
+        poly_msg3.header.frame_id = "odom";
+        poly_frtree3_pub_.publish(poly_msg3);
     }
     else{
         // 3D
@@ -1929,8 +1904,8 @@ void PlannerManager::expandNode(Eigen::Vector3d &start_pos, Eigen::Vector3d &goa
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
     
     // test
-    // decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
-    // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
+    decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
+    decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
     // first decompose along all gap directions
 auto t0 = std::chrono::high_resolution_clock::now();
     decomposeAlongGapDirections(start_pos, all_candidates);

@@ -88,6 +88,8 @@ class PlannerManager {
 
     ros::Publisher poly_pub_aniso_full_;
     ros::Publisher poly_frtree_pub_;
+    ros::Publisher poly_frtree2_pub_;
+    ros::Publisher poly_frtree3_pub_;
 
     ros::Publisher test_cube_pub_;
     ros::Publisher traj_vis_pub_;

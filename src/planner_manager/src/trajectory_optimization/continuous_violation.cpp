@@ -598,6 +598,7 @@ bool RepairOnce_PIQP(
     // solve QP to get delta
     Eigen::VectorXd x_sol;
     if (!solveRepairQP_PIQP(w0.t, ctrl_idx, violated, margin, delta_p, delta_th, w_p, w_th, w_slack, x_sol)){
+        std::cout << "[RepairOnce_PIQP] Warning: QP failed to solve at t*=" << w0.t << std::endl;
         return false; // QP failed
     }
 
@@ -613,6 +614,7 @@ bool RepairOnce_PIQP(
         }
         alpha *= 0.5; // reduce step size
     }
+    std::cout << "[RepairOnce_PIQP] Warning: line search failed to find improvement at t*=" << w0.t << std::endl;
     return false; // failed to find improvement
 }
 

@@ -37,22 +37,7 @@ class LineSegment : public DecompBase<Dim> {
       add_local_bbox(this->polyhedron_);
     }
 
-    void dilate_aniso(const Vecf<Dim> &center, const float radius){
-      set_ellipsoid(center, radius);
-      find_polyhedron_for_seed(center, radius);
-      obs_pruning(center, radius);
-      find_polyhedron_aniso(radius);
-      add_local_bbox_aniso(this->polyhedron_);
-      // std::cout << "Aniso polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
-      remove_redundant_hyperplanes(this->polyhedron_);
-      // std::cout << "After removing redundant hyperplanes, aniso polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
-    }
-
     void dilate_aniso_full(const Vecf<Dim> &center, const float radius){
-      set_ellipsoid(center, radius);
-      find_polyhedron_for_seed(center, radius);
-// std::cout << "Initial polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
-      obs_pruning(center, radius);
       find_polyhedron_aniso_full(radius, center);
       add_local_bbox_aniso(this->polyhedron_);
 // std::cout << "Aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
@@ -300,132 +285,6 @@ class LineSegment : public DecompBase<Dim> {
       this->aniso_ellipsoid_ = E;
     }
 
-    template<int U = Dim>
-      typename std::enable_if<U == 2>::type
-      set_ellipsoid(const Vecf<Dim> &center, const float radius){
-        // the input is a circle, use it to set an ellipsoid
-        Matf<Dim, Dim> C = radius * Matf<Dim, Dim>::Identity();
-        Ellipsoid<Dim> E(C, center);
-        this->aniso_ellipsoid_ = E;
-      }
-    
-    template<int U = Dim>
-      typename std::enable_if<U == 3>::type
-      set_ellipsoid(const Vecf<Dim> &center, const float radius){
-        // the input is a sphere, use it to set an ellipsoid
-        Matf<Dim, Dim> C = radius * Matf<Dim, Dim>::Identity();
-        this->aniso_ellipsoid_ = Ellipsoid<Dim>(C, center);
-      }
-
-    /// check whether there is obstacle inside the seed circle(2D)
-    template<int U = Dim>
-      typename std::enable_if<U == 2>::type
-      find_polyhedron_for_seed(const Vecf<Dim> &center, const float radius) {
-        Polyhedron<Dim> Vs;
-        // first check whether there is obstacle inside the seed circle
-        auto obs_inside = points_inside_seed(center, radius, this->obs_);
-        const double lambda_front = 0.0;
-        const double lambda_back  = 0.0;
-
-
-int counter = 0;
-// Vec2f e = (p2_ - p1_).normalized();
-        while (!obs_inside.empty()) {
-          // select one obstacle point inside the seed
-          const auto pw = select_point_in_seed(center, obs_inside);
-// std::cout << "[seed] closest point to seed center: " << pw.transpose() << std::endl;
-// std::cout << "[seed] (pw - center).dot(e): " << (pw - center).dot(e) << std::endl;
-
-          Hyperplane2D hp(Vec2f::Zero(), Vec2f::Zero());
-          get_hyperplane_seed_front_back(pw, center, hp, lambda_front, lambda_back);
-
-          vec_E<Hyperplane2D> hp_vec;
-          hp_vec.push_back(hp);
-          LinearConstraint2D lc(center, hp_vec);
-
-          Vec2f A_raw = lc.A_.row(0);
-          double nrm = A_raw.norm();
-          if (nrm < 1e-12) {
-            std::cout << "[Free Space generation] In find_polyhedron_for_seed(2d), hyperplane normal norm is too small." << std::endl;
-            break;
-          }
-
-          Vec2f A = A_raw / nrm;
-          double b0 = lc.b()(0) / nrm;
-
-          const double eps_robot = 1e-4;
-          const double eps_obs   = 1e-4;
-          double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
-
-          hp.n_ = A;
-          hp.p_ = A * b;
-
-          Vs.add(hp);
-
-// std::cout << "[seed] hyperplane normal: " << hp.n_.transpose() << ", point: " << hp.p_.transpose() << std::endl;
-counter++;
-          // remove the points which are on the negative side of the hyperplane
-          vec_Vecf<Dim> obs_new;
-          obs_new.reserve(obs_inside.size());
-          int size_before = obs_inside.size();
-          for (const auto &it : obs_inside) {
-            if (hp.signed_dist(it) < -1e-10)
-              obs_new.push_back(it);
-          }
-          obs_inside.swap(obs_new);
-// std::cout << "obs reduced from " << size_before << " to " << obs_inside.size() << std::endl;
-        }
-// std::cout << "[seed] Aniso full polyhedron generated " << counter << " hyperplanes." << std::endl;
-        this->polyhedron_ = Vs;
-      }
-    
-    template<int U = Dim>
-      typename std::enable_if<U == 3>::type
-      find_polyhedron_for_seed(const Vecf<Dim> &center, const float radius) {
-        Polyhedron<Dim> Vs;
-        // first check whether there is obstacle inside the seed circle
-        auto obs_inside = points_inside_seed(center, radius, this->obs_);
-        const double lambda_front = 0.0;
-        const double lambda_back  = 0.0;
-        while (!obs_inside.empty()) {
-          // select one obstacle point inside the seed
-          const auto pw = select_point_in_seed(center, obs_inside);
-          Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
-          get_hyperplane_seed_front_back(pw, center, hp, lambda_front, lambda_back);
-
-          vec_E<Hyperplane3D> hp_vec;
-          hp_vec.push_back(hp);
-          LinearConstraint3D lc(center, hp_vec);
-
-          Vec3f A_raw = lc.A_.row(0);
-          double nrm = A_raw.norm();
-          if (nrm < 1e-12) {
-            std::cout << "[Free Space generation] In find_polyhedron_for_seed(3d), hyperplane normal norm is too small." << std::endl;
-            break;
-          }
-
-          Vec3f A = A_raw / nrm;
-          double b0 = lc.b()(0) / nrm;
-
-          const double eps_robot = 1e-4;
-          const double eps_obs   = 1e-4;
-          double b = tighten_b(A, b0, pw, obs_inside, eps_robot, eps_obs, 0.01);
-
-          hp.n_ = A;
-          hp.p_ = A * b;
-
-          Vs.add(hp);
-          // remove the points which are on the negative side of the hyperplane
-          vec_Vecf<Dim> obs_new;
-          for (const auto &it : obs_inside) {
-            if (hp.signed_dist(it) < -1e-10)
-              obs_new.push_back(it);
-          }
-          obs_inside.swap(obs_new);
-        }
-        this->polyhedron_ = Vs;
-      }
-
     double tighten_b(const Vecf<Dim> &A_unit, double b0, const Vecf<Dim> &pw, const vec_Vecf<Dim> &obs, double eps_robot, double eps_obs, double tau, double sd_tol = 1e-9){
       // robot safety
       double robot_max = -std::numeric_limits<double>::max();
@@ -459,25 +318,7 @@ counter++;
       return b;
     }
 
-    vec_Vecf<Dim> points_inside_seed(const Vecf<Dim> &center, const float radius, const vec_Vecf<Dim> &obs) {
-      vec_Vecf<Dim> new_obs;
-      for (const auto &it : obs) {
-        if ((it - center).norm() <= radius)
-          new_obs.push_back(it);
-      }
-      return new_obs;
-    }
-
-    void obs_pruning(const Vecf<Dim> &center, const float radius){
-      vec_Vecf<Dim> new_obs;
-      for (const auto &it : this->obs_) {
-        if ((it - center).norm() > radius)
-          new_obs.push_back(it);
-      }
-      this->obs_ = new_obs;
-    }
-
-    Vecf<Dim> select_point_in_seed(const Vecf<Dim> &center, const vec_Vecf<Dim> &obs){
+    Vecf<Dim> select_point(const Vecf<Dim> &center, const vec_Vecf<Dim> &obs){
       Vecf<Dim> pt = Vecf<Dim>::Zero();
 
       if (obs.empty()) {
@@ -548,8 +389,8 @@ counter++;
 
         // --------- d_sw schedule (near -> far) ----------
         const double d_sw_far  = 0.8 * radius;          
-        const double d_sw_near = 1.2 * radius;          
-        const double s0        = 1.5 * radius;          
+        const double d_sw_near = 1.0 * radius;          
+        const double s0        = 2.0 * radius;          
 
         double alpha = 1.0 - std::min(1.0, s_pos / s0); 
         alpha = alpha * alpha;                           
@@ -559,7 +400,7 @@ counter++;
         double w = 0.0;
         if (d_lat < d_sw) {
           double t = 1.0 - d_lat / d_sw;   // in (0,1]
-          w = w_max * t * t;
+          w = w_max * t ;
         }
 
         // build Q
@@ -708,841 +549,124 @@ counter++;
         Hyperplane3D hp_tmp(obstacle_pt, Vec3f(sol(0), sol(1), sol(2)));
         hp = hp_tmp;
       }
-    
+
     template<int U = Dim>
-      typename std::enable_if<U == 2>::type
-      get_hyperplane_seed_front_back(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp,
-                                     double lambda_front = 0.0,
-                                     double lambda_back  = 0.0) {
-        Eigen::Vector2d e = (p2_ - p1_).normalized();
-        Eigen::Vector2d obs_pt = obstacle_pt;
-        Eigen::Vector2d seed_center = center;
+    typename std::enable_if<U == 2>::type
+    find_polyhedron_aniso_full(double radius, const Vecf<Dim> &center) {
+      Polyhedron<Dim> Vs;
+      vec_Vecf<Dim> obs_remain = this->obs_;
 
-        Eigen::Vector2d a = obs_pt - seed_center;
-        double a_norm = a.norm();
-
-        double eps = 1e-4;
-
-        Eigen::Matrix2d Q = Eigen::Matrix2d::Zero();
-        Eigen::Vector2d c = Eigen::Vector2d::Zero();
-
-        const double signed_proj = a.dot(e);
-        const bool is_front = (signed_proj >= 0.0);
-
-        const double reg = 1e-8;
-        Eigen::Matrix2d I = Eigen::Matrix2d::Identity();
-
-        // if obstacle_pt is too close to center, fall back to original style
-        if (a_norm < 1e-8) {
-          Q = 2.0 * I;
-        }
-        else {
-          Eigen::Vector2d a_hat = a / a_norm;
-          Eigen::Matrix2d P_prep = I - a_hat * a_hat.transpose();
-
-          if (is_front) { // Front half: prefer hyperplane parallel to e
-            Q = 2.0 * ( (e * e.transpose()) + lambda_front * P_prep );
-          } else {        // Back half: prefer hyperplane perpendicular to e
-            Q = 2.0 * ( (I - e * e.transpose()) + lambda_back * P_prep );
-          }
-        }
-
-        Q += 2.0 * reg * I;
-
-        // ---------- Constraints ----------
-        const int Nr = robot_pts_mat_.rows();
-        if(!qp_cache_init_){
-          A_ineq_cache_.resize(Nr, Dim);
-          u_ineq_cache_.resize(Nr);
-          A_eq_cache_.resize(1, Dim);
-          b_eq_cache_.resize(1);
-          qp_cache_init_ = true;
-        }
-
-        // robot points must be strictly on negative side of plane through obs_pt:
-        // (r_i - obs)^T n <= -eps
-        for (int i = 0; i < Nr; i++){
-          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
-          u_ineq_cache_(i) = -eps;
-        }
-
-        // scaling + sign fixing:
-        // (center - obs)^T n = -1
-        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
-        b_eq_cache_(0) = -1.0;
-
-        // ---------- Solve ----------
-        if (!solver_init_){
-          solver_.setup(Q, c,
-                        A_eq_cache_, b_eq_cache_,
-                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
-                        piqp::nullopt, piqp::nullopt);
-          solver_init_ = true;
-        } else {
-          solver_.update(Q, c,
-                        A_eq_cache_, b_eq_cache_,
-                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
-                        piqp::nullopt, piqp::nullopt);
-        }
-
-        const auto result = solver_.solve();
-        Eigen::VectorXd sol;
-        if (result == piqp::Status::PIQP_SOLVED){
-          sol = solver_.result().x;
-        } else {
-          std::cout << "[Free Space generation] In get_hyperplane_seed_front_back(2d) PIQP failed to solve the QP and the status is "
-                    << static_cast<int>(result) << std::endl;
-          return;
-        }
-
-        Hyperplane2D hp_tmp(obstacle_pt, Vec2f(sol(0), sol(1)));
-        hp = hp_tmp;
+      if (obs_remain.empty()) {
+        return;
       }
 
-    template<int U = Dim>
-      typename std::enable_if<U == 3>::type
-      get_hyperplane_seed_front_back(Vec3f obstacle_pt, Vec3f center, Hyperplane3D &hp,
-                                     double lambda_front = 0.0,
-                                     double lambda_back  = 0.0) {
-        Eigen::Vector3d e = (p2_ - p1_).normalized();
-        Eigen::Vector3d obs_pt = obstacle_pt;
-        Eigen::Vector3d seed_center = center;
+      while (!obs_remain.empty()) {
+        // unified point selection over all remaining obstacles
+        const auto pw = select_point(center, obs_remain);
 
-        Eigen::Vector3d a = obs_pt - seed_center;
-        double a_norm = a.norm();
+        // generate hyperplane directly by QP
+        Hyperplane2D v_qp(Vec2f::Zero(), Vec2f::Zero());
+        get_hyperplane(pw, center, v_qp, radius);
 
-        double eps = 1e-4;
+        vec_E<Hyperplane2D> hp_vec;
+        hp_vec.push_back(v_qp);
+        LinearConstraint2D lc(center, hp_vec);
 
-        Eigen::Matrix3d Q = Eigen::Matrix3d::Zero();
-        Eigen::Vector3d c = Eigen::Vector3d::Zero();
-
-        const double signed_proj = a.dot(e);
-        const bool is_front = (signed_proj >= 0.0);
-
-        const double reg = 1e-8;
-        Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-
-        // if obstacle_pt is too close to center, fall back to isotropic regularization
-        if (a_norm < 1e-8) {
-          Q = 2.0 * I;
-        }
-        else {
-          Eigen::Vector3d a_hat = a / a_norm;
-          Eigen::Matrix3d P_prep = I - a_hat * a_hat.transpose();
-
-          if (is_front) { // Front half: prefer hyperplane parallel to e
-            Q = 2.0 * ( (e * e.transpose()) + lambda_front * P_prep );
-          } else {        // Back half: prefer hyperplane perpendicular to e
-            Q = 2.0 * ( (I - e * e.transpose()) + lambda_back * P_prep );
-          }
+        Vec2f A_raw = lc.A_.row(0);
+        double nrm = A_raw.norm();
+        if (nrm < 1e-12) {
+          std::cout << "[Free Space generation] In find_polyhedron_aniso_full(2d), hyperplane normal norm is too small." << std::endl;
+          break;
         }
 
-        Q += 2.0 * reg * I;
+        Vec2f A = A_raw / nrm;
+        double b0 = lc.b()(0) / nrm;
 
-        // ---------- Constraints ----------
-        const int Nr = robot_pts_mat_.rows();
-        if(!qp_cache_init_){
-          A_ineq_cache_.resize(Nr, Dim);
-          u_ineq_cache_.resize(Nr);
-          A_eq_cache_.resize(1, Dim);
-          b_eq_cache_.resize(1);
-          qp_cache_init_ = true;
-        }
+        const double eps_robot = 1e-4;
+        const double eps_obs   = 1e-4;
+        double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
 
-        // robot points must be strictly on negative side of plane through obs_pt:
-        // (r_i - obs)^T n <= -eps
-        for (int i = 0; i < Nr; i++){
-          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
-          u_ineq_cache_(i) = -eps;
-        }
+        Hyperplane2D v(Vec2f::Zero(), Vec2f::Zero());
+        v.n_ = A;
+        v.p_ = A * b;
 
-        // scaling + sign fixing:
-        // (center - obs)^T n = -1
-        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
-        b_eq_cache_(0) = -1.0;
+        Vs.add(v);
 
-        // ---------- Solve ----------
-        if (!solver_init_){
-          solver_.setup(Q, c,
-                        A_eq_cache_, b_eq_cache_,
-                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
-                        piqp::nullopt, piqp::nullopt);
-          solver_init_ = true;
-        } else {
-          solver_.update(Q, c,
-                        A_eq_cache_, b_eq_cache_,
-                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
-                        piqp::nullopt, piqp::nullopt);
-        }
-
-        const auto result = solver_.solve();
-        Eigen::VectorXd sol;
-        if (result == piqp::Status::PIQP_SOLVED){
-          sol = solver_.result().x;
-        } else {
-          std::cout << "[Free Space generation] In get_hyperplane_seed_front_back(3d) PIQP failed to solve the QP and the status is "
-                    << static_cast<int>(result) << std::endl;
-          return;
-        }
-
-        Hyperplane3D hp_tmp(obstacle_pt, Vec3f(sol(0), sol(1), sol(2)));
-        hp = hp_tmp;
-      }      
-
-    template<int U = Dim>
-      typename std::enable_if<U == 2>::type
-      get_hyperplane_seed(Vec2f obstacle_pt, Vec2f center, Hyperplane2D &hp, double radius, double lambda_prep = 0.0){
-        Eigen::Vector2d e = (p2_ - p1_).normalized();
-        Eigen::Vector2d obs_pt = obstacle_pt;
-        Eigen::Vector2d seed_center = center;
-
-        Eigen::Vector2d a = obs_pt - seed_center;
-        double a_norm = a.norm();
-
-        double eps = 1e-4;
-
-        Eigen::Matrix2d Q = Eigen::Matrix2d::Zero();
-        Eigen::Vector2d c = Eigen::Vector2d::Zero();
-
-        double signed_proj = a.dot(e);
-
-        const double reg = 1e-8;
-        if (signed_proj >= 0.1 * radius){
-          Eigen::Vector2d a_hat = a / a_norm;
-          Eigen::Matrix2d P_prep = Eigen::Matrix2d::Identity() - a_hat * a_hat.transpose();
-          Q = 2.0 * (e * e.transpose()) + 2.0 * lambda_prep * P_prep;
-        }
-        else{
-          Eigen::Vector2d a_hat = a / a_norm;
-          Eigen::Matrix2d P_prep = Eigen::Matrix2d::Identity() - a_hat * a_hat.transpose();
-          Q = 2.0 * P_prep;
-        }
-        Q += 2.0 * reg * Eigen::Matrix2d::Identity();
-
-        // ---------- Constraints ----------
-        const int Nr = robot_pts_mat_.rows();
-        if(!qp_cache_init_){
-          A_ineq_cache_.resize(Nr, Dim);
-          u_ineq_cache_.resize(Nr);
-          A_eq_cache_.resize(1, Dim);
-          b_eq_cache_.resize(1);
-          qp_cache_init_ = true;
-        }
-
-        // robot points must be strictly on negative side of plane through obs_pt:
-        // (r_i - obs)^T n <= -eps
-        for (int i = 0; i < Nr; i++){
-          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
-          u_ineq_cache_(i) = -eps;
-        }
-      
-        // scaling + sign fixing:
-        // (center - obs)^T n = -1   <=>  a^T n = 1
-        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
-        b_eq_cache_(0) = -1.0;
-
-        // ---------- Solve ----------
-        if (!solver_init_){
-          solver_.setup(Q, c,
-                        A_eq_cache_, b_eq_cache_,
-                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
-                        piqp::nullopt, piqp::nullopt);
-          solver_init_ = true;
-        } else {
-          solver_.update(Q, c,
-                        A_eq_cache_, b_eq_cache_,
-                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
-                        piqp::nullopt, piqp::nullopt);
-        }
-
-        const auto result = solver_.solve();
-        Eigen::VectorXd sol;
-        if (result == piqp::Status::PIQP_SOLVED){
-          sol = solver_.result().x;
-        } else {
-          std::cout << "[Free Space generation]In get hyperplane seed(2d) PIQP failed to solve the QP and the status is "
-                    << static_cast<int>(result) << std::endl;
-          return;
-        }
-
-        // sol is normal
-        Hyperplane2D hp_tmp(obstacle_pt, Vec2f(sol(0), sol(1)));
-        hp = hp_tmp;
-
-      }
-
-    template<int U = Dim>
-      typename std::enable_if<U == 3>::type
-      get_hyperplane_seed(Vec3f obstacle_pt, Vec3f center, Hyperplane3D &hp, double radius, double lambda_prep = 0.0){
-        Eigen::Vector3d e = (p2_ - p1_).normalized();
-        Eigen::Vector3d obs_pt = obstacle_pt;
-        Eigen::Vector3d seed_center = center;
-
-        Eigen::Vector3d a = obs_pt - seed_center;
-        double a_norm = a.norm();
-
-        double eps = 1e-4;
-
-        Eigen::Matrix3d Q = Eigen::Matrix3d::Zero();
-        Eigen::Vector3d c = Eigen::Vector3d::Zero();
-
-        double signed_proj = a.dot(e);
-
-        const double reg = 1e-8;
-        if (signed_proj >= 0.1 * radius){
-          Eigen::Vector3d a_hat = a / a_norm;
-          Eigen::Matrix3d P_prep = Eigen::Matrix3d::Identity() - a_hat * a_hat.transpose();
-          Q = 2.0 * (e * e.transpose()) + 2.0 * lambda_prep * P_prep;
-        }
-        else{
-          Eigen::Vector3d a_hat = a / a_norm;
-          Eigen::Matrix3d P_prep = Eigen::Matrix3d::Identity() - a_hat * a_hat.transpose();
-          Q = 2.0 * P_prep;
-        }
-        Q += 2.0 * reg * Eigen::Matrix3d::Identity();
-
-        // ---------- Constraints ----------
-        const int Nr = robot_pts_mat_.rows();
-        if(!qp_cache_init_){
-          A_ineq_cache_.resize(Nr, Dim);
-          u_ineq_cache_.resize(Nr);
-          A_eq_cache_.resize(1, Dim);
-          b_eq_cache_.resize(1);
-          qp_cache_init_ = true;
-        }
-
-        // robot points must be strictly on negative side of plane through obs_pt:
-        // (r_i - obs)^T n <= -eps
-        for (int i = 0; i < Nr; i++){
-          A_ineq_cache_.row(i) = (robot_pts_mat_.row(i).transpose() - obs_pt).transpose();
-          u_ineq_cache_(i) = -eps;
-        }
-      
-        // scaling + sign fixing:
-        // (center - obs)^T n = -1   <=>  a^T n = 1
-        A_eq_cache_.row(0) = (seed_center - obs_pt).transpose();
-        b_eq_cache_(0) = -1.0;
-
-        // ---------- Solve ----------
-        if (!solver_init_){
-          solver_.setup(Q, c,
-                        A_eq_cache_, b_eq_cache_,
-                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
-                        piqp::nullopt, piqp::nullopt);
-          solver_init_ = true;
-        } else {
-          solver_.update(Q, c,
-                        A_eq_cache_, b_eq_cache_,
-                        A_ineq_cache_, piqp::nullopt, u_ineq_cache_,
-                        piqp::nullopt, piqp::nullopt);
-          }
-        const auto result = solver_.solve();
-        Eigen::VectorXd sol;
-        if (result == piqp::Status::PIQP_SOLVED){
-          sol = solver_.result().x;
-        } else {
-          std::cout << "[Free Space generation] In get_hyperplane_seed(3d) PIQP failed to solve the QP and the status is "
-                    << static_cast<int>(result) << std::endl;
-          return;
-        }
-        // sol is normal
-        Hyperplane3D hp_tmp(obstacle_pt, Vec3f(sol(0), sol(1), sol(2)));
-        hp = hp_tmp;
-      }
-
-    /// Anisotropic polyhedron (2D)
-    template<int U = Dim>
-      typename std::enable_if<U == 2>::type
-      find_polyhedron_aniso(double radius) {
-        Polyhedron<Dim> Vs;
-        vec_Vecf<Dim> obs_remain = this->obs_;
-        // first check if there is any hyperplnae generate by find_polyhedron_for_seed
-        if(!this->polyhedron_.vs_.empty()){
-          obs_remain = this->polyhedron_.points_inside(obs_remain);
-        }
-        
-        if (obs_remain.empty()){
-          return;
-        }
-
-        // we inflate the ellipsoid anisotropically
-        const double scale_long = 1.5;
-        const double scale_lat = 1.01;
-        Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
-
-        Vecf<Dim> e1;
-        e1 << -e0(1), e0(0);
-        e1.normalize();
-
-        Matf<Dim, Dim> R = Matf<Dim, Dim>::Identity();
-        R.col(0) = e0;   // local x: along line
-        R.col(1) = e1;   // local y: lateral
-
-        while (!obs_remain.empty()){
-          aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
-
-          const auto v = this->aniso_ellipsoid_.closest_hyperplane(obs_remain);
-          Vs.add(v);
-
-          vec_Vecf<Dim> obs_tmp;
-          obs_tmp.reserve(obs_remain.size());
-          for (const auto &it : obs_remain) {
-            if (v.signed_dist(it) < -1e-10)
-              obs_tmp.push_back(it);
-          }
-          obs_remain.swap(obs_tmp);
-        }
-        if (Vs.vs_.empty()){
-          return;
-        }
-        this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
-      }
-    
-    /// Anisotropic polyhedron (3D)
-    template<int U = Dim>
-      typename std::enable_if<U == 3>::type
-      find_polyhedron_aniso(double radius) {
-        Polyhedron<Dim> Vs;
-        vec_Vecf<Dim> obs_remain = this->obs_;
-        // first check if there is any hyperplnae generate by find_polyhedron_for_seed
-        if(!this->polyhedron_.vs_.empty()){
-          obs_remain = this->polyhedron_.points_inside(obs_remain);
-        }
-        
-        if (obs_remain.empty()){
-          return;
-        }
-
-        // we inflate the ellipsoid anisotropically
-        const double scale_long = 1.5;
-        const double scale_lat = 1.01;
-        Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
-        Vecf<Dim> seed = Vecf<Dim>::UnitX();
-        if (std::abs(e0.dot(seed)) > 0.9){
-          seed = Vecf<Dim>::UnitY();
-        }
-        Vecf<Dim> e1 = e0.cross(seed).normalized();
-        Vecf<Dim> e2 = e0.cross(e1).normalized();
-
-        Matf<Dim, Dim> R = Matf<Dim, Dim>::Identity();
-        R.col(0) = e0;   // local x: along line
-        R.col(1) = e1;   // local y: lateral
-        R.col(2) = e2;   // local z: vertical
-        
-        while (!obs_remain.empty()){
-          aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
-
-          const auto v = this->aniso_ellipsoid_.closest_hyperplane(obs_remain);
-          Vs.add(v);
-
-          vec_Vecf<Dim> obs_tmp;
-          obs_tmp.reserve(obs_remain.size());
-          for (const auto &it : obs_remain) {
-            if (v.signed_dist(it) < -1e-10)
-              obs_tmp.push_back(it);
-          }
-          obs_remain.swap(obs_tmp);
-        }
-        if (Vs.vs_.empty()){
-          return;
-        }
-        this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
-      }
-
-    /// Anisotropic polyhedron (2D)
-    template<int U = Dim>
-      typename std::enable_if<U == 2>::type
-      find_polyhedron_aniso_full(double radius, const Vecf<Dim> &center) {
-        Polyhedron<Dim> Vs;
-        vec_Vecf<Dim> obs_remain = this->obs_;
-        // first check if there is any hyperplnae generate by find_polyhedron_for_seed
-        bool seed_has_constraints = false;
-        if(!this->polyhedron_.vs_.empty()){
-          obs_remain = this->polyhedron_.points_inside(obs_remain);
-          seed_has_constraints = true;
-        }
-        
-        if (obs_remain.empty()){
-          return;
-        }
-
-        // we inflate the ellipsoid anisotropically
-        const double scale_long = 1.5;
-        const double scale_lat = 1.01;
-        Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
-
-        Vecf<Dim> e1;
-        e1 << -e0(1), e0(0);
-        e1.normalize();
-
-        Matf<Dim, Dim> R = Matf<Dim, Dim>::Identity();
-        R.col(0) = e0;   // local x: along line
-        R.col(1) = e1;   // local y: lateral
-
-        Vec2f e = (p2_ - p1_).normalized();
-        Vec2f e_perp = Vec2f(-e(1), e(0));
-        const double L = (p2_ - p1_).dot(e); // == (p2_-p1_).norm()
-int counter = 0;
-        while (!obs_remain.empty()){
-          aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
-          const auto pw = this->aniso_ellipsoid_.closest_point(obs_remain);
-// std::cout << "closest point to seed center: " << pw.transpose() << std::endl;
-          Hyperplane2D v(Vec2f::Zero(), Vec2f::Zero());
-          v = this->aniso_ellipsoid_.closest_hyperplane(pw);
-          // gate for whether use qp to solve hyperplane !!!!!!!!!!!!!!disabled for now
-          bool use_qp = false;
-          seed_has_constraints = false;
-          if(seed_has_constraints){
-            const double s_center = (center - p1_).dot(e);
-            const double s_pw = (pw - p1_).dot(e);
-
-            const bool points_ahead = s_pw - s_center > 0.1 * radius;          // whether the point is ahead of the seed center
-            const bool points_within = (s_pw < L);                            // whether the point is within the line segment
-
-            // lateral distance to the forward line
-            const Vec2f d = pw - center;
-            const double s_rel = d.dot(e);
-            const Vec2f r = d - s_rel * e;      
-            const double lateral = r.norm();
-            // forward projection far and lateral small
-            const bool forward_far = (s_pw > 0.8 * L);
-            const bool lateral_small = (lateral < radius);
-
-            const bool skip_qp = (forward_far && lateral_small);
-            
-            if (points_ahead && points_within && !skip_qp){
-              // align check: only if ellipsoid plane normal already aligns with forward direction
-              Vec2f n = v.n_;
-              n.normalize();
-              const double align = std::abs(n.dot(e));
-              const double perp_thresh = std::cos(70 * M_PI / 180.0);
-              if(align > perp_thresh){
-                use_qp = true;
-              }
-            }
-          }
-          use_qp = false;
-          if (use_qp){
-            Hyperplane2D v_qp(Vec2f::Zero(), Vec2f::Zero());
-            get_hyperplane(pw, center, v_qp, radius);
-
-            vec_E<Hyperplane2D> hp_vec;
-            hp_vec.push_back(v_qp);
-            LinearConstraint2D lc(center, hp_vec);
-            Vec2f A_raw = lc.A_.row(0);
-            double nrm = A_raw.norm();
-            Vec2f A = A_raw / nrm;
-            double b0 = lc.b()(0) / nrm;
-
-            const double eps_robot = 1e-4;  
-            const double eps_obs = 1e-4;    
-            double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
-            v.n_ = A;
-            v.p_ = A * b;
-          }
-
-// std::cout << "hyperplane normal: " << v.n_.transpose() << ", point: " << v.p_.transpose() << std::endl;
-          Vs.add(v);
-counter++;
-          vec_Vecf<Dim> obs_tmp;
-          obs_tmp.reserve(obs_remain.size());
-// int size_before = obs_remain.size();
-          for (const auto &it : obs_remain) {
-            if (v.signed_dist(it) < -1e-10)
-              obs_tmp.push_back(it);
-          }
-          obs_remain.swap(obs_tmp);
-// std::cout << "obs reduced from " << size_before << " to " << obs_remain.size() << std::endl;
-        }
-// std::cout << "Aniso full polyhedron generated " << counter << " hyperplanes." << std::endl;
-        if (Vs.vs_.empty()){
-          return;
-        }
-        this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
-      }      
-    
-    /// Anisotropic polyhedron (3D)
-    template<int U = Dim>
-      typename std::enable_if<U == 3>::type
-      find_polyhedron_aniso_full(double radius,  const Vecf<Dim> &center) {
-        Polyhedron<Dim> Vs;
-        vec_Vecf<Dim> obs_remain = this->obs_;
-        // first check if there is any hyperplnae generate by find_polyhedron_for_seed
-        bool seed_has_constraints = false;
-        if(!this->polyhedron_.vs_.empty()){
-          obs_remain = this->polyhedron_.points_inside(obs_remain);
-          seed_has_constraints = true;
-        }
-        
-        if (obs_remain.empty()){
-          return;
-        }
-
-        // we inflate the ellipsoid anisotropically
-        const double scale_long = 1.5;
-        const double scale_lat = 1.01;
-        Vecf<Dim> e0 = (p2_ - p1_).normalized(); 
-        Vecf<Dim> seed = Vecf<Dim>::UnitX();
-        if (std::abs(e0.dot(seed)) > 0.9){
-          seed = Vecf<Dim>::UnitY();
-        }
-        Vecf<Dim> e1 = e0.cross(seed).normalized();
-        Vecf<Dim> e2 = e0.cross(e1).normalized();
-
-        Matf<Dim, Dim> R = Matf<Dim, Dim>::Identity();
-        R.col(0) = e0;   // local x: along line
-        R.col(1) = e1;   // local y: lateral
-        R.col(2) = e2;   // local z: vertical
-        
-        const Vec3f e = (p2_ - p1_).normalized();
-        const double L = (p2_ - p1_).dot(e); // == (p2_-p1_).norm()
-        while (!obs_remain.empty()){
-          aniso_inflate_ellipsoid(scale_long, scale_lat, R, obs_remain);
-
-          const auto pw = this->aniso_ellipsoid_.closest_point(obs_remain);
-          Hyperplane3D v(Vec3f::Zero(), Vec3f::Zero());
-          v = this->aniso_ellipsoid_.closest_hyperplane(pw);
-          // gate for whether use qp to solve hyperplane   !!!!!!!!!!!!!!!!!disabled for now
-          bool use_qp = false;
-          bool seed_has_constraints = false;
-          if (seed_has_constraints){
-            const double s_center = (center - p1_).dot(e);
-            const double s_pw = (pw - p1_).dot(e);
-
-            const bool points_ahead = s_pw - s_center > 0.1 * radius;          // whether the point is ahead of the seed center
-            const bool points_within = (s_pw < L);                            // whether the point is within the line segment
-
-            // lateral distance to the forward line
-            const Vec3f r_pw = (pw - p1_) - s_pw * e;
-            const double lateral = r_pw.norm();
-
-            // forward projection far and lateral small
-            const bool forward_far = (s_pw > 0.8 * L);
-            const bool lateral_small = (lateral < radius);
-
-            const bool skip_qp = (forward_far && lateral_small);
-            
-            if (points_ahead && points_within && !skip_qp){
-              // align check: only if ellipsoid plane normal already aligns with forward direction
-              Vec3f n = v.n_;
-              n.normalize();
-              const double align = std::abs(n.dot(e));
-              const double perp_thresh = std::cos(70 * M_PI / 180.0);
-              if(align > perp_thresh){
-                use_qp = true;
-              }
-            }
-          }
-          use_qp = false;
-          if(use_qp){
-            Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
-            get_hyperplane(pw, center, v_qp, radius);
-            
-            vec_E<Hyperplane3D> hp_vec;
-            hp_vec.push_back(v_qp);
-            LinearConstraint3D lc(center, hp_vec);
-
-            Vec3f A_raw = lc.A_.row(0);
-            double nrm = A_raw.norm();
-            Vec3f A = A_raw / nrm;
-            double b0 = lc.b()(0) / nrm;
-
-            const double eps_robot = 1e-4;  
-            const double eps_obs = 1e-4;    
-            double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
-
-            v.n_ = A;
-            v.p_ = A * b;
-            // const double lambda_max = 8.0;
-            // double lambda = 0.0;
-            // int best_removed = -1;
-            // Hyperplane3D best_hp(Vec3f::Zero(), Vec3f::Zero());
-
-            // vec_Vecf<Dim> tmp_kept;
-            // tmp_kept.reserve(obs_remain.size());
-
-            // for(;;){
-
-            //   Hyperplane3D hp(Vec3f::Zero(), Vec3f::Zero());
-            //   get_hyperplane_seed(pw, center, hp, radius, lambda);
-
-
-            //   vec_E<Hyperplane3D> hp_vec;
-            //   hp_vec.push_back(hp);
-            //   LinearConstraint3D lc(center, hp_vec);
-
-            //   Vec3f A_raw = lc.A_.row(0);
-            //   double nrm = A_raw.norm();
-            //   if(nrm < 1e-12) {
-
-            //   } else {
-            //     Vec3f A = A_raw / nrm;
-            //     double b0 = lc.b()(0) / nrm;
-
-          
-            //     const double eps_robot = 1e-4;
-            //     const double eps_obs   = 1e-4;
-            //     double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
-
-            //     hp.n_ = A;
-            //     hp.p_ = A * b;
-
-
-            //     tmp_kept.clear();
-            //     for(const auto &it : obs_remain){
-            //       if(hp.signed_dist(it) < -1e-10){
-            //         tmp_kept.push_back(it);
-            //       }
-            //     }
-            //     const int removed = (int)obs_remain.size() - (int)tmp_kept.size();
-
-            //     if(removed > best_removed){
-            //       best_removed = removed;
-            //       best_hp = hp;
-            //     }
-
-            //     if(removed > 10) break;  
-            //   }
-
-            //   if(lambda >= lambda_max) break;
-            //   lambda = (lambda == 0.0) ? 0.5 : std::min(lambda * 2.0, lambda_max);
-            // }
-
-
-            // v = best_hp;
-          }
-
-          Vs.add(v);
-
-          vec_Vecf<Dim> obs_tmp;
-          obs_tmp.reserve(obs_remain.size());
-          for (const auto &it : obs_remain) {
-            if (v.signed_dist(it) < -1e-10)
-              obs_tmp.push_back(it);
-          }
-          obs_remain.swap(obs_tmp);
-        }
-        if (Vs.vs_.empty()){
-          return;
-        }
-        this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(), Vs.vs_.begin(), Vs.vs_.end());
-      }
-
-    template<int U = Dim>
-      typename std::enable_if<U == 2>::type
-      aniso_inflate_ellipsoid(double scale_long, double scale_lat, Matf<Dim, Dim>& R, vec_Vecf<Dim>& obs) {
-        Matf<Dim, Dim> C_world = this->aniso_ellipsoid_.C_;
-        Matf<Dim, Dim> C_local = R.transpose() * C_world * R;
-        // first inflate long axis
-        C_local(0,0) *= scale_long;
-        C_local(0,1) = 0;
-        C_local(1,0) = 0;
-        // check whether there is any obstacle inside the ellipsoid
-        C_world = R * C_local * R.transpose();
-        Ellipsoid<Dim> E(C_world, this->aniso_ellipsoid_.d_);
         vec_Vecf<Dim> obs_tmp;
-        obs_tmp = E.points_inside(obs);
-        if (obs_tmp.empty()){
-          // now inflate the short axis
-          C_local(1,1) *= scale_lat;
-          C_world = R * C_local * R.transpose();
-          E.C_ = C_world;
-          E.update_cache();
-
-          obs_tmp = E.points_inside(obs);
-          if (obs_tmp.empty()){
-            this->aniso_ellipsoid_.C_ = C_world;
-            this->aniso_ellipsoid_.update_cache();
-            return;
-          }
-          else{
-            // find the closest point
-            const auto pw = E.closest_point(obs_tmp);
-            // update the short axis
-            Vecf<Dim> p = R.transpose() * (pw - E.d()); // to ellipsoid frame
-            const double t = 1.0 - (p(0) * p(0)) / (C_local(0,0) * C_local(0,0));
-            double b = std::abs(p(1)) / std::sqrt(t);
-            C_local(1,1) = b;
-            C_world = R * C_local * R.transpose();
-            this->aniso_ellipsoid_.C_ = C_world;
-            this->aniso_ellipsoid_.update_cache();
-            return;
-          }
+        obs_tmp.reserve(obs_remain.size());
+        for (const auto &it : obs_remain) {
+          if (v.signed_dist(it) < -1e-10)
+            obs_tmp.push_back(it);
         }
-        else{
-          // find the closest point
-          const auto pw = E.closest_point(obs_tmp);
-          // update the long axis
-          Vecf<Dim> p = R.transpose() * (pw - E.d()); // to ellipsoid frame
-          const double t = 1.0 - (p(1) * p(1)) / (C_local(1,1) * C_local(1,1));
-          double a = std::abs(p(0)) / std::sqrt(t);
-          C_local(0,0) = a;
-          C_world = R * C_local * R.transpose();
-          this->aniso_ellipsoid_.C_ = C_world;
-          this->aniso_ellipsoid_.update_cache();
-          return;
-        }
+        obs_remain.swap(obs_tmp);
       }
+
+      if (Vs.vs_.empty()) {
+        return;
+      }
+
+      this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(),
+                                  Vs.vs_.begin(), Vs.vs_.end());
+    }
     
     template<int U = Dim>
-      typename std::enable_if<U == 3>::type
-      aniso_inflate_ellipsoid(double scale_long, double scale_lat, Matf<Dim, Dim>& R, vec_Vecf<Dim>& obs) {
-        Matf<Dim, Dim> C_world = this->aniso_ellipsoid_.C_;
-        Matf<Dim, Dim> C_local = R.transpose() * C_world * R;
-        // first inflate long axis
-        C_local(0,0) *= scale_long;
-        C_local(0,1) = 0;
-        C_local(1,0) = 0;
-        C_local(0,2) = 0;
-        C_local(2,0) = 0;
-        // check whether there is any obstacle inside the ellipsoid
-        C_world = R * C_local * R.transpose();
-        Ellipsoid<Dim> E(C_world, this->aniso_ellipsoid_.d_);
-        vec_Vecf<Dim> obs_tmp;
-        obs_tmp = E.points_inside(obs);
-        if (obs_tmp.empty()){
-          // now inflate the short axes
-          C_local(1,1) *= scale_lat;
-          C_local(2,2) *= scale_lat;
-          C_world = R * C_local * R.transpose();
-          E.C_ = C_world;
-          E.update_cache();
-          obs_tmp = E.points_inside(obs);
-          if (obs_tmp.empty()){
-            this->aniso_ellipsoid_.C_ = C_world;
-            this->aniso_ellipsoid_.update_cache();
-            return;
-          }
-          else{
-            // find the closest point
-            const auto pw = E.closest_point(obs_tmp);
-            // update the short axes
-            Vecf<Dim> p = R.transpose() * (pw - E.d()); // to ellipsoid frame
-            const double t = 1.0 - (p(0)* p(0)) / (C_local(0,0) * C_local(0,0));
-            double b = std::sqrt((p(1) * p(1))  + (p(2) * p(2))) / std::sqrt(t);
-            C_local(1,1) = b;
-            C_local(2,2) = b;
-            C_world = R * C_local * R.transpose();
-            this->aniso_ellipsoid_.C_ = C_world;
-            this->aniso_ellipsoid_.update_cache();
-            return;
-          }
-        }
-        else{
-          // find the closest point
-          const auto pw = E.closest_point(obs_tmp);
-          // update the long axis
-          Vecf<Dim> p = R.transpose() * (pw - E.d()); // to ellipsoid frame
-          const double t = 1.0 - (p(1)* p(1)) / (C_local(1,1) * C_local(1,1))
-                           - (p(2)* p(2)) / (C_local(2,2) * C_local(2,2));
-          double a = std::abs(p(0)) / std::sqrt(t);
-          C_local(0,0) = a;
-          C_world = R * C_local * R.transpose();
-          this->aniso_ellipsoid_.C_ = C_world;
-          this->aniso_ellipsoid_.update_cache();
-          return;
-        }
+    typename std::enable_if<U == 3>::type
+    find_polyhedron_aniso_full(double radius, const Vecf<Dim> &center) {
+      Polyhedron<Dim> Vs;
+      vec_Vecf<Dim> obs_remain = this->obs_;
+
+      if (obs_remain.empty()) {
+        return;
       }
+
+      while (!obs_remain.empty()) {
+        // unified point selection over all remaining obstacles
+        const auto pw = select_point(center, obs_remain);
+
+        // generate hyperplane directly by QP
+        Hyperplane3D v_qp(Vec3f::Zero(), Vec3f::Zero());
+        get_hyperplane(pw, center, v_qp, radius);
+
+        vec_E<Hyperplane3D> hp_vec;
+        hp_vec.push_back(v_qp);
+        LinearConstraint3D lc(center, hp_vec);
+
+        Vec3f A_raw = lc.A_.row(0);
+        double nrm = A_raw.norm();
+        if (nrm < 1e-12) {
+          std::cout << "[Free Space generation] In find_polyhedron_aniso_full(3d), hyperplane normal norm is too small." << std::endl;
+          break;
+        }
+
+        Vec3f A = A_raw / nrm;
+        double b0 = lc.b()(0) / nrm;
+
+        const double eps_robot = 1e-4;
+        const double eps_obs   = 1e-4;
+        double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+
+        Hyperplane3D v(Vec3f::Zero(), Vec3f::Zero());
+        v.n_ = A;
+        v.p_ = A * b;
+
+        Vs.add(v);
+
+        vec_Vecf<Dim> obs_tmp;
+        obs_tmp.reserve(obs_remain.size());
+        for (const auto &it : obs_remain) {
+          if (v.signed_dist(it) < -1e-10)
+            obs_tmp.push_back(it);
+        }
+        obs_remain.swap(obs_tmp);
+      }
+
+      if (Vs.vs_.empty()) {
+        return;
+      }
+
+      this->polyhedron_.vs_.insert(this->polyhedron_.vs_.end(),
+                                  Vs.vs_.begin(), Vs.vs_.end());
+    }
 
     /// One end of line segment, input
     Vecf<Dim> p1_;
