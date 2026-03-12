@@ -378,31 +378,32 @@ class LineSegment : public DecompBase<Dim> {
         Eigen::VectorXd p1 = p1_;                      
 
         // lateral distance to guide line
-        Eigen::VectorXd v = obs_pt - p1;
+        Eigen::VectorXd v = obs_pt - center;
         double s = v.dot(e);
         Eigen::VectorXd rvec = v - s * e;
         double d_lat = rvec.norm();
 
         // switch threshold
-        double w_max = 1.0;
+        double w_max = 2.0;
         double s_pos = std::max(0.0, s);
-
+std::cout << "s: " << s << ", s_pos: " << s_pos << std::endl;
         // --------- d_sw schedule (near -> far) ----------
-        const double d_sw_far  = 0.8 * radius;          
-        const double d_sw_near = 1.0 * radius;          
-        const double s0        = 2.0 * radius;          
-
+        const double d_sw_far  = 0.55 * radius;          
+        const double d_sw_near = 5.0 * radius;          
+        const double s0        = 3.0 * radius;          
+std::cout << "s0: " << s0 << std::endl;
         double alpha = 1.0 - std::min(1.0, s_pos / s0); 
         alpha = alpha * alpha;                           
 
         double d_sw = d_sw_far + alpha * (d_sw_near - d_sw_far);
+std::cout << "d_lat: " << d_lat << ", d_sw: " << d_sw << ", alpha: " << alpha << std::endl;
         // weight schedule
         double w = 0.0;
         if (d_lat < d_sw) {
           double t = 1.0 - d_lat / d_sw;   // in (0,1]
-          w = w_max * t ;
+          w = w_max * t * t;
         }
-
+std::cout << "weight w: " << w << std::endl;
         // build Q
         Eigen::MatrixXd I = Eigen::MatrixXd::Identity(Dim, Dim);
         Eigen::MatrixXd eeT = e * e.transpose();
