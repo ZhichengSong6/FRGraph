@@ -388,10 +388,10 @@ class LineSegment : public DecompBase<Dim> {
         double s_pos = std::max(0.0, s);
 // std::cout << "s: " << s << ", s_pos: " << s_pos << std::endl;
         // --------- d_sw schedule (near -> far) ----------
-        const double d_sw_far  = 0.55 * radius;          
-        const double d_sw_near = 5.0 * radius;          
+        const double d_sw_far  = 0.6 * radius;          
+        const double d_sw_near = 1.0 * radius;          
         const double s0        = 3.0 * radius;          
-// std::cout << "s0: " << s0 << std::endl;
+// std::cout << "s_sw_far: " << d_sw_far << ", s_sw_near: " << d_sw_near << ", s0: " << s0 << std::endl;
         double alpha = 1.0 - std::min(1.0, s_pos / s0); 
         alpha = alpha * alpha;                           
 

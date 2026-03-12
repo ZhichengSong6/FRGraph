@@ -585,6 +585,8 @@ bool RepairOnce_PIQP(
     double w_th,
     double w_slack)
 {
+    // --- local metric at the current worst time t* ---
+    const WorstViolation local0 = evalAtT(w0.t, A, b, robot_vertices, traj);    
     // collect violated planes at t*
     std::vector<ViolatedPlaneAtT> violated = collectViolatedPlanesAtT(w0.t, A, b, robot_vertices, traj, eps_add, topKplanes);
     if (violated.empty()) {
@@ -602,14 +604,28 @@ bool RepairOnce_PIQP(
         return false; // QP failed
     }
 
+    // line search with LOCAL accept rule
+    // Tolerances 
+    const double tol_global = 1e-7;
+    const double tol_local  = 1e-7;
+
+    // Allow global g to get slightly worse if local improves.
+    const double global_allow_increase = 5e-4; 
+
     // line search to apply delta
     double alpha = 1.0;
     for (int ls = 0; ls < 6; ++ls){
         BezierSE2 traj_candidate = traj; 
         applyDeltaToBezier(traj_candidate, ctrl_idx, x_sol, alpha);
         WorstViolation w_candidate = FindWorstViolationContinuous2D(A, b, robot_vertices, traj_candidate, opt);
-        if (w_candidate.g < w0.g){
-            traj = traj_candidate; // accept
+        // local worst at original t*
+        WorstViolation local1 = evalAtT(w0.t, A, b, robot_vertices, traj_candidate);
+        const bool global_improved = (w_candidate.g <= w0.g - tol_global);
+        const bool local_improved  = (local1.g <= local0.g - tol_local);
+        const bool global_ok       = (w_candidate.g <= w0.g + global_allow_increase);
+
+        if (global_improved || (local_improved && global_ok)) {
+            traj = traj_candidate;
             return true;
         }
         alpha *= 0.5; // reduce step size
@@ -727,33 +743,67 @@ bool RepairOnce_PIQP(
     double w_th,
     double w_slack)
 {
+    // --- local metric at the current worst time t* ---
+    const WorstViolation local0 = evalAtT(w0.t, A, b, robot_vertices, traj);
+
     // collect violated planes at t*
-    std::vector<ViolatedPlaneAtT3D> violated3d = collectViolatedPlanesAtT(w0.t, A, b, robot_vertices, traj, eps_add, topKplanes);
+    std::vector<ViolatedPlaneAtT3D> violated3d =
+        collectViolatedPlanesAtT(w0.t, A, b, robot_vertices, traj, eps_add, topKplanes);
+
     if (violated3d.empty()) {
-        std::cout << "[RepairOnce_PIQP] Warning: no violated planes found at t*=" << w0.t << " even though w0 is violated. This should not happen." << std::endl;
-        return true; // no violated planes found (should not happen since w0 is violated)
+        std::cout << "[RepairOnce_PIQP 3D] Warning: no violated planes found at t*=" << w0.t
+                  << " even though w0 is violated. This should not happen." << std::endl;
+        return true; // keep behavior consistent with your 2D
     }
 
     // select Top-K control points near t*
     std::vector<int> ctrl_idx = selectTopKControlPoints3D(w0.t, Kcp);
 
-    // // solve QP to get delta
+    // solve QP to get delta
     Eigen::VectorXd x_sol;
-    if (!solveRepairQP3D_PIQP(w0.t, ctrl_idx, violated3d, margin, delta_p, delta_th, w_p, w_th, w_slack, x_sol)){
-        return false; // QP failed
+    if (!solveRepairQP3D_PIQP(w0.t, ctrl_idx, violated3d,
+                              margin, delta_p, delta_th,
+                              w_p, w_th, w_slack, x_sol))
+    {
+        std::cout << "[RepairOnce_PIQP 3D] Warning: QP failed to solve at t*=" << w0.t << std::endl;
+        return false;
     }
 
-    // line search to apply delta
+    // line search with LOCAL accept rule
+    const double tol_global = 1e-7;
+    const double tol_local  = 1e-7;
+    const double global_allow_increase = 5e-4;   // tune for 3D scale if needed
+
     double alpha = 1.0;
-    for (int ls = 0; ls < 6; ++ls){
-        BezierSE3 traj_candidate = traj; 
+    for (int ls = 0; ls < 6; ++ls) {
+        BezierSE3 traj_candidate = traj;
         applyDeltaToBezier(traj_candidate, ctrl_idx, x_sol, alpha);
-        WorstViolation w_candidate = FindWorstViolationContinuous3D(A, b, robot_vertices, traj_candidate, opt);
-        if (w_candidate.g < w0.g){
-            traj = traj_candidate; // accept
+
+        WorstViolation w_candidate =
+            FindWorstViolationContinuous3D(A, b, robot_vertices, traj_candidate, opt);
+
+        // local worst at original t*
+        WorstViolation local1 =
+            evalAtT(w0.t, A, b, robot_vertices, traj_candidate);
+
+        const bool global_improved = (w_candidate.g <= w0.g - tol_global);
+        const bool local_improved  = (local1.g <= local0.g - tol_local);
+        const bool global_ok       = (w_candidate.g <= w0.g + global_allow_increase);
+
+        // Debug (optional but useful)
+        // std::cout << "[RepairOnce_PIQP 3D] local before=" << local0.g
+        //           << " after(alpha=" << alpha << ")=" << local1.g
+        //           << " global=" << w_candidate.g << " (t=" << w_candidate.t << ")" << std::endl;
+
+        if (global_improved || (local_improved && global_ok)) {
+            traj = traj_candidate;
             return true;
         }
-        alpha *= 0.5; // reduce step size
+
+        alpha *= 0.5;
     }
-    return false; // failed to find improvement
+
+    std::cout << "[RepairOnce_PIQP 3D] Warning: line search failed to find acceptable step at t*="
+              << w0.t << std::endl;
+    return false;
 }
