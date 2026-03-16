@@ -1696,41 +1696,74 @@ void GapExtractor::odomCallback(const ros::TimerEvent &event)
 
 void GapExtractor::publishRangeMapAsImage()
 {
-    if (range_map_.range.empty()){
+    if (range_map_.range.empty()) {
         ROS_WARN("[GapExtractor] Range map is empty");
         return;
     }
+
+    const int H = params_.range_map_height;
+    const int W = params_.range_map_width;
+    const float INF = std::numeric_limits<float>::max();
+
     sensor_msgs::Image img_msg;
     img_msg.header.stamp = ros::Time::now();
     img_msg.header.frame_id = "scan";
-    img_msg.height = params_.range_map_height;
-    img_msg.width = params_.range_map_width;
-    img_msg.encoding = "mono8";
+    img_msg.height = H;
+    img_msg.width = W;
+    img_msg.encoding = "rgb8";
     img_msg.is_bigendian = false;
-    img_msg.step = params_.range_map_width;
-    img_msg.data.resize(params_.range_map_height * params_.range_map_width);
+    img_msg.step = W * 3;
+    img_msg.data.resize(H * W * 3);
 
+    // Find valid min/max
     float min_val = std::numeric_limits<float>::max();
-    float max_val = 0;
-    for (int v = 0; v < params_.range_map_height; ++v)
-        for (int u = 0; u < params_.range_map_width; ++u)
-            if (range_map_.range[v][u] < std::numeric_limits<float>::max()) {
-                min_val = std::min(min_val, range_map_.range[v][u]);
-                max_val = std::max(max_val, range_map_.range[v][u]);
-            }
-    if (min_val >= max_val) min_val = 0, max_val = min_val + 1.0f;
+    float max_val = 0.0f;
 
-    for (int v = 0; v < params_.range_map_height; ++v)
-    {
-        for (int u = 0; u < params_.range_map_width; ++u)
-        {
+    for (int v = 0; v < H; ++v) {
+        for (int u = 0; u < W; ++u) {
             float val = range_map_.range[v][u];
-            uint8_t pixel = 0;
-            if (val < std::numeric_limits<float>::max())
-                pixel = static_cast<uint8_t>(255.0f * (val - min_val) / (max_val - min_val));
-            img_msg.data[v * params_.range_map_width + u] = pixel;
+            if (val < INF) {
+                min_val = std::min(min_val, val);
+                max_val = std::max(max_val, val);
+            }
         }
     }
+
+    if (min_val >= max_val) {
+        min_val = 0.0f;
+        max_val = 1.0f;
+    }
+
+    const float denom = std::max(max_val - min_val, 1e-6f);
+
+    for (int v = 0; v < H; ++v) {
+        for (int u = 0; u < W; ++u) {
+            const float val = range_map_.range[v][u];
+            const int idx = (v * W + u) * 3;
+
+            uint8_t gray = 240;  // default for invalid
+
+            if (val < INF) {
+                float x = (val - min_val) / denom;
+                x = std::max(0.0f, std::min(1.0f, x));
+
+                // Soft grayscale style:
+                // near  -> darker gray
+                // far   -> lighter gray
+                // avoid pure black / pure white
+                float g = 70.0f + x * (220.0f - 70.0f);
+                gray = static_cast<uint8_t>(g);
+            } else {
+                // invalid / no return: very light gray
+                gray = 245;
+            }
+
+            img_msg.data[idx + 0] = gray;
+            img_msg.data[idx + 1] = gray;
+            img_msg.data[idx + 2] = gray;
+        }
+    }
+
     image_pub_.publish(img_msg);
 }
 

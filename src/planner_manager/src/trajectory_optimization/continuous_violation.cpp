@@ -774,7 +774,7 @@ bool RepairOnce_PIQP(
     const double tol_local  = 1e-7;
     const double global_allow_increase = 5e-4;   // tune for 3D scale if needed
 
-    double alpha = 1.0;
+    double alpha = 0.8;
     for (int ls = 0; ls < 6; ++ls) {
         BezierSE3 traj_candidate = traj;
         applyDeltaToBezier(traj_candidate, ctrl_idx, x_sol, alpha);

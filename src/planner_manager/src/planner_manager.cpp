@@ -77,6 +77,12 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     traj_vis_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_traj_vis", 1, true);
     traj_after_opt_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_traj_after_opt", 1, true);
 
+    traj_iter_pubs_.resize(traj_iter_pub_count_);
+    for (int i = 0; i < traj_iter_pub_count_; ++i) {
+        std::string topic = "/traj_vis/iter_" + std::to_string(i);
+        traj_iter_pubs_[i] = node_.advertise<visualization_msgs::MarkerArray>(topic, 1, true);
+    }
+
     base_scan_ptr_ = geometry_msgs::TransformStamped::Ptr(new geometry_msgs::TransformStamped);
 	tf2_ros::Buffer tfBuffer_lidar;
 	tf2_ros::TransformListener tfListener_lidar(tfBuffer_lidar);
@@ -1859,15 +1865,16 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
         publishTrajectoryForVisualization(traj, wv.t);
 auto t4 = std::chrono::high_resolution_clock::now();
         for (int it=0; it<30; ++it) {
+std::cout << "Iteration " << it << ": repairing trajectory..." << std::endl;
             bool ok = RepairOnce_PIQP(A,b,verts,traj,opt,wv,
                 /*Kcp=*/4,
                 /*topKplanes=*/5,
                 /*eps_add=*/1e-6,
                 /*margin=*/1e-4,
                 /*delta_p=*/0.10,
-                /*delta_th=*/0.20,
+                /*delta_th=*/0.10,
                 /*w_p=*/1.0,
-                /*w_th=*/1.0,
+                /*w_th=*/0.1,
                 /*w_slack=*/1e4);
             if (!ok) {
                 publishTrajectoryForVisualization(traj, wv.t);
@@ -1875,8 +1882,15 @@ auto t4 = std::chrono::high_resolution_clock::now();
                 break;
             }
             wv = FindWorstViolationContinuous2D(A,b,verts,traj,opt);
+publishTrajectoryForVisualizationIter(traj, wv.t, it);
+std::cout << "Iteration " << it << ": worst violation g = " << wv.g << ", t = " << wv.t << std::endl;
+std::cout << "After iteration, safe = " << wv.safe << std::endl;
             // ROS_INFO("[it %d] safe=%d g=%g t=%g", it, (int)wv.safe, wv.g, wv.t);
             if (wv.safe) break;
+        }
+        if (!wv.safe){
+            publishTrajectoryForVisualization(traj, wv.t);
+            ROS_WARN("Failed to find a safe trajectory after optimization");
         }
 auto t5 = std::chrono::high_resolution_clock::now();
 double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
@@ -2162,7 +2176,7 @@ void PlannerManager::publishTrajectoryForVisualization(BezierSE2 &traj, double w
         robot_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
         robot_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
         robot_marker.scale.z = 0.2;
-        robot_marker.color.a = 0.2;
+        robot_marker.color.a = 0.5;
         robot_marker.color.r = 0.0;
         robot_marker.color.g = 0.0;
         robot_marker.color.b = 1.0;
@@ -2355,6 +2369,95 @@ void PlannerManager::publishTrajectoryForVisualization(BezierSE3 &traj, double w
         traj_marker_array.markers.push_back(violation_marker);
     }
     traj_vis_pub_.publish(traj_marker_array);
+}
+
+void PlannerManager::publishTrajectoryForVisualizationIter(
+    BezierSE2 &traj,
+    double worst_violation_time,
+    int iter_id)
+{
+    if (iter_id < 0) return;
+    if (iter_id >= (int)traj_iter_pubs_.size()) return;
+
+    visualization_msgs::MarkerArray traj_marker_array;
+
+    const int num_points = 9;
+    for (int i = 0; i <= num_points; ++i){
+        double t = double(i) / double(num_points);
+        Eigen::Vector2d pos = traj.pos(t);
+
+        visualization_msgs::Marker robot_marker;
+        robot_marker.header.frame_id = "odom";
+        robot_marker.header.stamp = ros::Time(0);
+        robot_marker.ns = "traj_robot"; // 每个 topic 独立，不怕冲突
+        robot_marker.id = i;
+        robot_marker.type = visualization_msgs::Marker::CUBE;
+        robot_marker.action = visualization_msgs::Marker::ADD;
+
+        robot_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
+        robot_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
+        robot_marker.scale.z = 0.2;
+
+        robot_marker.color.a = 0.5;
+        robot_marker.color.r = 0.0;
+        robot_marker.color.g = 0.0;
+        robot_marker.color.b = 1.0;
+
+        robot_marker.pose.position.x = pos[0];
+        robot_marker.pose.position.y = pos[1];
+        robot_marker.pose.position.z = 0;
+
+        Eigen::Matrix2d R_mat = traj.R(t);
+        Eigen::Matrix3d R3 = Eigen::Matrix3d::Identity();
+        R3.block<2,2>(0,0) = R_mat;
+        Eigen::Quaterniond q(R3);
+
+        robot_marker.pose.orientation.x = q.x();
+        robot_marker.pose.orientation.y = q.y();
+        robot_marker.pose.orientation.z = q.z();
+        robot_marker.pose.orientation.w = q.w();
+
+        traj_marker_array.markers.push_back(robot_marker);
+    }
+
+    // worst violation marker
+    if (worst_violation_time >= 0.0){
+        visualization_msgs::Marker violation_marker;
+        violation_marker.header.frame_id = "odom";
+        violation_marker.header.stamp = ros::Time(0);
+        violation_marker.ns = "traj_robot";
+        violation_marker.id = 50;
+        violation_marker.type = visualization_msgs::Marker::CUBE;
+        violation_marker.action = visualization_msgs::Marker::ADD;
+
+        violation_marker.scale.x = robot_shape_points_2d_[0][0] - robot_shape_points_2d_[2][0];
+        violation_marker.scale.y = robot_shape_points_2d_[0][1] - robot_shape_points_2d_[1][1];
+        violation_marker.scale.z = 0.5;
+
+        violation_marker.color.a = 0.6;
+        violation_marker.color.r = 1.0;
+        violation_marker.color.g = 0.0;
+        violation_marker.color.b = 0.0;
+
+        Eigen::Vector2d pos = traj.pos(worst_violation_time);
+        violation_marker.pose.position.x = pos[0];
+        violation_marker.pose.position.y = pos[1];
+        violation_marker.pose.position.z = 0;
+
+        Eigen::Matrix2d R_mat = traj.R(worst_violation_time);
+        Eigen::Matrix3d R3 = Eigen::Matrix3d::Identity();
+        R3.block<2,2>(0,0) = R_mat;
+        Eigen::Quaterniond q(R3);
+
+        violation_marker.pose.orientation.x = q.x();
+        violation_marker.pose.orientation.y = q.y();
+        violation_marker.pose.orientation.z = q.z();
+        violation_marker.pose.orientation.w = q.w();
+
+        traj_marker_array.markers.push_back(violation_marker);
+    }
+
+    traj_iter_pubs_[iter_id].publish(traj_marker_array);
 }
 
 void PlannerManager::debugTimerCallback(const ros::TimerEvent &event) {

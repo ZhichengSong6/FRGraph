@@ -95,6 +95,9 @@ class PlannerManager {
     ros::Publisher traj_vis_pub_;
     ros::Publisher traj_after_opt_pub_;
 
+    std::vector<ros::Publisher> traj_iter_pubs_;
+    int traj_iter_pub_count_ = 30; 
+
     void initPlannerModule(ros::NodeHandle &nh);
 
     /* Callback Functions */
@@ -113,6 +116,8 @@ class PlannerManager {
     void publishTrajectoryForVisualization(BezierSE3& traj, double worst_violation_time = -1.0);
     void publishTrajectoryAfterOptimization(BezierSE2& traj);
     void publishTrajectoryAfterOptimization(BezierSE3& traj);
+
+    void publishTrajectoryForVisualizationIter(BezierSE2& traj, double worst_violation_time = -1.0, int iter_id = -1);
 
     ros::Timer odom_timer_;
     ros::Timer debug_timer_;
