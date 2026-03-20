@@ -77,6 +77,8 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     traj_vis_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_traj_vis", 1, true);
     traj_after_opt_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_traj_after_opt", 1, true);
 
+    current_direction_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_current_direction", 1, true);
+
     traj_iter_pubs_.resize(traj_iter_pub_count_);
     for (int i = 0; i < traj_iter_pub_count_; ++i) {
         std::string topic = "/traj_vis/iter_" + std::to_string(i);
@@ -635,7 +637,7 @@ void PlannerManager::generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& s
     if(env_type_){
         // 3D
         SeedDecomp3D seed_decomp_3d(start_pos);
-        seed_decomp_3d.set_local_bbox(Vec3f(0.3f, 0.3f, 0.3f));
+        seed_decomp_3d.set_local_bbox(Vec3f(2.0f, 2.0f, 2.0f));
         seed_decomp_3d.set_obs(pointcloud_cropped_odom_frame_);
         seed_decomp_3d.dilate(0.1);  
         Polyhedron3D node_poly = seed_decomp_3d.get_polyhedron();
@@ -652,6 +654,76 @@ void PlannerManager::generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& s
         current_node->polys_2d_ = node_poly;
         current_node->state_pos_ = start_pos;
     }
+}
+
+void PlannerManager::pruneUntriedParentEdgesByChildPoly(NodeId parent_id,
+                                                        NodeId child_id,
+                                                        EdgeId incoming_eid)
+{
+    auto* parent = free_regions_graph_ptr_->getNode(parent_id);
+    auto* child  = free_regions_graph_ptr_->getNode(child_id);
+
+    if (!parent || !child) {
+        ROS_WARN("[PlannerManager] pruneUntriedParentEdgesByChildPoly: invalid parent or child node.");
+        return;
+    }
+
+    std::vector<EdgeId> kept_edges;
+    kept_edges.reserve(parent->edge_ids_.size());
+
+    int pruned_cnt = 0;
+
+    for (EdgeId eid : parent->edge_ids_) {
+        auto* e = free_regions_graph_ptr_->getEdge(eid);
+        if (!e) continue;
+
+        // always keep the incoming edge that actually led to the child
+        if (eid == incoming_eid) {
+            kept_edges.push_back(eid);
+            continue;
+        }
+
+        // keep all tried edges; only prune frontier edges
+        if (e->tried_) {
+            kept_edges.push_back(eid);
+            continue;
+        }
+
+        bool contained = false;
+
+        if (env_type_) {
+            contained = poseContainedInParentPoly3D(
+                child->state_pos_,       
+                child->polys_,           
+                e->replan_pos_,          
+                e->R_,                   
+                0.0                      
+            );
+        }
+        else {
+            contained = poseContainedInParentPoly2D(
+                child->state_pos_,   
+                child->polys_2d_,              
+                e->replan_pos_,      
+                e->R_2d_,                      
+                0.0
+            );
+        }
+
+        if (contained) {
+            pruned_cnt++;
+            ROS_INFO("[PlannerManager] Prune parent edge %d at node %d because its target pose is contained in child node %d poly.",
+                     eid, parent_id, child_id);
+            continue; // directly drop this edge
+        }
+
+        kept_edges.push_back(eid);
+    }
+
+    parent->edge_ids_.swap(kept_edges);
+
+    ROS_INFO("[PlannerManager] pruneUntriedParentEdgesByChildPoly: pruned %d edge(s) from parent node %d.",
+             pruned_cnt, parent_id);
 }
 
 void PlannerManager::filterBackwardGaps(const Eigen::Vector3d &start_pos, NodeId current_node_id, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates){
@@ -702,8 +774,7 @@ void PlannerManager::filterBackwardGaps(const Eigen::Vector3d &start_pos, NodeId
         }
     }
     // filter out the gaps that are backward facing
-    const double backward_threshold = std::cos(150.0 * M_PI / 180.0); // 150 degrees
-    const double cos_backward = std::cos(backward_threshold);
+    const double cos_backward = std::cos(150.0 * M_PI / 180.0); // 150 degrees
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> filtered;
     filtered.reserve(all_candidates.size());
     int removed = 0;
@@ -1060,7 +1131,7 @@ bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eig
         Eigen::Vector2d x_axis_world = R.col(0);
         double align = x_axis_world.dot(dir);
         // weight in "meters": w_align=0.1 means 10cm worth of alignment
-        double w_align = 0.5;
+        double w_align = 5.0;
 
         double angle_diff = std::abs(yaw - robot_yaw);
         double w_angle_diff = 0.5; // weight for angle difference 
@@ -1907,6 +1978,19 @@ ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
 void PlannerManager::expandNode(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id) {
     // generate a node polyhedron at start pos
     generateNodePolyhedron(current_id, start_pos);
+
+    // if this node is reached from a parent edge, prune parent's remaining
+    // untried edges whose target poses are already contained in this node polyhedron
+    auto* current_node = free_regions_graph_ptr_->getNode(current_id);
+    if (current_node && current_node->incoming_edge_id_ >= 0) {
+        auto* in_edge = free_regions_graph_ptr_->getEdge(current_node->incoming_edge_id_);
+        if (in_edge) {
+            ROS_INFO("[PlannerManager] Prune edge.");
+            NodeId parent_id = in_edge->from_;
+            pruneUntriedParentEdgesByChildPoly(parent_id, current_id, current_node->incoming_edge_id_);
+        }
+    }
+
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> all_candidates;
     filterBackwardGaps(start_pos, current_id, all_candidates);
     sortAllCandidatesGap(goal_pos, all_candidates);
@@ -1917,6 +2001,10 @@ void PlannerManager::expandNode(Eigen::Vector3d &start_pos, Eigen::Vector3d &goa
     
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
     
+    current_direction_for_visualization_[0] = all_candidates[0].dir_odom_frame[0];
+    current_direction_for_visualization_[1] = all_candidates[0].dir_odom_frame[1];
+    current_direction_for_visualization_[2] = env_type_ ? all_candidates[0].dir_odom_frame[2] : 0.0;
+    current_pos = start_pos;
     // test
     decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
     decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
@@ -1927,7 +2015,7 @@ auto t1 = std::chrono::high_resolution_clock::now();
 double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
 ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
     
-    auto* current_node = free_regions_graph_ptr_->getNode(current_id);
+    // auto* current_node = free_regions_graph_ptr_->getNode(current_id);
     current_node->edge_ids_.clear();
     // push all candidates as children of the current node
 auto t2 = std::chrono::high_resolution_clock::now();
@@ -2037,12 +2125,12 @@ void PlannerManager::publishRobotPoints() {
     robot_marker.id = 0;
     robot_marker.type = visualization_msgs::Marker::SPHERE_LIST;
     robot_marker.action = visualization_msgs::Marker::ADD;
-    robot_marker.scale.x = 0.05;
-    robot_marker.scale.y = 0.05;
-    robot_marker.scale.z = 0.05;
+    robot_marker.scale.x = 0.02;
+    robot_marker.scale.y = 0.02;
+    robot_marker.scale.z = 0.02;
     robot_marker.color.a = 1.0;
     robot_marker.color.r = 0.0;
-    robot_marker.color.g = 1.0;
+    robot_marker.color.g = 0.0;
     robot_marker.color.b = 0.0;
 
     if (env_type_){
@@ -2064,6 +2152,45 @@ void PlannerManager::publishRobotPoints() {
         }
     }
     marker_array.markers.push_back(robot_marker);
+
+    // Add a LINE_STRIP marker to connect the points into a rectangle
+    visualization_msgs::Marker rect_marker;
+    rect_marker.header.frame_id = robot_marker.header.frame_id;
+    rect_marker.header.stamp = robot_marker.header.stamp;
+    rect_marker.ns = "robot_shape_rect";
+    rect_marker.id = 1;
+    rect_marker.type = visualization_msgs::Marker::LINE_LIST;
+    rect_marker.action = visualization_msgs::Marker::ADD;
+    rect_marker.scale.x = 0.01; // line width
+    rect_marker.color.a = 1.0;
+    rect_marker.color.r = 0.0;
+    rect_marker.color.g = 0.0;
+    rect_marker.color.b = 0.0;
+
+    // populate rect_marker points as pairs for LINE_LIST: (a,b) per edge
+    size_t n_pts = robot_marker.points.size();
+    if (n_pts >= 2) {
+        for (size_t i = 0; i < n_pts; ++i) {
+            const geometry_msgs::Point &a = robot_marker.points[i];
+            const geometry_msgs::Point &b = robot_marker.points[(i + 1) % n_pts];
+            rect_marker.points.push_back(a);
+            rect_marker.points.push_back(b);
+        }
+    }
+
+    // only publish rectangle if there are points
+    if (!rect_marker.points.empty()) {
+        marker_array.markers.push_back(rect_marker);
+    }
+
+    // put center point for visualization
+    geometry_msgs::Point center_pt;
+    center_pt.x = 0.0;
+    center_pt.y = 0.0;
+    center_pt.z = env_type_ ? 0.0 : odom_base_ptr_->transform.translation.z; // set z to base_link height
+    robot_marker.points.push_back(center_pt);
+    marker_array.markers.push_back(robot_marker);
+
     robot_points_pub_.publish(marker_array);
 }
 
@@ -2460,8 +2587,42 @@ void PlannerManager::publishTrajectoryForVisualizationIter(
     traj_iter_pubs_[iter_id].publish(traj_marker_array);
 }
 
+void PlannerManager::publishCurrentDirection(Eigen::Vector3d &start_pos, Eigen::Vector3d &gap_direction) {
+    
+    visualization_msgs::MarkerArray marker_array;
+    visualization_msgs::Marker dir_marker;
+    dir_marker.header.frame_id = "odom";
+    dir_marker.header.stamp = ros::Time::now();
+    dir_marker.ns = "current_direction";
+    dir_marker.id = 0;
+    dir_marker.type = visualization_msgs::Marker::LINE_LIST;
+    dir_marker.action = visualization_msgs::Marker::ADD;
+    dir_marker.scale.x = 0.02f;        // line width
+    dir_marker.color.r = 1.0f;         // magenta
+    dir_marker.color.g = 0.0f;
+    dir_marker.color.b = 1.0f;
+    dir_marker.color.a = 1.0f;
+
+    geometry_msgs::Point start_pt;
+    start_pt.x = start_pos[0];
+    start_pt.y = start_pos[1];
+    start_pt.z = env_type_ ? start_pos[2] : 0.0;
+
+    geometry_msgs::Point end_pt;
+    end_pt.x = start_pos[0] + gap_direction[0];
+    end_pt.y = start_pos[1] + gap_direction[1];
+    end_pt.z = env_type_ ? start_pos[2] + gap_direction[2] : 0.0;
+
+    dir_marker.points.push_back(start_pt);
+    dir_marker.points.push_back(end_pt);
+
+    marker_array.markers.push_back(dir_marker);
+    current_direction_pub_.publish(marker_array);
+}
+
 void PlannerManager::debugTimerCallback(const ros::TimerEvent &event) {
     publishRobotPoints();
     publishRobotSphere();
     // publishTestCube();
+    publishCurrentDirection(current_pos, current_direction_for_visualization_);
 }

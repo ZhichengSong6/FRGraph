@@ -95,6 +95,8 @@ class PlannerManager {
     ros::Publisher traj_vis_pub_;
     ros::Publisher traj_after_opt_pub_;
 
+    ros::Publisher current_direction_pub_;
+
     std::vector<ros::Publisher> traj_iter_pubs_;
     int traj_iter_pub_count_ = 30; 
 
@@ -116,6 +118,7 @@ class PlannerManager {
     void publishTrajectoryForVisualization(BezierSE3& traj, double worst_violation_time = -1.0);
     void publishTrajectoryAfterOptimization(BezierSE2& traj);
     void publishTrajectoryAfterOptimization(BezierSE3& traj);
+    void publishCurrentDirection(Eigen::Vector3d &start_pos, Eigen::Vector3d &gap_direction);
 
     void publishTrajectoryForVisualizationIter(BezierSE2& traj, double worst_violation_time = -1.0, int iter_id = -1);
 
@@ -185,6 +188,7 @@ class PlannerManager {
     bool prepareTrajectoryForCurrentEdge(const Eigen::Vector3d &start_pos);
 
     void generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& start_pos);
+    void pruneUntriedParentEdgesByChildPoly(NodeId parent_id, NodeId child_id, EdgeId incoming_eid);
     void sortAllCandidatesGap(Eigen:: Vector3d &start_pos,
                               std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
     void filterBackwardGaps(const Eigen::Vector3d &start_pos,
@@ -232,6 +236,9 @@ class PlannerManager {
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     std::vector<Eigen::Vector3d> trajectory_points_temp_;
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    Eigen::Vector3d current_direction_for_visualization_;
+    Eigen::Vector3d current_pos;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

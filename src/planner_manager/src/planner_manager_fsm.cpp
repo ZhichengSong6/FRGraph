@@ -211,7 +211,7 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e)
         cmd.angular.y = 0.0;
         cmd.angular.z = wz;
 
-        // cmd_vel_pub_.publish(cmd);
+        cmd_vel_pub_.publish(cmd);
         return;
     }
 
@@ -258,7 +258,7 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e)
         cmd.angular.y = wcmd_b.y();
         cmd.angular.z = wcmd_b.z();
 
-        // cmd_vel_pub_.publish(cmd);
+        cmd_vel_pub_.publish(cmd);
         return;
     }
 }
@@ -282,27 +282,58 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
         ROS_WARN("Edge pointer invalid.");
         return;
     }
-    // pos error
+    // pos and angle error
     double distance_to_subgoal = 0.0;
-    // orientation error
     double angle_to_subgoal = 0.0;
-    
-    if (env_type_){
-        distance_to_subgoal = (odom_pos_ - edge->replan_pos_).norm();
-        // 3D
+
+    bool reverse_traj = false;
+
+    if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
+        reverse_traj = false;
+    }
+    else if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
+        NodeId cur_nid = planner_manager_->current_node_id_;
+        if (cur_nid == edge->from_) {
+            reverse_traj = false;
+        }
+        else if (cur_nid == edge->to_) {
+            reverse_traj = true;
+        }
+        else {
+            ROS_WARN("[FSM]: PATH_EDGE but current node is not an endpoint of current edge.");
+            return;
+        }
+    }
+    else {
+        ROS_WARN("[FSM]: current_edge_exec_type_ is NONE or unknown.");
+        return;
+    }
+
+    if (env_type_) {
+        // ---------------- 3D traj-based subgoal ----------------
+        BezierSE3 traj = reverse_traj ? reverseBezierSE3(edge->traj3_) : edge->traj3_;
+
+        const Eigen::Vector3d p_goal = traj.pos(1.0);
+        const Eigen::Matrix3d R_goal = traj.R(1.0);
+
+        distance_to_subgoal = (odom_pos_ - p_goal).norm();
+
         const Eigen::Matrix3d R_cur = odom_ori_.toRotationMatrix();
-        const Eigen::Matrix3d R_ref = edge->R_;
-        const Eigen::Matrix3d R_err = R_cur.transpose() * R_ref;
+        const Eigen::Matrix3d R_err = R_cur.transpose() * R_goal;
         angle_to_subgoal = so3Angle(R_err);
     }
-    else{
-        distance_to_subgoal = (odom_pos_.head<2>() - edge->replan_pos_.head<2>()).norm();
-        Eigen::Matrix2d R_cur;
-        R_cur << std::cos(odom_yaw_), -std::sin(odom_yaw_),
-                 std::sin(odom_yaw_),  std::cos(odom_yaw_);
-        Eigen::Matrix2d R_ref = edge->R_2d_;
-        Eigen::Matrix2d R_err = R_cur.transpose() * R_ref;
-        angle_to_subgoal = so2Angle(R_err);
+    else {
+        // ---------------- 2D traj-based subgoal ----------------
+        BezierSE2 traj = reverse_traj ? reverseBezierSE2(edge->traj2_) : edge->traj2_;
+
+        const Eigen::Vector2d p_goal = traj.pos(1.0);
+        const double yaw_goal = traj.yaw(1.0);
+
+        distance_to_subgoal = (odom_pos_.head<2>() - p_goal).norm();
+
+        const double yaw_cur = odom_yaw_;
+        const double yaw_err = wrapToPi(yaw_goal - yaw_cur);
+        angle_to_subgoal = std::abs(yaw_err);
     }
 
     // thresholds

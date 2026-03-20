@@ -625,6 +625,22 @@ bool RepairOnce_PIQP(
         const bool global_ok       = (w_candidate.g <= w0.g + global_allow_increase);
 
         if (global_improved || (local_improved && global_ok)) {
+// std::cout << "old traj parameters P (control points):\n";
+// for (int ii = 0; ii < BezierSE2::K; ++ii) {
+//     std::cout << traj.P[ii].transpose() << std::endl;
+// }
+// std::cout << "old traj parameters (roll,pitch,yaw) per control point:\n";
+// for (int ii = 0; ii < BezierSE2::K; ++ii) {
+//     std::cout << traj.Theta[ii] << std::endl;
+// }
+// std::cout << "new traj parameters P (control points):\n";
+// for (int ii = 0; ii < BezierSE2::K; ++ii) {
+//     std::cout << traj_candidate.P[ii].transpose() << std::endl;
+// }
+// std::cout << "new traj parameters (roll,pitch,yaw) per control point:\n";
+// for (int ii = 0; ii < BezierSE2::K; ++ii) {
+//     std::cout << traj_candidate.Theta[ii] << std::endl;
+// }
             traj = traj_candidate;
             return true;
         }
@@ -790,10 +806,6 @@ bool RepairOnce_PIQP(
         const bool local_improved  = (local1.g <= local0.g - tol_local);
         const bool global_ok       = (w_candidate.g <= w0.g + global_allow_increase);
 
-        // Debug (optional but useful)
-        // std::cout << "[RepairOnce_PIQP 3D] local before=" << local0.g
-        //           << " after(alpha=" << alpha << ")=" << local1.g
-        //           << " global=" << w_candidate.g << " (t=" << w_candidate.t << ")" << std::endl;
 
         if (global_improved || (local_improved && global_ok)) {
             traj = traj_candidate;
