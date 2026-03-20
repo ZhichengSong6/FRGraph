@@ -7,6 +7,8 @@
 #include <geometry_msgs/Twist.h>
 #include <visualization_msgs/Marker.h>
 
+#include <unordered_set>
+
 #include <Eigen/Dense>
 
 #include "planner_manager.h"
@@ -47,7 +49,9 @@ class PlannerManagerFSM {
     /* ROS publishers */
     ros::Publisher cmd_vel_pub_;
     ros::Publisher goal_marker_pub_;
-    ros::Publisher global_graph_pub_;
+
+    ros::Publisher global_graph_pub_;        // edges (LINE_LIST)
+    ros::Publisher global_graph_nodes_pub_;  // nodes (SPHERE_LIST)
 
     /* ROS subscribers */
     ros::Subscriber odom_sub_;

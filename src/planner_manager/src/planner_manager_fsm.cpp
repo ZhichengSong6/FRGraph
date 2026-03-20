@@ -56,6 +56,7 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     cmd_vel_pub_ = node_.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
     goal_marker_pub_ = node_.advertise<visualization_msgs::Marker>("/goal_marker", 1);
     global_graph_pub_ = node_.advertise<visualization_msgs::Marker>("/global_graph", 10);
+    global_graph_nodes_pub_ = node_.advertise<visualization_msgs::Marker>("/global_graph_nodes", 10);
 }
 
 void PlannerManagerFSM::odomCallback(const nav_msgs::OdometryConstPtr &msg) {
@@ -484,7 +485,6 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
             // initialize the graph with current pos as root node
             if(!graph_inited_){
                 Eigen::Vector3d start_pos = odom_pos_;
-                planner_manager_->graph_points_for_visualization_.clear();
                 planner_manager_->free_regions_graph_ptr_->setRootNode(start_pos);
                 planner_manager_->current_node_id_ = planner_manager_->free_regions_graph_ptr_->root_id_;
                 planner_manager_->current_edge_id_ = -1;
@@ -772,40 +772,86 @@ void PlannerManagerFSM::publishGoalMarker() {
     goal_marker_pub_.publish(goal_marker);
 }
 
-void PlannerManagerFSM::publishGlobalGraph() {
-    visualization_msgs::Marker ray_list;
-    ray_list.header.frame_id = "odom";
-    ray_list.header.stamp = ros::Time::now();
-    ray_list.ns = "global_graph";
-    ray_list.id = 0;
-    ray_list.type = visualization_msgs::Marker::LINE_LIST;
-    ray_list.action = visualization_msgs::Marker::ADD;
-    ray_list.scale.x = 0.02f;        // line width
-    ray_list.color.r = 0.0f;         
-    ray_list.color.g = 0.0f;
-    ray_list.color.b = 1.0f;
-    ray_list.color.a = 1.0f;
+void PlannerManagerFSM::publishGlobalGraph()
+{
+    visualization_msgs::Marker edge_lines;
+    edge_lines.header.frame_id = "odom";
+    edge_lines.header.stamp = ros::Time::now();
+    edge_lines.ns = "global_graph_edges";
+    edge_lines.id = 0;
+    edge_lines.type = visualization_msgs::Marker::LINE_LIST;
+    edge_lines.action = visualization_msgs::Marker::ADD;
+    edge_lines.scale.x = 0.02;
+    edge_lines.color.r = 0.0;
+    edge_lines.color.g = 0.0;
+    edge_lines.color.b = 1.0;
+    edge_lines.color.a = 1.0;
 
-    geometry_msgs::Point p_start, p_end;
-    for (size_t i = 0; i < planner_manager_->graph_points_for_visualization_.size(); i +=2){
-        p_start.x = planner_manager_->graph_points_for_visualization_[i][0];
-        p_start.y = planner_manager_->graph_points_for_visualization_[i][1];
-        p_start.z = planner_manager_->graph_points_for_visualization_[i][2];
-        p_end.x = planner_manager_->graph_points_for_visualization_[i+1][0];
-        p_end.y = planner_manager_->graph_points_for_visualization_[i+1][1];
-        p_end.z = planner_manager_->graph_points_for_visualization_[i+1][2];
-        ray_list.points.push_back(p_start);
-        ray_list.points.push_back(p_end);
+    visualization_msgs::Marker node_points;
+    node_points.header.frame_id = "odom";
+    node_points.header.stamp = ros::Time::now();
+    node_points.ns = "global_graph_nodes";
+    node_points.id = 1;
+    node_points.type = visualization_msgs::Marker::SPHERE_LIST;
+    node_points.action = visualization_msgs::Marker::ADD;
+    node_points.scale.x = 0.08;
+    node_points.scale.y = 0.08;
+    node_points.scale.z = 0.08;
+    node_points.color.r = 0.0;
+    node_points.color.g = 1.0;
+    node_points.color.b = 0.0;
+    node_points.color.a = 1.0;
+
+    std::unordered_set<EdgeId> drawn_edges;
+
+    const int N = planner_manager_->free_regions_graph_ptr_->numNodes();
+    for (NodeId nid = 0; nid < N; ++nid) {
+        auto* node = planner_manager_->free_regions_graph_ptr_->getNode(nid);
+        if (!node) continue;
+
+        // -------- draw node --------
+        geometry_msgs::Point p_node;
+        p_node.x = node->state_pos_.x();
+        p_node.y = node->state_pos_.y();
+        p_node.z = node->state_pos_.z();
+        node_points.points.push_back(p_node);
+
+        // -------- draw edges currently attached to this node --------
+        for (EdgeId eid : node->edge_ids_) {
+            if (drawn_edges.count(eid)) continue;
+
+            auto* edge = planner_manager_->free_regions_graph_ptr_->getEdge(eid);
+            if (!edge) continue;
+
+            geometry_msgs::Point p0, p1;
+
+            // For an untried frontier edge, draw node.state_pos_ -> edge.replan_pos_
+            // For a tried edge with valid to_, this is still fine because replan_pos_ is the target pose of that edge.
+            p0.x = node->state_pos_.x();
+            p0.y = node->state_pos_.y();
+            p0.z = node->state_pos_.z();
+
+            p1.x = edge->replan_pos_.x();
+            p1.y = edge->replan_pos_.y();
+            p1.z = edge->replan_pos_.z();
+
+            edge_lines.points.push_back(p0);
+            edge_lines.points.push_back(p1);
+
+            drawn_edges.insert(eid);
+        }
     }
-    global_graph_pub_.publish(ray_list);
+
+    global_graph_pub_.publish(edge_lines);
+    global_graph_nodes_pub_.publish(node_points);
 }
 
 void PlannerManagerFSM::visualizationCallback(const ros::TimerEvent &e) {
     if (have_goal_){
         publishGoalMarker();
     }
-    if (!planner_manager_->graph_points_for_visualization_.empty()){
-        publishGlobalGraph();
+    if (planner_manager_->free_regions_graph_ptr_->numNodes() > 0){
+        publishGlobalGraph(); 
     }
 }
 

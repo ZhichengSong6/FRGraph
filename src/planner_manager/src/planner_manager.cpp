@@ -774,7 +774,7 @@ void PlannerManager::filterBackwardGaps(const Eigen::Vector3d &start_pos, NodeId
         }
     }
     // filter out the gaps that are backward facing
-    const double cos_backward = std::cos(150.0 * M_PI / 180.0); // 150 degrees
+    const double cos_backward = std::cos(120.0 * M_PI / 180.0); // 150 degrees
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> filtered;
     filtered.reserve(all_candidates.size());
     int removed = 0;
@@ -985,6 +985,7 @@ bool PlannerManager::getTargetPose3D(const Eigen::Vector3d &start_pos, const Eig
     LinearConstraint3D lc(start_pos, hyperplanes);
     const int m = lc.A().rows();
     Eigen::MatrixXd A = lc.A();
+    const Eigen::VectorXd b = lc.b();
     // direction from start to goal
     Eigen::Vector3d dir = goal_point - start_pos;
     dir.normalize();
@@ -1067,7 +1068,7 @@ bool PlannerManager::getTargetPose3D(const Eigen::Vector3d &start_pos, const Eig
                 R(2,2) = cp*cr;
                 for(int l = 0; l < m; ++l){
                     const double hl = supportValueVertices(arows[l], robot_shape_points_d_, R);
-                    b_prime[l] = lc.b()[l] - hl - shrink[l];
+                    b_prime[l] = b[l] - hl - shrink[l];
                 }
                 Eigen::Vector3d best_vertex;
                 double value = solveLPByEnumeratingVertices3D(arows, A, b_prime, dir, best_vertex);
@@ -1204,6 +1205,8 @@ bool PlannerManager::getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen
         arows[l] = A.row(l).transpose();
         shrink[l] = clearance * arows[l].norm();
     } 
+
+    const std::vector<TripleCache> triple_cache = buildTripleCache3D(arows);
     // output init
     out_replan_pos = start_pos;
     out_R.setIdentity();
@@ -1246,7 +1249,8 @@ bool PlannerManager::getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen
                     best_vertex = goal_point;
                 } 
                 else{
-                    double value = solveLPByEnumeratingVertices3D(arows, A, b_prime, dir, best_vertex);
+                    // double value = solveLPByEnumeratingVertices3D(arows, A, b_prime, dir, best_vertex);
+                    double value = solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, best_vertex);
                 }               
 
                 const double dist_to_goal = (goal_point - best_vertex).norm();
@@ -1366,6 +1370,83 @@ bool PlannerManager::poseContainedInParentPoly2D(const Eigen::Vector3d &parent_p
     return true;    
 }
 
+std::vector<TripleCache> PlannerManager::buildTripleCache3D(
+    const std::vector<Eigen::Vector3d>& Arows) 
+{
+    const int m = static_cast<int>(Arows.size());
+    const double det_tol = 1e-10;
+
+    std::vector<TripleCache> cache;
+    cache.reserve(m * (m - 1) * (m - 2) / 6); // upper bound
+
+    for (int i = 0; i < m; ++i) {
+        const Eigen::Vector3d& a1 = Arows[i];
+        for (int j = i + 1; j < m; ++j) {
+            const Eigen::Vector3d& a2 = Arows[j];
+            for (int k = j + 1; k < m; ++k) {
+                const Eigen::Vector3d& a3 = Arows[k];
+
+                const Eigen::Vector3d c23 = a2.cross(a3);
+                const double det = a1.dot(c23);
+                if (std::abs(det) < det_tol) continue;
+
+                TripleCache tc;
+                tc.i = i;
+                tc.j = j;
+                tc.k = k;
+                tc.c23 = c23;
+                tc.c31 = a3.cross(a1);
+                tc.c12 = a1.cross(a2);
+                tc.inv_det = 1.0 / det;
+
+                cache.push_back(tc);
+            }
+        }
+    }
+
+    return cache;
+}
+
+double PlannerManager::solveLPByEnumeratingVertices3DWithCache(
+    const std::vector<TripleCache>& cache,
+    const std::vector<Eigen::Vector3d>& Arows,
+    const Eigen::VectorXd& bprime,
+    const Eigen::Vector3d& dir,
+    Eigen::Vector3d& best_vertex)
+{
+    const int m = static_cast<int>(Arows.size());
+    const double feas_tol = 1e-6;
+    double best_value = -std::numeric_limits<double>::infinity();
+
+    for (const auto& tc : cache) {
+        const int i = tc.i;
+        const int j = tc.j;
+        const int k = tc.k;
+
+        const Eigen::Vector3d vertex =
+            ( bprime[i] * tc.c23
+            + bprime[j] * tc.c31
+            + bprime[k] * tc.c12 ) * tc.inv_det;
+
+        bool feasible = true;
+        for (int l = 0; l < m; ++l) {
+            if (Arows[l].dot(vertex) > bprime[l] + feas_tol) {
+                feasible = false;
+                break;
+            }
+        }
+        if (!feasible) continue;
+
+        const double dist = dir.dot(vertex);
+        if (dist > best_value) {
+            best_value = dist;
+            best_vertex = vertex;
+        }
+    }
+
+    return best_value;
+}
+
 double PlannerManager::solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex){
     const int m = A.rows();
     const double det_tol = 1e-10;
@@ -1394,6 +1475,7 @@ double PlannerManager::solveLPByEnumeratingVertices3D(const std::vector<Eigen::V
                 // feasibility check: Arows[l]·x <= bprime[l]
                 bool feasible = true;
                 for (int l = 0; l < m; ++l) {
+                    if (l == i || l == j || l == k) continue;
                     if (Arows[l].dot(vertex) > bprime[l] + feas_tol) {
                         feasible = false;
                         break;
@@ -2032,13 +2114,6 @@ double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::m
 ROS_INFO("[PlannerManager] expandChildren and getTargetPose elapsed: %.3f ms", ms_pose);
 
     publishTestCube();
-    for (EdgeId eid : current_node->edge_ids_) {
-        auto* e = free_regions_graph_ptr_->getEdge(eid);
-        if (!e) continue;
-
-        graph_points_for_visualization_.push_back(current_node->state_pos_);
-        graph_points_for_visualization_.push_back(e->replan_pos_);
-    }
 
     if (current_node->edge_ids_.empty() || !isFrontierNode(current_id)) {
         current_node->deadend_ = true;

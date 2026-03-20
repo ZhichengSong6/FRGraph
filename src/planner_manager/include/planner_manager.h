@@ -53,6 +53,14 @@ struct Gaps{
     int   type = -1;           // 0=open, 1=limited, 2=free, 3=goal
 };
 
+struct TripleCache {
+    int i, j, k;
+    Eigen::Vector3d c23;   // a_j x a_k
+    Eigen::Vector3d c31;   // a_k x a_i
+    Eigen::Vector3d c12;   // a_i x a_j
+    double inv_det;        // 1 / (a_i · (a_j x a_k))
+};
+
 class PlannerManager {
     private:
     ros::NodeHandle node_;
@@ -73,7 +81,6 @@ class PlannerManager {
 
     typedef std::unique_ptr<PlannerManager> Ptr;
 
-    std::vector<Eigen::Vector3d> graph_points_for_visualization_;
 
     /* ROS Subscriber */
     ros::Subscriber velodyne_sub_;   // pointcloud for 3D environment
@@ -217,7 +224,9 @@ class PlannerManager {
 
     double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
     double solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex);
-    
+    double solveLPByEnumeratingVertices3DWithCache(const std::vector<TripleCache>& cache, const std::vector<Eigen::Vector3d>& Arows, const Eigen::VectorXd& bprime, const Eigen::Vector3d& dir, Eigen::Vector3d& best_vertex);
+    std::vector<TripleCache> buildTripleCache3D(const std::vector<Eigen::Vector3d>& Arows);
+
     EdgeId selectBestEdgeAtNode(NodeId nid);
     EdgeId getSubgoalEdgeId(NodeId current_id) const;
 

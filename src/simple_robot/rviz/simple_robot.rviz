@@ -25,7 +25,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: LaserScan
+    SyncSource: PointCloud2
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -204,7 +204,7 @@ Visualization Manager:
       Marker Topic: /goal_marker
       Name: Marker
       Namespaces:
-        {}
+        goal_marker: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -212,13 +212,13 @@ Visualization Manager:
       Marker Topic: /global_graph
       Name: Marker
       Namespaces:
-        {}
+        global_graph_edges: true
       Queue Size: 100
       Value: true
     - Alpha: 0.20000000298023224
       BoundColor: 255; 0; 0
       Class: decomp_rviz_plugins/PolyhedronArray
-      Enabled: true
+      Enabled: false
       MeshColor: 0; 170; 255
       Name: PolyhedronArray
       Queue Size: 10
@@ -226,7 +226,7 @@ Visualization Manager:
       State: Mesh
       Topic: /planner/polyhedron_array
       Unreliable: false
-      Value: true
+      Value: false
       VsColor: 0; 255; 0
       VsScale: 1
     - Alpha: 0.20000000298023224
@@ -255,7 +255,7 @@ Visualization Manager:
     - Alpha: 0.20000000298023224
       BoundColor: 255; 0; 0
       Class: decomp_rviz_plugins/PolyhedronArray
-      Enabled: true
+      Enabled: false
       MeshColor: 138; 226; 52
       Name: PolyhedronArray
       Queue Size: 10
@@ -263,13 +263,13 @@ Visualization Manager:
       State: Mesh
       Topic: /planner/polyhedron_frtree_array
       Unreliable: false
-      Value: true
+      Value: false
       VsColor: 0; 255; 0
       VsScale: 1
     - Alpha: 0.20000000298023224
       BoundColor: 255; 0; 0
       Class: decomp_rviz_plugins/PolyhedronArray
-      Enabled: true
+      Enabled: false
       MeshColor: 0; 0; 0
       Name: PolyhedronArray
       Queue Size: 10
@@ -277,7 +277,7 @@ Visualization Manager:
       State: Mesh
       Topic: /planner/polyhedron_aniso_full_array
       Unreliable: false
-      Value: true
+      Value: false
       VsColor: 0; 255; 0
       VsScale: 1
     - Class: rviz/MarkerArray
@@ -285,7 +285,7 @@ Visualization Manager:
       Marker Topic: /planner/planner_manager_test_cube
       Name: MarkerArray
       Namespaces:
-        {}
+        child_cube: true
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -293,7 +293,7 @@ Visualization Manager:
       Marker Topic: /planner/planner_manager_traj_vis
       Name: MarkerArray
       Namespaces:
-        {}
+        traj_robot: true
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -301,7 +301,15 @@ Visualization Manager:
       Marker Topic: /planner/planner_manager_traj_after_opt
       Name: MarkerArray
       Namespaces:
-        {}
+        traj_robot: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /global_graph_nodes
+      Name: Marker
+      Namespaces:
+        global_graph_nodes: true
       Queue Size: 100
       Value: true
   Enabled: true
@@ -331,20 +339,26 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 0
-      Class: rviz/TopDownOrtho
+      Class: rviz/ThirdPersonFollower
+      Distance: 13.647574424743652
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: 1.0572776794433594
+        Y: -3.8425955772399902
+        Z: 1.430511474609375e-06
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 70.5077896118164
+      Pitch: 0.8947969675064087
       Target Frame: <Fixed Frame>
-      X: -0.2903575897216797
-      Y: -0.3086514472961426
+      Yaw: 4.505419731140137
     Saved: ~
 Window Geometry:
   Displays:
