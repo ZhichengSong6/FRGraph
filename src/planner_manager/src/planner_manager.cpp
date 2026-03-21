@@ -673,7 +673,7 @@ void PlannerManager::generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& s
     if(env_type_){
         // 3D
         SeedDecomp3D seed_decomp_3d(start_pos);
-        seed_decomp_3d.set_local_bbox(Vec3f(2.0f, 2.0f, 2.0f));
+        seed_decomp_3d.set_local_bbox(Vec3f(0.8f, 0.8f, 0.8f));
         seed_decomp_3d.set_obs(pointcloud_cropped_odom_frame_);
         seed_decomp_3d.dilate(0.1);  
         Polyhedron3D node_poly = seed_decomp_3d.get_polyhedron();
@@ -692,9 +692,7 @@ void PlannerManager::generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& s
     }
 }
 
-void PlannerManager::pruneUntriedParentEdgesByChildPoly(NodeId parent_id,
-                                                        NodeId child_id,
-                                                        EdgeId incoming_eid)
+void PlannerManager::pruneUntriedParentEdgesByChildPoly(NodeId parent_id, NodeId child_id, EdgeId incoming_eid)
 {
     auto* parent = free_regions_graph_ptr_->getNode(parent_id);
     auto* child  = free_regions_graph_ptr_->getNode(child_id);
@@ -838,8 +836,7 @@ void PlannerManager::filterBackwardGaps(const Eigen::Vector3d &start_pos, NodeId
     ROS_INFO("[PlannerManager] Filtered out %d backward-facing gaps, %lu remaining.", removed, all_candidates.size());
 }
 
-void PlannerManager::sortAllCandidatesGap(Eigen::Vector3d &goal_pos, 
-                                          std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
+void PlannerManager::sortAllCandidatesGap(Eigen::Vector3d &goal_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
     if (all_candidates.empty()) {
         ROS_WARN("[PlannerManager] No gap candidates available for sorting.");
         return;
@@ -2186,7 +2183,9 @@ ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
     return true;
 }
 
-void PlannerManager::expandNodePrimaryOnly(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id)
+void PlannerManager::expandNodePrimaryOnly(Eigen::Vector3d &start_pos,
+                                           Eigen::Vector3d &goal_pos,
+                                           NodeId current_id)
 {
 auto t_total_0 = std::chrono::high_resolution_clock::now();
     // 1) generate node polyhedron at current pose
@@ -2228,7 +2227,7 @@ auto t_pre_1 = std::chrono::high_resolution_clock::now();
 double ms_pre = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pre_1 - t_pre_0).count();
 ROS_INFO("[PlannerManager] expandNodePrimaryOnly preprocess elapsed: %.3f ms", ms_pre);
 
-    // optional test visualization: only for the first gap
+    // optional test visualization: only for the first ranked gap
     // decomposeAlongGapDirectionsTEST(start_pos, all_candidates[0]);
     // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates[0]);
 
@@ -2237,37 +2236,58 @@ ROS_INFO("[PlannerManager] expandNodePrimaryOnly preprocess elapsed: %.3f ms", m
         current_node->edge_ids_.clear();
     }
 
-    // 4) process the first candidate synchronously using LOCAL corridor
-    const Gaps& gap = all_candidates[0];
+    // 4) synchronously try candidates in order until one edge is successfully added
+    bool found_primary = false;
+    size_t primary_idx = 0;
 
-auto t_decomp_0 = std::chrono::high_resolution_clock::now();
+    for (size_t i = 0; i < all_candidates.size(); ++i) {
+        const Gaps& gap = all_candidates[i];
 
-    bool primary_ok = false;
-    Eigen::Vector3d replan_pos = start_pos;
+        auto t_decomp_0 = std::chrono::high_resolution_clock::now();
 
-    if (env_type_) {
-        Polyhedron3D corridor_poly;
-        if (computeSingleCorridor3DLocal(start_pos, gap, corridor_poly)) {
+        if (env_type_) {
+            Polyhedron3D corridor_poly;
+            if (!computeSingleCorridor3DLocal(start_pos, gap, corridor_poly)) {
+                ROS_WARN("[PlannerManager] candidate %zu corridor computation failed.", i);
+                continue;
+            }
+
 auto t_decomp_1 = std::chrono::high_resolution_clock::now();
 double ms_decomp = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_decomp_1 - t_decomp_0).count();
-ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate decompose elapsed: %.3f ms", ms_decomp);
 
 auto t_pose_0 = std::chrono::high_resolution_clock::now();
-            Eigen::Matrix3d R;
+
+            Eigen::Vector3d replan_pos = start_pos;
+            Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
             bool ok = false;
+
             if (gap.type == 3) {
                 ok = getGoalPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
             } else {
                 ok = getTargetPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
             }
+
 auto t_pose_1 = std::chrono::high_resolution_clock::now();
 double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pose_1 - t_pose_0).count();
-ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate pose elapsed: %.3f ms", ms_pose);
 
-            if (ok) {
+ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3f ms, ok=%d",
+            i, ms_decomp, ms_pose, (int)ok);
+
+            if (!ok) {
+                continue;
+            }
+
+            bool contained = false;
+            {
                 std::lock_guard<std::mutex> lk(graph_mutex_);
                 auto* node = free_regions_graph_ptr_->getNode(current_id);
-                if (node && !poseContainedInParentPoly3D(start_pos, node->polys_, replan_pos, R, 0.0)) {
+                if (!node) return;
+
+                contained = poseContainedInParentPoly3D(start_pos, node->polys_, replan_pos, R, 0.0);
+                ROS_INFO("[PlannerManager] candidate %zu contained in parent poly = %d",
+                         i, (int)contained);
+
+                if (!contained) {
                     EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_id, gap.dir_odom_frame);
                     auto* e = free_regions_graph_ptr_->getEdge(edge_id);
                     if (e) {
@@ -2275,35 +2295,61 @@ ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate pose elapsed: %
                         e->replan_pos_ = replan_pos;
                         e->R_ = R;
                         e->cost_ = (e->replan_pos_ - node->state_pos_).norm();
-                        primary_ok = true;
+
+                        found_primary = true;
+                        primary_idx = i;
+
+                        ROS_INFO("[PlannerManager] candidate %zu selected as primary edge, edge_id=%d",
+                                 i, edge_id);
                     }
                 }
             }
+
+            if (found_primary) break;
         }
-    }
-    else {
-        Polyhedron2D corridor_poly;
-        if (computeSingleCorridor2DLocal(start_pos, gap, corridor_poly)) {
+        else {
+            Polyhedron2D corridor_poly;
+            if (!computeSingleCorridor2DLocal(start_pos, gap, corridor_poly)) {
+                ROS_WARN("[PlannerManager] candidate %zu corridor computation failed.", i);
+                continue;
+            }
+
 auto t_decomp_1 = std::chrono::high_resolution_clock::now();
 double ms_decomp = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_decomp_1 - t_decomp_0).count();
-ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate decompose elapsed: %.3f ms", ms_decomp);
 
 auto t_pose_0 = std::chrono::high_resolution_clock::now();
-            Eigen::Matrix2d R;
+
+            Eigen::Vector3d replan_pos = start_pos;
+            Eigen::Matrix2d R = Eigen::Matrix2d::Identity();
             bool ok = false;
+
             if (gap.type == 3) {
                 ok = getGoalPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
             } else {
                 ok = getTargetPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
             }
+
 auto t_pose_1 = std::chrono::high_resolution_clock::now();
 double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pose_1 - t_pose_0).count();
-ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate pose elapsed: %.3f ms", ms_pose);
 
-            if (ok) {
+ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3f ms, ok=%d",
+            i, ms_decomp, ms_pose, (int)ok);
+
+            if (!ok) {
+                continue;
+            }
+
+            bool contained = false;
+            {
                 std::lock_guard<std::mutex> lk(graph_mutex_);
                 auto* node = free_regions_graph_ptr_->getNode(current_id);
-                if (node && !poseContainedInParentPoly2D(start_pos, node->polys_2d_, replan_pos, R, 0.0)) {
+                if (!node) return;
+
+                contained = poseContainedInParentPoly2D(start_pos, node->polys_2d_, replan_pos, R, 0.0);
+                ROS_INFO("[PlannerManager] candidate %zu contained in parent poly = %d",
+                         i, (int)contained);
+
+                if (!contained) {
                     EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_id, gap.dir_odom_frame);
                     auto* e = free_regions_graph_ptr_->getEdge(edge_id);
                     if (e) {
@@ -2311,14 +2357,21 @@ ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate pose elapsed: %
                         e->replan_pos_ = replan_pos;
                         e->R_2d_ = R;
                         e->cost_ = (e->replan_pos_.head<2>() - node->state_pos_.head<2>()).norm();
-                        primary_ok = true;
+
+                        found_primary = true;
+                        primary_idx = i;
+
+                        ROS_INFO("[PlannerManager] candidate %zu selected as primary edge, edge_id=%d",
+                                 i, edge_id);
                     }
                 }
             }
+
+            if (found_primary) break;
         }
     }
 
-    // 5) store remaining candidates for background expansion
+    // 5) store only the remaining UNTRIED candidates for background expansion
 auto t_pending_0 = std::chrono::high_resolution_clock::now();
     {
         std::lock_guard<std::mutex> lk(bg_job_mutex_);
@@ -2326,11 +2379,16 @@ auto t_pending_0 = std::chrono::high_resolution_clock::now();
         pending_expand_job_.start_pos = start_pos;
         pending_expand_job_.candidates.clear();
 
-        if (all_candidates.size() > 1) {
-            pending_expand_job_.candidates.insert(
-                pending_expand_job_.candidates.end(),
-                all_candidates.begin() + 1,
-                all_candidates.end());
+        if (found_primary) {
+            if (primary_idx + 1 < all_candidates.size()) {
+                pending_expand_job_.candidates.insert(
+                    pending_expand_job_.candidates.end(),
+                    all_candidates.begin() + primary_idx + 1,
+                    all_candidates.end());
+            }
+        } else {
+            // if no primary edge found, keep all remaining candidates for background expansion
+            pending_expand_job_.candidates = all_candidates;
         }
 
         pending_expand_job_.valid = !pending_expand_job_.candidates.empty();

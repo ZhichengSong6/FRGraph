@@ -176,21 +176,21 @@ Visualization Manager:
       Unreliable: false
       Value: false
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /gap_masks
       Name: MarkerArray
       Namespaces:
-        gap_masks: true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /detected_edges
       Name: MarkerArray
       Namespaces:
-        detected_edges: true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /gap_subregions
@@ -204,7 +204,7 @@ Visualization Manager:
       Marker Topic: /goal_marker
       Name: Marker
       Namespaces:
-        goal_marker: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -212,7 +212,7 @@ Visualization Manager:
       Marker Topic: /global_graph
       Name: Marker
       Namespaces:
-        global_graph_edges: true
+        {}
       Queue Size: 100
       Value: true
     - Alpha: 0.20000000298023224
@@ -285,7 +285,7 @@ Visualization Manager:
       Marker Topic: /planner/planner_manager_test_cube
       Name: MarkerArray
       Namespaces:
-        child_cube: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -293,7 +293,7 @@ Visualization Manager:
       Marker Topic: /planner/planner_manager_traj_vis
       Name: MarkerArray
       Namespaces:
-        traj_robot: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -301,7 +301,7 @@ Visualization Manager:
       Marker Topic: /planner/planner_manager_traj_after_opt
       Name: MarkerArray
       Namespaces:
-        traj_robot: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -340,7 +340,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 13.647574424743652
+      Distance: 9.300439834594727
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -356,9 +356,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.8947969675064087
+      Pitch: 0.5747973918914795
       Target Frame: <Fixed Frame>
-      Yaw: 4.505419731140137
+      Yaw: 4.665431022644043
     Saved: ~
 Window Geometry:
   Displays:
