@@ -32,6 +32,14 @@
 #include <planner_manager/GapCandidates.h>
 #include <planner_manager/GapCandidate.h>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
+#include <thread>
+#include <mutex>
+#include <atomic>
+
 struct Gaps{
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Eigen::Vector3d dir_scan_frame;
@@ -74,7 +82,7 @@ class PlannerManager {
 
     public:
     PlannerManager() {}
-    ~PlannerManager() {}
+    ~PlannerManager();
     void setEnvType(int env_type) { env_type_ = env_type; }
     void getEnvType(int &env_type) { env_type = env_type_; }
     void setSizeOfCroppedPointcloud(const Eigen::Vector3d &size) { size_of_cropped_pointcloud_ = size; }
@@ -88,7 +96,6 @@ class PlannerManager {
     ros::Subscriber candidate_gaps_sub_;
 
     /* ROS Publisher */
-    ros::Publisher poly_pub_aniso_;
     ros::Publisher poly_pub_;
     ros::Publisher robot_points_pub_;
     ros::Publisher robot_sphere_pub_;
@@ -150,9 +157,7 @@ class PlannerManager {
     std::vector<Eigen::Vector3d> robot_shape_points_d_;
     std::vector<Eigen::Vector2d> robot_shape_points_2d_d_;
 
-    vec_E<Polyhedron2D> polys_aniso_2d_;
     vec_E<Polyhedron2D> polys_2d_;
-    vec_E<Polyhedron3D> polys_aniso_3d_;
     vec_E<Polyhedron3D> polys_3d_;
     
     vec_E<Polyhedron3D> polys_aniso_full_;
@@ -175,6 +180,13 @@ class PlannerManager {
     double upper_bound_of_pitch_ = 0.0;
     double lower_bound_of_pitch_ = 0.0;
 
+    int top_k_yaw_basins_;
+
+    double fine_yaw_half_span_deg_;
+    double fine_roll_half_span_deg_;
+    double fine_pitch_half_span_deg_;
+    double fine_angle_step_deg_;
+
     std::vector<EdgeId> planned_path_edges_;
     size_t planned_path_index_ = 0;
 
@@ -188,8 +200,6 @@ class PlannerManager {
     };
     EdgeExecType current_edge_exec_type_ = EdgeExecType::NONE;
 
-    // expand node
-    void expandNode(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_node_id);
     // action selection
     bool planGlobalBestAction(const Eigen::Vector3d &global_goal);
     bool prepareTrajectoryForCurrentEdge(const Eigen::Vector3d &start_pos);
@@ -204,13 +214,32 @@ class PlannerManager {
     void reorderCandidatesGapWithGoal(Eigen:: Vector3d &goal_pos, 
                                      std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
 
-    void decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+    void decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, const Gaps& gap);
+    void decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, const Gaps& gap);
 
-    void decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
-    void decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
+    bool computeSingleCorridor3DLocal(const Eigen::Vector3d& start_pos, const Gaps& gap, Polyhedron3D& out_poly);
+
+    bool computeSingleCorridor2DLocal(const Eigen::Vector3d& start_pos, const Gaps& gap, Polyhedron2D& out_poly);
+
+    // ---------- background parallel expansion ----------
+    void expandChildrenBackgroundParallel(
+    const Eigen::Vector3d& start_pos,
+    NodeId current_node_id,
+    const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
+
+    struct BgExpandResult {
+    bool ok = false;
+    Eigen::Vector3d goal = Eigen::Vector3d::Zero();
+    Eigen::Vector3d replan = Eigen::Vector3d::Zero();
+
+    Eigen::Matrix3d R3 = Eigen::Matrix3d::Identity();
+    Eigen::Matrix2d R2 = Eigen::Matrix2d::Identity();
+
+    Polyhedron3D corridor_3d;
+    Polyhedron2D corridor_2d;
+    };
+
     
-    void expandChildrenParallel(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
-    void expandChildren(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
     bool getTargetPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix3d& out_R);
     bool getTargetPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix2d& out_R);
     bool getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_goal_pos, Eigen::Matrix3d& out_R);
@@ -223,7 +252,6 @@ class PlannerManager {
     double supportValueVertices(const Eigen::Vector2d &norm, const std::vector<Eigen::Vector2d> &vertices, const Eigen::Matrix2d& R);
 
     double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
-    double solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex);
     double solveLPByEnumeratingVertices3DWithCache(const std::vector<TripleCache>& cache, const std::vector<Eigen::Vector3d>& Arows, const Eigen::VectorXd& bprime, const Eigen::Vector3d& dir, Eigen::Vector3d& best_vertex);
     std::vector<TripleCache> buildTripleCache3D(const std::vector<Eigen::Vector3d>& Arows);
 
@@ -242,9 +270,26 @@ class PlannerManager {
     bool planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, EdgeId edge_id);
     bool planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id);
 
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    std::vector<Eigen::Vector3d> trajectory_points_temp_;
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TESTING !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    std::thread background_expand_thread_;
+    std::atomic<bool> background_expand_running_{false};
+
+    std::mutex graph_mutex_;       // protect graph writes / graph visualization reads
+    std::mutex bg_job_mutex_;      // protect pending job data
+
+    struct PendingExpandJob {
+        NodeId node_id = -1;
+        Eigen::Vector3d start_pos = Eigen::Vector3d::Zero();
+        std::vector<Gaps, Eigen::aligned_allocator<Gaps>> candidates;
+        bool valid = false;
+    };
+
+    PendingExpandJob pending_expand_job_;
+
+    void expandNodePrimaryOnly(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id);
+    void startBackgroundExpansion();
+    void backgroundExpandWorker();
+
+    void expandChildrenOneByOne(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
 
     Eigen::Vector3d current_direction_for_visualization_;
     Eigen::Vector3d current_pos;

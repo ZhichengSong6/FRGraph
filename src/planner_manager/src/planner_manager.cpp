@@ -1,5 +1,118 @@
 #include "planner_manager.h"
 
+namespace {
+
+inline double wrapAngleRad(double a) {
+    while (a >  M_PI) a -= 2.0 * M_PI;
+    while (a < -M_PI) a += 2.0 * M_PI;
+    return a;
+}
+
+inline double clampDouble(double x, double lo, double hi) {
+    return std::max(lo, std::min(hi, x));
+}
+
+static std::vector<double> buildUniformSamplesInclusive(double lo, double hi, int n) {
+    std::vector<double> vals;
+    if (n <= 0) return vals;
+    vals.resize(n);
+    if (n == 1) {
+        vals[0] = 0.5 * (lo + hi);
+        return vals;
+    }
+    for (int i = 0; i < n; ++i) {
+        vals[i] = lo + (hi - lo) * double(i) / double(n - 1);
+    }
+    return vals;
+}
+
+static std::vector<double> buildCenteredSamplesDeg(double center_rad,
+                                                   double half_span_deg,
+                                                   double step_deg,
+                                                   double lower_bound_rad,
+                                                   double upper_bound_rad,
+                                                   bool wrap_yaw) {
+    std::vector<double> vals;
+    const double step = step_deg * M_PI / 180.0;
+    const double half = half_span_deg * M_PI / 180.0;
+    const int n_side = static_cast<int>(std::round(half / step));
+
+    for (int k = -n_side; k <= n_side; ++k) {
+        double v = center_rad + k * step;
+        if (wrap_yaw) {
+            v = wrapAngleRad(v);
+        } else {
+            v = clampDouble(v, lower_bound_rad, upper_bound_rad);
+        }
+        vals.push_back(v);
+    }
+
+    std::sort(vals.begin(), vals.end());
+    vals.erase(std::unique(vals.begin(), vals.end(),
+                           [](double a, double b){ return std::abs(a - b) < 1e-9; }),
+               vals.end());
+    return vals;
+}
+
+static Eigen::Matrix3d rpyToRotation(double yaw, double roll, double pitch) {
+    const double cy = std::cos(yaw),   sy = std::sin(yaw);
+    const double cr = std::cos(roll),  sr = std::sin(roll);
+    const double cp = std::cos(pitch), sp = std::sin(pitch);
+
+    Eigen::Matrix3d R;
+    // R = Rz(yaw) * Ry(pitch) * Rx(roll)
+    R(0,0) = cy*cp;
+    R(0,1) = cy*sp*sr - sy*cr;
+    R(0,2) = cy*sp*cr + sy*sr;
+
+    R(1,0) = sy*cp;
+    R(1,1) = sy*sp*sr + cy*cr;
+    R(1,2) = sy*sp*cr - cy*sr;
+
+    R(2,0) = -sp;
+    R(2,1) = cp*sr;
+    R(2,2) = cp*cr;
+    return R;
+}
+
+struct Pose3DEvalResult {
+    bool valid = false;
+    double score = -std::numeric_limits<double>::infinity();
+    Eigen::Vector3d vertex = Eigen::Vector3d::Zero();
+    Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
+    double yaw = 0.0;
+    double roll = 0.0;
+    double pitch = 0.0;
+};
+
+struct YawBasinCandidate {
+    bool valid = false;
+    double score = -std::numeric_limits<double>::infinity();
+    double yaw = 0.0;
+    double roll = 0.0;
+    double pitch = 0.0;
+    Eigen::Vector3d vertex = Eigen::Vector3d::Zero();
+    Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
+};
+
+struct Pose2DEvalResult {
+    bool valid = false;
+    double score = -std::numeric_limits<double>::infinity();
+    Eigen::Vector2d vertex = Eigen::Vector2d::Zero();
+    Eigen::Matrix2d R = Eigen::Matrix2d::Identity();
+    double yaw = 0.0;
+};
+
+struct YawBasinCandidate2D {
+    bool valid = false;
+    double score = -std::numeric_limits<double>::infinity();
+    double yaw = 0.0;
+    Eigen::Vector2d vertex = Eigen::Vector2d::Zero();
+    Eigen::Matrix2d R = Eigen::Matrix2d::Identity();
+};
+
+} // namespace
+
 void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     node_ = nh;
     gap_candidates_open_.clear();
@@ -9,13 +122,21 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     if(env_type_){
         ROS_INFO("3D environment, using velodyne pointcloud");
         velodyne_sub_ = node_.subscribe("/velodyne_points", 1, &PlannerManager::velodyneCallback, this);
-        node_.param<int>("trajectory/num_of_yaw_samples", num_of_yaw_samples_, 72);
-        node_.param<int>("trajectory/num_of_roll_samples", num_of_roll_samples_, 20);
-        node_.param<int>("trajectory/num_of_pitch_samples", num_of_pitch_samples_, 20);
+        node_.param<int>("trajectory/num_of_yaw_samples", num_of_yaw_samples_, 18);
+        node_.param<int>("trajectory/num_of_roll_samples", num_of_roll_samples_, 5);
+        node_.param<int>("trajectory/num_of_pitch_samples", num_of_pitch_samples_, 5);
+
         node_.param<double>("trajectory/upper_bound_of_roll", upper_bound_of_roll_, 0.5236);
         node_.param<double>("trajectory/lower_bound_of_roll", lower_bound_of_roll_, -0.5236);
         node_.param<double>("trajectory/upper_bound_of_pitch", upper_bound_of_pitch_, 0.5236);
         node_.param<double>("trajectory/lower_bound_of_pitch", lower_bound_of_pitch_, -0.5236);
+
+        node_.param<int>("trajectory/top_k_yaw_basins", top_k_yaw_basins_, 3);
+
+        node_.param<double>("trajectory/fine_yaw_half_span_deg",  fine_yaw_half_span_deg_,  20.0);
+        node_.param<double>("trajectory/fine_roll_half_span_deg", fine_roll_half_span_deg_, 10.0);
+        node_.param<double>("trajectory/fine_pitch_half_span_deg", fine_pitch_half_span_deg_, 10.0);
+        node_.param<double>("trajectory/fine_angle_step_deg", fine_angle_step_deg_, 5.0);
         std::vector<double> robot_shape_pts;
         node_.param<std::vector<double>>("robot_shape/points", robot_shape_pts, {0.1, 0.1, 0.0,
                                                                                      0.1, -0.1, 0.0,
@@ -41,7 +162,11 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     else {
         ROS_INFO("2D environment, using 2D laser scan");
         scan2d_sub_ = node_.subscribe("/scan", 1, &PlannerManager::scan2dCallback, this);
-        node_.param<int>("trajectory/num_of_yaw_samples", num_of_yaw_samples_, 72);
+        node_.param<int>("trajectory/num_of_yaw_samples", num_of_yaw_samples_, 18);
+
+        node_.param<int>("trajectory/top_k_yaw_basins", top_k_yaw_basins_, 3);
+        node_.param<double>("trajectory/fine_yaw_half_span_deg",  fine_yaw_half_span_deg_,  20.0);
+        node_.param<double>("trajectory/fine_angle_step_deg", fine_angle_step_deg_, 5.0);
         std::vector<double> robot_shape_pts_2d;
         node_.param<std::vector<double>>("robot_shape/points_2d", robot_shape_pts_2d, {0.1, 0.1,
                                                                                          0.1, -0.1,
@@ -64,7 +189,6 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     candidate_gaps_sub_ = node_.subscribe("/gap_candidates", 1, &PlannerManager::candidateGapsCallback, this);
 
     poly_pub_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_array", 1, true);
-    poly_pub_aniso_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("polyhedron_array_aniso", 1, true);
     robot_points_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_robot_points", 1, true);
     robot_sphere_pub_ = node_.advertise<decomp_ros_msgs::EllipsoidArray>("planner_manager_sphere", 1, true);
 
@@ -255,198 +379,141 @@ void PlannerManager::candidateGapsCallback(const planner_manager::GapCandidates:
     // << " free="    << gap_candidates_free_.size());
 }
 
-void PlannerManager::decomposeAlongGapDirections(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
-    polys_aniso_2d_.clear();
-    polys_2d_.clear();
-    polys_aniso_3d_.clear();
-    polys_3d_.clear();
+bool PlannerManager::computeSingleCorridor3DLocal(const Eigen::Vector3d& start_pos, const Gaps& gap, Polyhedron3D& out_poly)
+{
+    const Vec3f p1(start_pos[0], start_pos[1], start_pos[2]);
+    const Vec3f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1], gap.dir_odom_frame[2]);
 
-    if (env_type_){
-        const Vec3f p1(start_pos[0], start_pos[1], start_pos[2]);
-        // get robot shape in odom frame
-        Eigen::Matrix4d T_odom;
-        getOdometryInfo(T_odom);
-        Eigen::Vector3d base_pos_odom = T_odom.block<3,1>(0,3);
-        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-        
-        std::vector<Vec3f> robot_shape_points_odom;
-        for (const auto &pt : robot_shape_points_) {
-            const Eigen::Vector3d local_pt(pt[0], pt[1], pt[2]);
-            const Eigen::Vector3d rotated_pt = base_rot_mat * local_pt + base_pos_odom;
-            robot_shape_points_odom.emplace_back(
-                static_cast<float>(rotated_pt[0]),
-                static_cast<float>(rotated_pt[1]),
-                static_cast<float>(rotated_pt[2]));
-        }
-        const Eigen::Vector3d center_base = robot_ellipsoid_.d().cast<double>();
-        const Eigen::Vector4d center_base_homo(center_base[0], center_base[1], center_base[2], 1.0);
-        const Eigen::Matrix4d Tmat = tf2::transformToEigen(*odom_base_ptr_).matrix();
-        const Eigen::Vector4d center_odom_homo = Tmat * center_base_homo;
-        const Eigen::Vector3d center_odom = center_odom_homo.head<3>();
+    // robot shape in odom frame
+    Eigen::Matrix4d T_odom;
+    getOdometryInfo(T_odom);
+    const Eigen::Vector3d base_pos_odom = T_odom.block<3,1>(0,3);
+    const Eigen::Matrix3d base_rot_mat = T_odom.block<3,3>(0,0);
 
-        const double radius = robot_ellipsoid_.C()(0,0);
-
-        const int N = static_cast<int>(all_candidates.size());
-        std::vector<Polyhedron3D, Eigen::aligned_allocator<Polyhedron3D>> results(N);
-        results.resize(N);
-
-        #pragma omp parallel for schedule(dynamic)
-        for (int i = 0; i < N; ++i){
-            const auto &gap = all_candidates[i];
-            const Vec3f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1], gap.dir_odom_frame[2]);
-            LineSegment3D line_segment_aniso(p1, p2);
-            // check the type of gap to set different local bbox
-            if (gap.type == 1 || gap.type == 3){ // limited gap
-                line_segment_aniso.set_local_bbox_aniso(Vec3f(0.5f, 0.5f, 0.5f),
-                                                       Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
-            }
-            else{ 
-                line_segment_aniso.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
-                                                       Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
-            }
-            line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
-
-            line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
-
-            line_segment_aniso.dilate_aniso_full(Vec3f(center_odom[0], center_odom[1], center_odom[2]), radius);
-
-            results[i] = line_segment_aniso.get_polyhedron();
-        }
-        polys_aniso_3d_.swap(results);
-        // decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_3d_);
-        auto single_poly = polys_aniso_3d_;
-        single_poly.resize(1);
-        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(single_poly);
-        poly_msg_aniso.header.stamp = ros::Time::now();
-        poly_msg_aniso.header.frame_id = "odom";
-        poly_pub_aniso_.publish(poly_msg_aniso);
+    std::vector<Vec3f> robot_shape_points_odom;
+    robot_shape_points_odom.reserve(robot_shape_points_.size());
+    for (const auto &pt : robot_shape_points_) {
+        const Eigen::Vector3d local_pt(pt[0], pt[1], pt[2]);
+        const Eigen::Vector3d rotated_pt = base_rot_mat * local_pt + base_pos_odom;
+        robot_shape_points_odom.emplace_back(
+            static_cast<float>(rotated_pt[0]),
+            static_cast<float>(rotated_pt[1]),
+            static_cast<float>(rotated_pt[2]));
     }
-    else{
-        // 2D case
-        const Vec2f p1(start_pos[0], start_pos[1]);
-        // getrobot shape in odom frame
-        Eigen::Matrix4d T_odom;
-        getOdometryInfo(T_odom);
-        Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-        base_pos_odom = T_odom.block<3,1>(0,3);
-        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-        std::vector<Vec2f> robot_shape_points_odom;
-        for (const auto &pt : robot_shape_points_2d_) {
-            const Eigen::Vector3d local_pt(pt[0], pt[1], 0.0);
-            const Eigen::Vector3d rotated_pt = base_rot_mat * local_pt + base_pos_odom;
-            robot_shape_points_odom.emplace_back(
-                static_cast<float>(rotated_pt[0]),
-                static_cast<float>(rotated_pt[1]));
-        }
 
+    const Eigen::Vector3d center_base = robot_ellipsoid_.d().cast<double>();
+    const Eigen::Vector4d center_base_homo(center_base[0], center_base[1], center_base[2], 1.0);
+    const Eigen::Vector4d center_odom_homo = T_odom * center_base_homo;
+    const Eigen::Vector3d center_odom = center_odom_homo.head<3>();
 
-        const Eigen::Vector2d center_base = robot_ellipsoid_2d_.d().cast<double>();
-        const Eigen::Vector3d center_base_homo(center_base[0], center_base[1], 1.0);
-        const Eigen::Affine3d T_odom_base = tf2::transformToEigen(*odom_base_ptr_);
-        const Eigen::Vector3d center_odom = T_odom_base * center_base_homo;
+    const double radius = robot_ellipsoid_.C()(0,0);
 
-        const double radius = robot_ellipsoid_2d_.C()(0,0);
+    LineSegment3D line_segment_aniso(p1, p2);
 
-        const int N = static_cast<int>(all_candidates.size());
-        std::vector<Polyhedron2D, Eigen::aligned_allocator<Polyhedron2D>> results(N);
-        results.resize(N);
-        #pragma omp parallel for schedule(dynamic)
-        for (int i = 0; i < N; i++){
-            const auto &gap = all_candidates[i];
-            const Vec2f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1]);
-            LineSegment2D line_segment_aniso(p1, p2);
-            // check the type of the gap to set different local bbox
-            if (gap.type == 1 || gap.type == 3){ // limited gap & goal type
-                line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.5f),
-                                                       Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
-            }
-            else{ 
-                line_segment_aniso.set_local_bbox_aniso(Vec2f(0.5f, 0.5f),
-                                                       Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
-            }
-            line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
-
-            line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
-
-            line_segment_aniso.dilate_aniso_full(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
-
-            results[i] = line_segment_aniso.get_polyhedron();
-        }
-        polys_aniso_2d_.swap(results);
-        // decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(polys_aniso_2d_);
-        auto single_poly = polys_aniso_2d_; 
-        single_poly.resize(1);              
-        decomp_ros_msgs::PolyhedronArray poly_msg_aniso = DecompROS::polyhedron_array_to_ros(single_poly);
-        poly_msg_aniso.header.stamp = ros::Time::now();
-        poly_msg_aniso.header.frame_id = "odom";
-        poly_pub_aniso_.publish(poly_msg_aniso);
+    // keep exactly the same bbox logic as your original version
+    if (gap.type == 1 || gap.type == 3) {
+        line_segment_aniso.set_local_bbox_aniso(
+            Vec3f(0.5f, 0.5f, 0.5f),
+            Vec3f(0.3f, 0.5f, 0.5f));
+    } else {
+        line_segment_aniso.set_local_bbox_aniso(
+            Vec3f(0.0f, 0.5f, 0.5f),
+            Vec3f(0.3f, 0.5f, 0.5f));
     }
+
+    line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
+    line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
+    line_segment_aniso.dilate_aniso_full(
+        Vec3f(center_odom[0], center_odom[1], center_odom[2]),
+        radius);
+
+    out_poly = line_segment_aniso.get_polyhedron();
+    return true;
 }
 
-void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
-    /* TEST */
+bool PlannerManager::computeSingleCorridor2DLocal(const Eigen::Vector3d& start_pos, const Gaps& gap, Polyhedron2D& out_poly)
+{
+    const Vec2f p1(start_pos[0], start_pos[1]);
+    const Vec2f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1]);
+
+    // robot shape in odom frame
+    Eigen::Matrix4d T_odom;
+    getOdometryInfo(T_odom);
+    const Eigen::Vector2d base_pos_odom = T_odom.block<2,1>(0,3);
+    const Eigen::Matrix3d base_rot_mat = T_odom.block<3,3>(0,0);
+    const Eigen::Matrix2d base_rot_2d = base_rot_mat.block<2,2>(0,0);
+
+    std::vector<Vec2f> robot_shape_points_odom;
+    robot_shape_points_odom.reserve(robot_shape_points_2d_.size());
+    for (const auto &pt : robot_shape_points_2d_) {
+        const Eigen::Vector2d local_pt(pt[0], pt[1]);
+        const Eigen::Vector2d rotated_pt = base_rot_2d * local_pt + base_pos_odom;
+        robot_shape_points_odom.emplace_back(
+            static_cast<float>(rotated_pt[0]),
+            static_cast<float>(rotated_pt[1]));
+    }
+
+    const Eigen::Vector2d center_base = robot_ellipsoid_2d_.d().cast<double>();
+    const Eigen::Vector3d center_base_homo(center_base[0], center_base[1], 0.0);
+    const Eigen::Vector3d center_odom = T_odom.block<3,3>(0,0) * center_base_homo + T_odom.block<3,1>(0,3);
+
+    const double radius = robot_ellipsoid_2d_.C()(0,0);
+
+    LineSegment2D line_segment_aniso(p1, p2);
+
+    // keep exactly the same bbox logic as your original version
+    if (gap.type == 1 || gap.type == 3) {
+        line_segment_aniso.set_local_bbox_aniso(
+            Vec2f(0.5f, 0.5f),
+            Vec2f(0.3f, 0.5f));
+    } else {
+        line_segment_aniso.set_local_bbox_aniso(
+            Vec2f(0.5f, 0.5f),
+            Vec2f(0.3f, 0.5f));
+    }
+
+    line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
+    line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
+    line_segment_aniso.dilate_aniso_full(
+        Vec2f(center_odom[0], center_odom[1]),
+        static_cast<float>(radius));
+
+    out_poly = line_segment_aniso.get_polyhedron();
+    return true;
+}
+
+void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos, const Gaps& gap)
+{
     polys_2d_.clear();
     polys_3d_.clear();
-
     polys_aniso_full_.clear();
     polys_aniso_full_2d_.clear();
-    if (env_type_){
+
+    if (env_type_) {
         const Vec3f p1(start_pos[0], start_pos[1], start_pos[2]);
-        const Vec3f p2(all_candidates[0].dir_odom_frame[0],
-                   all_candidates[0].dir_odom_frame[1],
-                   all_candidates[0].dir_odom_frame[2]);
+        const Vec3f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1], gap.dir_odom_frame[2]);
+
+        // original isotropic
         LineSegment3D line_segment(p1, p2);
-        line_segment.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f));
         line_segment.set_obs(pointcloud_cropped_odom_frame_);
-    auto t0 = std::chrono::high_resolution_clock::now();
+        auto t0 = std::chrono::high_resolution_clock::now();
         line_segment.dilate(0.1f);
-    auto t1 = std::chrono::high_resolution_clock::now();
-    double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
-    ROS_INFO("[PlannerManager] dilate elapsed: %.3f ms", ms);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
+        ROS_INFO("[PlannerManager][TEST] dilate elapsed: %.3f ms", ms);
 
-        // get robot shape in odom frame
-        Eigen::Matrix4d T_odom;
-        getOdometryInfo(T_odom);
-        Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-        base_pos_odom = T_odom.block<3,1>(0,3);
-        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-        std::vector<Vec3f> robot_shape_points_odom;
-        for (const auto &pt : robot_shape_points_) {
-            const Eigen::Vector3d local_pt(pt[0], pt[1], pt[2]);
-            const Eigen::Vector3d rotated_pt = base_rot_mat * local_pt + base_pos_odom;
-            robot_shape_points_odom.emplace_back(
-                static_cast<float>(rotated_pt[0]),
-                static_cast<float>(rotated_pt[1]),
-                static_cast<float>(rotated_pt[2]));
-        }
-
-        const Eigen::Vector3d center_base = robot_ellipsoid_.d().cast<double>();
-        const Eigen::Vector4d center_base_homo(center_base[0], center_base[1], center_base[2], 1.0);
-        const Eigen::Matrix4d Tmat = tf2::transformToEigen(*odom_base_ptr_).matrix();
-        const Eigen::Vector4d center_odom_homo = Tmat * center_base_homo;
-        const Eigen::Vector3d center_odom = center_odom_homo.head<3>();
-
-        const double radius = robot_ellipsoid_.C()(0,0);
-
-        LineSegment3D line_segment_aniso_full(p1, p2);
-        if (all_candidates[0].type == 1){ // limited gap
-            line_segment_aniso_full.set_local_bbox_aniso(Vec3f(0.2f, 0.5f, 0.5f),
-                                                   Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
-        }
-        else{
-            line_segment_aniso_full.set_local_bbox_aniso(Vec3f(0.0f, 0.5f, 0.5f),
-                                                    Vec3f(0.3f, 0.5f, 0.5f)); // set local bbox for decomposition
-        }
-        line_segment_aniso_full.set_obs_aniso(pointcloud_cropped_odom_frame_);
-        line_segment_aniso_full.set_robot_shape_pts(robot_shape_points_odom);
-    auto t4 = std::chrono::high_resolution_clock::now();
-        line_segment_aniso_full.dilate_aniso_full(Vec3f(center_odom[0], center_odom[1], center_odom[2]), radius);
-    auto t5 = std::chrono::high_resolution_clock::now();
-    double ms_2 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
-    ROS_INFO("[PlannerManager]  dilate_aniso_full elapsed: %.3f ms", ms_2);
+        // local anisotropic full
+        Polyhedron3D aniso_poly;
+        auto t2 = std::chrono::high_resolution_clock::now();
+        computeSingleCorridor3DLocal(start_pos, gap, aniso_poly);
+        auto t3 = std::chrono::high_resolution_clock::now();
+        double ms2 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
+        ROS_INFO("[PlannerManager][TEST] dilate_aniso_full elapsed: %.3f ms", ms2);
 
         polys_3d_.push_back(line_segment.get_polyhedron());
-        polys_aniso_full_.push_back(line_segment_aniso_full.get_polyhedron());
+        polys_aniso_full_.push_back(aniso_poly);
+
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_3d_);
         decomp_ros_msgs::PolyhedronArray poly_msg_aniso_full = DecompROS::polyhedron_array_to_ros(polys_aniso_full_);
         poly_msg.header.stamp = ros::Time::now();
@@ -456,63 +523,29 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
         poly_msg_aniso_full.header.frame_id = "odom";
         poly_pub_aniso_full_.publish(poly_msg_aniso_full);
     }
-    else{
-        // 2D case
+    else {
         const Vec2f p1(start_pos[0], start_pos[1]);
-        const Vec2f p2(all_candidates[0].dir_odom_frame[0],
-                     all_candidates[0].dir_odom_frame[1]);
+        const Vec2f p2(gap.dir_odom_frame[0], gap.dir_odom_frame[1]);
+
         LineSegment2D line_segment(p1, p2);
-        line_segment.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment.set_local_bbox(Vec2f(0.5f, 0.5f));
         line_segment.set_obs(pointcloud_cropped_odom_frame_2d_);
-    auto t0 = std::chrono::high_resolution_clock::now();
+        auto t0 = std::chrono::high_resolution_clock::now();
         line_segment.dilate(0.1f);
-    auto t1 = std::chrono::high_resolution_clock::now();
-    double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
-    ROS_INFO("[PlannerManager] dilate elapsed: %.3f ms", ms);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
+        ROS_INFO("[PlannerManager][TEST] dilate elapsed: %.3f ms", ms);
 
-        // get robot shape in odom frame
-        Eigen::Matrix4d T_odom;
-        getOdometryInfo(T_odom);
-        Eigen::Vector2d base_pos_odom(0.0, 0.0);
-        base_pos_odom = T_odom.block<2,1>(0,3);
-        const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-        const Eigen::Matrix2d base_rot_2d = base_rot_mat.block<2, 2>(0, 0);
-        std::vector<Vec2f> robot_shape_points_odom;
-        robot_shape_points_odom.reserve(robot_shape_points_2d_.size());
-        for (const auto &pt : robot_shape_points_2d_) {
-            const Eigen::Vector2d local_pt(pt[0], pt[1]);
-            const Eigen::Vector2d rotated_pt = base_rot_2d * local_pt + base_pos_odom;
-            robot_shape_points_odom.emplace_back(
-                static_cast<float>(rotated_pt[0]),
-                static_cast<float>(rotated_pt[1]));
-        }
-        const Eigen::Vector2d center_base = robot_ellipsoid_2d_.d().cast<double>();
-        const Eigen::Vector3d center_base_homo(center_base[0], center_base[1], 0.0);
-        const Eigen::Affine3d T_odom_base = tf2::transformToEigen(*odom_base_ptr_);
-        const Eigen::Vector3d center_odom = T_odom_base * center_base_homo;
+        Polyhedron2D aniso_poly;
+        auto t2 = std::chrono::high_resolution_clock::now();
+        computeSingleCorridor2DLocal(start_pos, gap, aniso_poly);
+        auto t3 = std::chrono::high_resolution_clock::now();
+        double ms2 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
+        ROS_INFO("[PlannerManager][TEST] dilate_aniso_full elapsed: %.3f ms", ms2);
 
-        const double radius = robot_ellipsoid_2d_.C()(0, 0);
-
-
-        LineSegment2D line_segment_aniso_full(p1, p2);
-        if (all_candidates[0].type == 1){ // limited gap
-            line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.2f, 0.5f),
-                                                Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
-        }
-        else{ 
-            line_segment_aniso_full.set_local_bbox_aniso(Vec2f(0.0f, 0.5f),
-                                                Vec2f(0.3f, 0.5f)); // set local bbox for decomposition
-        }
-        line_segment_aniso_full.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
-        line_segment_aniso_full.set_robot_shape_pts(robot_shape_points_odom);
-    auto t4 = std::chrono::high_resolution_clock::now();
-        line_segment_aniso_full.dilate_aniso_full(Vec2f(center_odom[0], center_odom[1]), static_cast<float>(radius));
-    auto t5 = std::chrono::high_resolution_clock::now();
-    double ms_2 = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
-    ROS_INFO("[PlannerManager] dilate_aniso_full elapsed: %.3f ms", ms_2);
-
-        polys_aniso_full_2d_.push_back(line_segment_aniso_full.get_polyhedron());
         polys_2d_.push_back(line_segment.get_polyhedron());
+        polys_aniso_full_2d_.push_back(aniso_poly);
+
         decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_2d_);
         decomp_ros_msgs::PolyhedronArray poly_msg_aniso_full = DecompROS::polyhedron_array_to_ros(polys_aniso_full_2d_);
         poly_msg.header.stamp = ros::Time::now();
@@ -524,22 +557,23 @@ void PlannerManager::decomposeAlongGapDirectionsTEST(Eigen::Vector3d &start_pos,
     }
 }
 
-void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
+void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &start_pos, const Gaps& gap)
+{
     polys_FRTree_2d_.clear();
     polys_FRTree_3d_.clear();
-    if (!env_type_){
-        Eigen::Vector2d dir = all_candidates[0].dir_odom_frame.head<2>() - start_pos.head<2>();
+
+    if (!env_type_) {
+        Eigen::Vector2d dir = gap.dir_odom_frame.head<2>() - start_pos.head<2>();
         double dist = dir.norm();
+        if (dist < 1e-6) return;
         dir.normalize();
-        Eigen::Vector2d pos1, pos2, pos3, pos4, pos5, pos6;
-        pos1 = start_pos.head<2>() + dir * (dist * 0.05);
-        pos2 = start_pos.head<2>() + dir * (dist * 0.45);
 
-        pos3 = start_pos.head<2>() + dir * (dist * 0.4);
-        pos4 = start_pos.head<2>() + dir * (dist * 0.7);
-
-        pos5 = start_pos.head<2>() + dir * (dist * 0.65);
-        pos6 = start_pos.head<2>() + dir * (dist * 0.9);
+        Eigen::Vector2d pos1 = start_pos.head<2>() + dir * (dist * 0.05);
+        Eigen::Vector2d pos2 = start_pos.head<2>() + dir * (dist * 0.45);
+        Eigen::Vector2d pos3 = start_pos.head<2>() + dir * (dist * 0.40);
+        Eigen::Vector2d pos4 = start_pos.head<2>() + dir * (dist * 0.70);
+        Eigen::Vector2d pos5 = start_pos.head<2>() + dir * (dist * 0.65);
+        Eigen::Vector2d pos6 = start_pos.head<2>() + dir * (dist * 0.90);
 
         const Vec2f p1(pos1[0], pos1[1]);
         const Vec2f p2(pos2[0], pos2[1]);
@@ -549,58 +583,58 @@ void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &sta
         const Vec2f p6(pos6[0], pos6[1]);
 
         LineSegment2D line_segment1(p1, p2);
-        line_segment1.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment1.set_local_bbox(Vec2f(0.5f, 0.5f));
         line_segment1.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment1.dilate(0.1f);
         polys_FRTree_2d_.push_back(line_segment1.get_polyhedron());
+
         LineSegment2D line_segment2(p3, p4);
-        line_segment2.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment2.set_local_bbox(Vec2f(0.5f, 0.5f));
         line_segment2.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment2.dilate(0.1f);
         polys_FRTree_2d_.push_back(line_segment2.get_polyhedron());
+
         LineSegment2D line_segment3(p5, p6);
-        line_segment3.set_local_bbox(Vec2f(0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment3.set_local_bbox(Vec2f(0.5f, 0.5f));
         line_segment3.set_obs(pointcloud_cropped_odom_frame_2d_);
         line_segment3.dilate(0.1f);
-        polys_FRTree_2d_.push_back(line_segment3.get_polyhedron()); 
+        polys_FRTree_2d_.push_back(line_segment3.get_polyhedron());
 
-        // decomp_ros_msgs::PolyhedronArray poly_msg = DecompROS::polyhedron_array_to_ros(polys_FRTree_2d_);
-        // poly_msg.header.stamp = ros::Time::now();
-        // poly_msg.header.frame_id = "odom";
-        // poly_frtree_pub_.publish(poly_msg);
         vec_E<Polyhedron2D> single_poly1;
         single_poly1.push_back(polys_FRTree_2d_[0]);
         vec_E<Polyhedron2D> single_poly2;
         single_poly2.push_back(polys_FRTree_2d_[1]);
         vec_E<Polyhedron2D> single_poly3;
         single_poly3.push_back(polys_FRTree_2d_[2]);
+
         decomp_ros_msgs::PolyhedronArray poly_msg1 = DecompROS::polyhedron_array_to_ros(single_poly1);
         decomp_ros_msgs::PolyhedronArray poly_msg2 = DecompROS::polyhedron_array_to_ros(single_poly2);
         decomp_ros_msgs::PolyhedronArray poly_msg3 = DecompROS::polyhedron_array_to_ros(single_poly3);
+
         poly_msg1.header.stamp = ros::Time::now();
         poly_msg1.header.frame_id = "odom";
         poly_frtree_pub_.publish(poly_msg1);
+
         poly_msg2.header.stamp = ros::Time::now();
         poly_msg2.header.frame_id = "odom";
         poly_frtree2_pub_.publish(poly_msg2);
+
         poly_msg3.header.stamp = ros::Time::now();
         poly_msg3.header.frame_id = "odom";
         poly_frtree3_pub_.publish(poly_msg3);
     }
-    else{
-        // 3D
-        Eigen::Vector3d dir = all_candidates[0].dir_odom_frame - start_pos;
+    else {
+        Eigen::Vector3d dir = gap.dir_odom_frame - start_pos;
         double dist = dir.norm();
+        if (dist < 1e-6) return;
         dir.normalize();
-        Eigen::Vector3d pos1, pos2, pos3, pos4, pos5, pos6;
-        pos1 = start_pos + dir * (dist * 0.05);
-        pos2 = start_pos + dir * (dist * 0.45);
 
-        pos3 = start_pos + dir * (dist * 0.4);
-        pos4 = start_pos + dir * (dist * 0.7);
-
-        pos5 = start_pos + dir * (dist * 0.65);
-        pos6 = start_pos + dir * (dist * 0.9);
+        Eigen::Vector3d pos1 = start_pos + dir * (dist * 0.05);
+        Eigen::Vector3d pos2 = start_pos + dir * (dist * 0.45);
+        Eigen::Vector3d pos3 = start_pos + dir * (dist * 0.40);
+        Eigen::Vector3d pos4 = start_pos + dir * (dist * 0.70);
+        Eigen::Vector3d pos5 = start_pos + dir * (dist * 0.65);
+        Eigen::Vector3d pos6 = start_pos + dir * (dist * 0.90);
 
         const Vec3f p1(pos1[0], pos1[1], pos1[2]);
         const Vec3f p2(pos2[0], pos2[1], pos2[2]);
@@ -610,17 +644,19 @@ void PlannerManager::decomposeAlongGapDirections_FRTreeTEST(Eigen::Vector3d &sta
         const Vec3f p6(pos6[0], pos6[1], pos6[2]);
 
         LineSegment3D line_segment1(p1, p2);
-        line_segment1.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment1.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f));
         line_segment1.set_obs(pointcloud_cropped_odom_frame_);
         line_segment1.dilate(0.1f);
         polys_FRTree_3d_.push_back(line_segment1.get_polyhedron());
+
         LineSegment3D line_segment2(p3, p4);
-        line_segment2.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment2.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f));
         line_segment2.set_obs(pointcloud_cropped_odom_frame_);
         line_segment2.dilate(0.1f);
         polys_FRTree_3d_.push_back(line_segment2.get_polyhedron());
+
         LineSegment3D line_segment3(p5, p6);
-        line_segment3.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f)); // set local bbox for decomposition
+        line_segment3.set_local_bbox(Vec3f(0.5f, 0.5f, 0.5f));
         line_segment3.set_obs(pointcloud_cropped_odom_frame_);
         line_segment3.dilate(0.1f);
         polys_FRTree_3d_.push_back(line_segment3.get_polyhedron());
@@ -979,366 +1015,643 @@ double PlannerManager::supportValueVertices(const Eigen::Vector2d &norm, const s
     return h;
 }
 
-bool PlannerManager::getTargetPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix3d& out_R){
-    // corridor constraints
+bool PlannerManager::getTargetPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix3d& out_R)
+{
     vec_E<Hyperplane3D> hyperplanes = corridor_poly.hyperplanes();
     LinearConstraint3D lc(start_pos, hyperplanes);
-    const int m = lc.A().rows();
-    Eigen::MatrixXd A = lc.A();
     const Eigen::VectorXd b = lc.b();
-    // direction from start to goal
+
     Eigen::Vector3d dir = goal_point - start_pos;
-    dir.normalize();
-    double best_value = -std::numeric_limits<double>::infinity();   
-    
+    const double dir_norm = dir.norm();
+    if (dir_norm < 1e-8) {
+        out_replan_pos = start_pos;
+        out_R.setIdentity();
+        return false;
+    }
+    dir /= dir_norm;
+
     Eigen::Matrix4d T_odom;
     getOdometryInfo(T_odom);
     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-    const double robot_roll = std::atan2(base_rot_mat(2,1), base_rot_mat(2,2));
+    const double robot_roll  = std::atan2(base_rot_mat(2,1), base_rot_mat(2,2));
     const double robot_pitch = std::asin(-base_rot_mat(2,0));
-    const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
+    const double robot_yaw   = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
 
-    const int Ny = num_of_yaw_samples_;
-    const int Nr = num_of_roll_samples_;
-    const int Np = num_of_pitch_samples_;
+    // coarse samples
+    const std::vector<double> yaw_vals =
+        buildUniformSamplesInclusive(-M_PI, M_PI, num_of_yaw_samples_);
+    const std::vector<double> roll_vals =
+        buildUniformSamplesInclusive(lower_bound_of_roll_, upper_bound_of_roll_, num_of_roll_samples_);
+    const std::vector<double> pitch_vals =
+        buildUniformSamplesInclusive(lower_bound_of_pitch_, upper_bound_of_pitch_, num_of_pitch_samples_);
 
-    std::vector<double> yaw_vals(Ny),  syaw(Ny),  cyaw(Ny);
-    std::vector<double> roll_vals(Nr), sroll(Nr), croll(Nr);
-    std::vector<double> pitch_vals(Np), spitch(Np), cpitch(Np);
-
-    // yaw
-    for (int i = 0; i < Ny; ++i) {
-        double yaw = -M_PI + (2.0 * M_PI) * (double(i) / double(Ny));
-        yaw_vals[i] = yaw;
-        syaw[i] = std::sin(yaw);
-        cyaw[i] = std::cos(yaw);
-    }
-    // roll
-    for (int j = 0; j < Nr; ++j) {
-        double roll = lower_bound_of_roll_ +
-                    (upper_bound_of_roll_ - lower_bound_of_roll_) * (double(j) / double(Nr));
-        roll_vals[j] = roll;
-        sroll[j] = std::sin(roll);
-        croll[j] = std::cos(roll);
-    }
-    // pitch
-    for (int k = 0; k < Np; ++k) {
-        double pitch = lower_bound_of_pitch_ +
-                    (upper_bound_of_pitch_ - lower_bound_of_pitch_) * (double(k) / double(Np));
-        pitch_vals[k] = pitch;
-        spitch[k] = std::sin(pitch);
-        cpitch[k] = std::cos(pitch);
-    }
-    Eigen::VectorXd b_prime(m);
-
+    const int m = lc.A().rows();
     std::vector<Eigen::Vector3d> arows(m);
     std::vector<double> shrink(m);
     const double clearance = 0.02;
-    for(int l = 0; l < m; ++l){
-        arows[l] = A.row(l).transpose();
+    for (int l = 0; l < m; ++l) {
+        arows[l] = lc.A().row(l).transpose();
         shrink[l] = clearance * arows[l].norm();
-    } 
-    
+    }
+
     const std::vector<TripleCache> triple_cache = buildTripleCache3D(arows);
-    // output init
-    out_replan_pos = start_pos;
-    out_R.setIdentity();
-    // sample loop
-    for (int i = 0; i < num_of_yaw_samples_; ++i){
-        const double yaw = yaw_vals[i];
-        const double cy = cyaw[i], sy = syaw[i];
-        for (int j = 0; j < num_of_roll_samples_; ++j){
-            const double roll = roll_vals[j];
-            const double cr = croll[j], sr = sroll[j];
-            for (int k = 0; k < num_of_pitch_samples_; ++k){
-                const double pitch = pitch_vals[k];
-                const double cp = cpitch[k], sp = spitch[k];
 
-                Eigen::Matrix3d R;
-                // R = Rz(yaw) * Ry(pitch) * Rx(roll)
-                R(0,0) = cy*cp;
-                R(0,1) = cy*sp*sr - sy*cr;
-                R(0,2) = cy*sp*cr + sy*sr;
+    auto evaluate_pose = [&](double yaw, double roll, double pitch) -> Pose3DEvalResult {
+        Pose3DEvalResult res;
+        Eigen::Matrix3d R = rpyToRotation(yaw, roll, pitch);
 
-                R(1,0) = sy*cp;
-                R(1,1) = sy*sp*sr + cy*cr;
-                R(1,2) = sy*sp*cr - cy*sr;
+        Eigen::VectorXd b_prime(m);
+        for (int l = 0; l < m; ++l) {
+            const double hl = supportValueVertices(arows[l], robot_shape_points_d_, R);
+            b_prime[l] = b[l] - hl - shrink[l];
+        }
 
-                R(2,0) = -sp;
-                R(2,1) = cp*sr;
-                R(2,2) = cp*cr;
-                for(int l = 0; l < m; ++l){
-                    const double hl = supportValueVertices(arows[l], robot_shape_points_d_, R);
-                    b_prime[l] = b[l] - hl - shrink[l];
+        Eigen::Vector3d best_vertex = start_pos;
+        const double value =
+            solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, best_vertex);
+
+        if (!std::isfinite(value)) {
+            return res;
+        }
+
+        const Eigen::Vector3d x_axis_world = R.col(0);
+        const double align = x_axis_world.dot(dir);
+
+        const double yaw_err   = std::abs(wrapAngleRad(yaw   - robot_yaw));
+        const double roll_err  = std::abs(roll  - robot_roll);
+        const double pitch_err = std::abs(pitch - robot_pitch);
+        const double angle_diff = yaw_err + roll_err + pitch_err;
+
+        const double w_align = 2.0;
+        const double w_angle_diff = 0.1;
+        const double score = value + align * w_align - angle_diff * w_angle_diff;
+
+        res.valid = true;
+        res.score = score;
+        res.vertex = best_vertex;
+        res.R = R;
+        res.yaw = yaw;
+        res.roll = roll;
+        res.pitch = pitch;
+        return res;
+    };
+
+    // ---------------- coarse: compress by yaw basin ----------------
+    std::vector<YawBasinCandidate> yaw_best(yaw_vals.size());
+
+    for (size_t iy = 0; iy < yaw_vals.size(); ++iy) {
+        const double yaw = yaw_vals[iy];
+        YawBasinCandidate basin_best;
+
+        for (double roll : roll_vals) {
+            for (double pitch : pitch_vals) {
+                Pose3DEvalResult cur = evaluate_pose(yaw, roll, pitch);
+                if (!cur.valid) continue;
+
+                if (!basin_best.valid || cur.score > basin_best.score) {
+                    basin_best.valid = true;
+                    basin_best.score = cur.score;
+                    basin_best.yaw = yaw;
+                    basin_best.roll = roll;
+                    basin_best.pitch = pitch;
+                    basin_best.vertex = cur.vertex;
+                    basin_best.R = cur.R;
                 }
-                Eigen::Vector3d best_vertex;
-                // double value = solveLPByEnumeratingVertices3D(arows, A, b_prime, dir, best_vertex);
-                double value = solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, best_vertex);
+            }
+        }
+        yaw_best[iy] = basin_best;
+    }
 
-                // make robot's x axis align with dir
-                Eigen::Vector3d x_axis_world = R.col(0);
-                double align = x_axis_world.dot(dir);
-                // weight in "meters": w_align=0.1 means 10cm worth of
-                double w_align = 0.5;
-                double angle_diff = std::abs(yaw - robot_yaw) + std::abs(pitch - robot_pitch) + std::abs(roll - robot_roll);
-                double w_angle_diff = 0.1; // weight for angle difference
-                double score = value + align * w_align - angle_diff * w_angle_diff; // weight for alignment
-                if (score > best_value){
-                    best_value = score;
-                    out_replan_pos = best_vertex;
-                    out_R = R;
+    std::vector<YawBasinCandidate> coarse_candidates;
+    coarse_candidates.reserve(yaw_best.size());
+    for (const auto& c : yaw_best) {
+        if (c.valid) coarse_candidates.push_back(c);
+    }
+
+    if (coarse_candidates.empty()) {
+        out_replan_pos = start_pos;
+        out_R.setIdentity();
+        return false;
+    }
+
+    std::sort(coarse_candidates.begin(), coarse_candidates.end(),
+              [](const YawBasinCandidate& a, const YawBasinCandidate& b) {
+                  return a.score > b.score;
+              });
+
+    const int K = std::min<int>(top_k_yaw_basins_, coarse_candidates.size());
+
+    // ---------------- fine search around top-K yaw basins ----------------
+    Pose3DEvalResult global_best;
+
+    for (int k = 0; k < K; ++k) {
+        const auto& seed = coarse_candidates[k];
+
+        const std::vector<double> fine_yaws =
+            buildCenteredSamplesDeg(seed.yaw,
+                                    fine_yaw_half_span_deg_,
+                                    fine_angle_step_deg_,
+                                    -M_PI, M_PI, true);
+
+        const std::vector<double> fine_rolls =
+            buildCenteredSamplesDeg(seed.roll,
+                                    fine_roll_half_span_deg_,
+                                    fine_angle_step_deg_,
+                                    lower_bound_of_roll_,
+                                    upper_bound_of_roll_,
+                                    false);
+
+        const std::vector<double> fine_pitchs =
+            buildCenteredSamplesDeg(seed.pitch,
+                                    fine_pitch_half_span_deg_,
+                                    fine_angle_step_deg_,
+                                    lower_bound_of_pitch_,
+                                    upper_bound_of_pitch_,
+                                    false);
+
+        for (double yaw : fine_yaws) {
+            for (double roll : fine_rolls) {
+                for (double pitch : fine_pitchs) {
+                    Pose3DEvalResult cur = evaluate_pose(yaw, roll, pitch);
+                    if (!cur.valid) continue;
+
+                    if (!global_best.valid || cur.score > global_best.score) {
+                        global_best = cur;
+                    }
                 }
             }
         }
     }
+
+    // fallback: if fine failed, use best coarse
+    if (!global_best.valid) {
+        const auto& c = coarse_candidates.front();
+        out_replan_pos = c.vertex;
+        out_R = c.R;
+        return true;
+    }
+
+    out_replan_pos = global_best.vertex;
+    out_R = global_best.R;
     return true;
 }
 
-bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix2d& out_R){
+bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix2d& out_R)
+{
     vec_E<Hyperplane2D> hyperplanes = corridor_poly.hyperplanes();
     LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
     const int m = lc.A().rows();
-    Eigen::MatrixXd A = lc.A();
-    // direction from start to goal
+    const Eigen::MatrixXd A = lc.A();
+    const Eigen::VectorXd b = lc.b();
+
     Eigen::Vector2d dir = goal_point.head<2>() - start_pos.head<2>();
-    dir.normalize();
-    double best_value = -std::numeric_limits<double>::infinity();
+    const double dir_norm = dir.norm();
+    if (dir_norm < 1e-8) {
+        out_replan_pos = start_pos;
+        out_R.setIdentity();
+        return false;
+    }
+    dir /= dir_norm;
 
     Eigen::Matrix4d T_odom;
     getOdometryInfo(T_odom);
     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-
-    Eigen::VectorXd b_prime(m);
     const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
-    out_replan_pos = start_pos;
-    out_R.setIdentity();
 
-    for (int i = 0; i < num_of_yaw_samples_; ++i) {
-        double yaw = -M_PI + (2.0 * M_PI) * (double(i) / double(num_of_yaw_samples_));
+    const std::vector<double> coarse_yaws =
+        buildUniformSamplesInclusive(-M_PI, M_PI, num_of_yaw_samples_);
+
+    auto evaluate_pose = [&](double yaw) -> Pose2DEvalResult {
+        Pose2DEvalResult res;
+
         Eigen::Matrix2d R;
         R << std::cos(yaw), -std::sin(yaw),
-                std::sin(yaw),  std::cos(yaw);
-        for(int j = 0; j < m; ++j){
+             std::sin(yaw),  std::cos(yaw);
+
+        Eigen::VectorXd b_prime(m);
+        for (int j = 0; j < m; ++j) {
             Eigen::Vector2d aj = A.row(j).transpose();
-            double hj = supportValueVertices(aj, robot_shape_points_2d_d_, R);
-            // clearance shrink:
-            double aj_norm = aj.norm(); 
-            double clearance_ = 0.02; // 2cm
-            double shrink = clearance_ * aj_norm;  
-            b_prime[j] = lc.b()[j] - hj - shrink;
+            const double hj = supportValueVertices(aj, robot_shape_points_2d_d_, R);
+            const double shrink = 0.02 * aj.norm();
+            b_prime[j] = b[j] - hj - shrink;
         }
+
         Eigen::Vector2d best_vertex;
-        double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, best_vertex);
+        const double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, best_vertex);
+        if (!std::isfinite(value)) {
+            return res;
+        }
 
-        // make robot's x axis align with dir
-        Eigen::Vector2d x_axis_world = R.col(0);
-        double align = x_axis_world.dot(dir);
-        // weight in "meters": w_align=0.1 means 10cm worth of alignment
-        double w_align = 1.0;
+        const Eigen::Vector2d x_axis_world = R.col(0);
+        const double align = x_axis_world.dot(dir);
 
-        double angle_diff = std::abs(yaw - robot_yaw);
-        double w_angle_diff = 0.5; // weight for angle difference 
-        double score = value + align * w_align - angle_diff * w_angle_diff; // weight for alignment
+        const double yaw_err = std::abs(wrapAngleRad(yaw - robot_yaw));
 
-        if (score > best_value){
-            best_value = score;
-            out_replan_pos.head<2>() = best_vertex;
-            out_replan_pos.z() = 0.;
-            out_R = R;
+        const double w_align = 1.0;
+        const double w_angle_diff = 0.5;
+        const double score = value + align * w_align - yaw_err * w_angle_diff;
+
+        res.valid = true;
+        res.score = score;
+        res.vertex = best_vertex;
+        res.R = R;
+        res.yaw = yaw;
+        return res;
+    };
+
+    // coarse top-K yaw
+    std::vector<YawBasinCandidate2D> coarse_candidates;
+    coarse_candidates.reserve(coarse_yaws.size());
+
+    for (double yaw : coarse_yaws) {
+        Pose2DEvalResult cur = evaluate_pose(yaw);
+        if (!cur.valid) continue;
+
+        YawBasinCandidate2D c;
+        c.valid = true;
+        c.score = cur.score;
+        c.yaw = cur.yaw;
+        c.vertex = cur.vertex;
+        c.R = cur.R;
+        coarse_candidates.push_back(c);
+    }
+
+    if (coarse_candidates.empty()) {
+        out_replan_pos = start_pos;
+        out_R.setIdentity();
+        return false;
+    }
+
+    std::sort(coarse_candidates.begin(), coarse_candidates.end(),
+              [](const YawBasinCandidate2D& a, const YawBasinCandidate2D& b) {
+                  return a.score > b.score;
+              });
+
+    const int K = std::min<int>(top_k_yaw_basins_, coarse_candidates.size());
+
+    Pose2DEvalResult global_best;
+
+    for (int k = 0; k < K; ++k) {
+        const auto& seed = coarse_candidates[k];
+
+        const std::vector<double> fine_yaws =
+            buildCenteredSamplesDeg(seed.yaw,
+                                    fine_yaw_half_span_deg_,
+                                    fine_angle_step_deg_,
+                                    -M_PI, M_PI, true);
+
+        for (double yaw : fine_yaws) {
+            Pose2DEvalResult cur = evaluate_pose(yaw);
+            if (!cur.valid) continue;
+
+            if (!global_best.valid || cur.score > global_best.score) {
+                global_best = cur;
+            }
         }
     }
+
+    if (!global_best.valid) {
+        const auto& c = coarse_candidates.front();
+        out_replan_pos.head<2>() = c.vertex;
+        out_replan_pos.z() = 0.0;
+        out_R = c.R;
+        return true;
+    }
+
+    out_replan_pos.head<2>() = global_best.vertex;
+    out_replan_pos.z() = 0.0;
+    out_R = global_best.R;
     return true;
 }
 
-bool PlannerManager::getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix3d& out_R){
+bool PlannerManager::getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron3D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix3d& out_R)
+{
     vec_E<Hyperplane3D> hyperplanes = corridor_poly.hyperplanes();
     LinearConstraint3D lc(start_pos, hyperplanes);
-    const int m = lc.A().rows();
-    Eigen::MatrixXd A = lc.A();
-    // direction from start to goal
+    const Eigen::VectorXd b = lc.b();
+
     Eigen::Vector3d dir = goal_point - start_pos;
-    dir.normalize();
-    double best_value = -std::numeric_limits<double>::infinity();   
-    
+    const double dir_norm = dir.norm();
+    if (dir_norm < 1e-8) {
+        out_replan_pos = start_pos;
+        out_R.setIdentity();
+        return false;
+    }
+    dir /= dir_norm;
+
     Eigen::Matrix4d T_odom;
     getOdometryInfo(T_odom);
     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-    const double robot_roll = std::atan2(base_rot_mat(2,1), base_rot_mat(2,2));
+    const double robot_roll  = std::atan2(base_rot_mat(2,1), base_rot_mat(2,2));
     const double robot_pitch = std::asin(-base_rot_mat(2,0));
-    const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
+    const double robot_yaw   = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
 
-        const int Ny = num_of_yaw_samples_;
-    const int Nr = num_of_roll_samples_;
-    const int Np = num_of_pitch_samples_;
+    const std::vector<double> yaw_vals =
+        buildUniformSamplesInclusive(-M_PI, M_PI, num_of_yaw_samples_);
+    const std::vector<double> roll_vals =
+        buildUniformSamplesInclusive(lower_bound_of_roll_, upper_bound_of_roll_, num_of_roll_samples_);
+    const std::vector<double> pitch_vals =
+        buildUniformSamplesInclusive(lower_bound_of_pitch_, upper_bound_of_pitch_, num_of_pitch_samples_);
 
-    std::vector<double> yaw_vals(Ny),  syaw(Ny),  cyaw(Ny);
-    std::vector<double> roll_vals(Nr), sroll(Nr), croll(Nr);
-    std::vector<double> pitch_vals(Np), spitch(Np), cpitch(Np);
-
-    // yaw
-    for (int i = 0; i < Ny; ++i) {
-        double yaw = -M_PI + (2.0 * M_PI) * (double(i) / double(Ny));
-        yaw_vals[i] = yaw;
-        syaw[i] = std::sin(yaw);
-        cyaw[i] = std::cos(yaw);
-    }
-    // roll
-    for (int j = 0; j < Nr; ++j) {
-        double roll = lower_bound_of_roll_ +
-                    (upper_bound_of_roll_ - lower_bound_of_roll_) * (double(j) / double(Nr));
-        roll_vals[j] = roll;
-        sroll[j] = std::sin(roll);
-        croll[j] = std::cos(roll);
-    }
-    // pitch
-    for (int k = 0; k < Np; ++k) {
-        double pitch = lower_bound_of_pitch_ +
-                    (upper_bound_of_pitch_ - lower_bound_of_pitch_) * (double(k) / double(Np));
-        pitch_vals[k] = pitch;
-        spitch[k] = std::sin(pitch);
-        cpitch[k] = std::cos(pitch);
-    }
-    Eigen::VectorXd b_prime(m);
-
+    const int m = lc.A().rows();
     std::vector<Eigen::Vector3d> arows(m);
     std::vector<double> shrink(m);
     const double clearance = 0.02;
-    for(int l = 0; l < m; ++l){
-        arows[l] = A.row(l).transpose();
+    for (int l = 0; l < m; ++l) {
+        arows[l] = lc.A().row(l).transpose();
         shrink[l] = clearance * arows[l].norm();
-    } 
+    }
 
     const std::vector<TripleCache> triple_cache = buildTripleCache3D(arows);
-    // output init
-    out_replan_pos = start_pos;
-    out_R.setIdentity();
-    // sample loop
-        for (int i = 0; i < num_of_yaw_samples_; ++i){
-        const double yaw = yaw_vals[i];
-        const double cy = cyaw[i], sy = syaw[i];
-        for (int j = 0; j < num_of_roll_samples_; ++j){
-            const double roll = roll_vals[j];
-            const double cr = croll[j], sr = sroll[j];
-            for (int k = 0; k < num_of_pitch_samples_; ++k){
-                const double pitch = pitch_vals[k];
-                const double cp = cpitch[k], sp = spitch[k];
 
-                Eigen::Matrix3d R;
-                // R = Rz(yaw) * Ry(pitch) * Rx(roll)
-                R(0,0) = cy*cp;
-                R(0,1) = cy*sp*sr - sy*cr;
-                R(0,2) = cy*sp*cr + sy*sr;
+    auto evaluate_pose = [&](double yaw, double roll, double pitch) -> Pose3DEvalResult {
+        Pose3DEvalResult res;
+        Eigen::Matrix3d R = rpyToRotation(yaw, roll, pitch);
 
-                R(1,0) = sy*cp;
-                R(1,1) = sy*sp*sr + cy*cr;
-                R(1,2) = sy*sp*cr - cy*sr;
+        Eigen::VectorXd b_prime(m);
+        for (int l = 0; l < m; ++l) {
+            const double hl = supportValueVertices(arows[l], robot_shape_points_d_, R);
+            b_prime[l] = b[l] - hl - shrink[l];
+        }
 
-                R(2,0) = -sp;
-                R(2,1) = cp*sr;
-                R(2,2) = cp*cr;
-                for(int l = 0; l < m; ++l){
-                    const double hl = supportValueVertices(arows[l], robot_shape_points_d_, R);
-                    b_prime[l] = lc.b()[l] - hl - shrink[l];
+        Eigen::Vector3d best_vertex = start_pos;
+        bool goal_feasible = true;
+        for (int l = 0; l < m; ++l) {
+            if (arows[l].dot(goal_point) > b_prime[l] + 1e-6) {
+                goal_feasible = false;
+                break;
+            }
+        }
+
+        if (goal_feasible) {
+            best_vertex = goal_point;
+        } else {
+            const double value =
+                solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, best_vertex);
+            if (!std::isfinite(value)) {
+                return res;
+            }
+        }
+
+        const double dist_to_goal = (goal_point - best_vertex).norm();
+        const Eigen::Vector3d x_axis_world = R.col(0);
+        const double align = x_axis_world.dot(dir);
+
+        const double yaw_err   = std::abs(wrapAngleRad(yaw   - robot_yaw));
+        const double roll_err  = std::abs(roll  - robot_roll);
+        const double pitch_err = std::abs(pitch - robot_pitch);
+        const double angle_diff = yaw_err + roll_err + pitch_err;
+
+        const double w_align = 2.0;
+        const double w_angle_diff = 0.1;
+        const double score = -dist_to_goal + align * w_align - angle_diff * w_angle_diff;
+
+        res.valid = true;
+        res.score = score;
+        res.vertex = best_vertex;
+        res.R = R;
+        res.yaw = yaw;
+        res.roll = roll;
+        res.pitch = pitch;
+        return res;
+    };
+
+    // ---------------- coarse: compress by yaw basin ----------------
+    std::vector<YawBasinCandidate> yaw_best(yaw_vals.size());
+
+    for (size_t iy = 0; iy < yaw_vals.size(); ++iy) {
+        const double yaw = yaw_vals[iy];
+        YawBasinCandidate basin_best;
+
+        for (double roll : roll_vals) {
+            for (double pitch : pitch_vals) {
+                Pose3DEvalResult cur = evaluate_pose(yaw, roll, pitch);
+                if (!cur.valid) continue;
+
+                if (!basin_best.valid || cur.score > basin_best.score) {
+                    basin_best.valid = true;
+                    basin_best.score = cur.score;
+                    basin_best.yaw = yaw;
+                    basin_best.roll = roll;
+                    basin_best.pitch = pitch;
+                    basin_best.vertex = cur.vertex;
+                    basin_best.R = cur.R;
                 }
+            }
+        }
+        yaw_best[iy] = basin_best;
+    }
 
-                // try exact goal
-                Eigen::Vector3d best_vertex = start_pos;
-                bool goal_feasible = true;
-                for(int l = 0; l < m; ++l){
-                    if (arows[l].dot(goal_point) > b_prime[l] + 1e-6) { goal_feasible = false; break; }
-                }
-                if (goal_feasible){
-                    best_vertex = goal_point;
-                } 
-                else{
-                    // double value = solveLPByEnumeratingVertices3D(arows, A, b_prime, dir, best_vertex);
-                    double value = solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, best_vertex);
-                }               
+    std::vector<YawBasinCandidate> coarse_candidates;
+    coarse_candidates.reserve(yaw_best.size());
+    for (const auto& c : yaw_best) {
+        if (c.valid) coarse_candidates.push_back(c);
+    }
 
-                const double dist_to_goal = (goal_point - best_vertex).norm();
-                // make robot's x axis align with dir
-                Eigen::Vector3d x_axis_world = R.col(0);
-                double align = x_axis_world.dot(dir);
-                // weight in "meters": w_align=0.1 means 10cm worth of
-                double w_align = 0.5;
-                double angle_diff = std::abs(yaw - robot_yaw) + std::abs(pitch - robot_pitch) + std::abs(roll - robot_roll);
-                double w_angle_diff = 0.1; // weight for angle difference
-                double score = -dist_to_goal + align * w_align - angle_diff * w_angle_diff; // weight for alignment
-                if (score > best_value){
-                    best_value = score;
-                    out_replan_pos = best_vertex;
-                    out_R = R;
+    if (coarse_candidates.empty()) {
+        out_replan_pos = start_pos;
+        out_R.setIdentity();
+        return false;
+    }
+
+    std::sort(coarse_candidates.begin(), coarse_candidates.end(),
+              [](const YawBasinCandidate& a, const YawBasinCandidate& b) {
+                  return a.score > b.score;
+              });
+
+    const int K = std::min<int>(top_k_yaw_basins_, coarse_candidates.size());
+
+    Pose3DEvalResult global_best;
+
+    for (int k = 0; k < K; ++k) {
+        const auto& seed = coarse_candidates[k];
+
+        const std::vector<double> fine_yaws =
+            buildCenteredSamplesDeg(seed.yaw,
+                                    fine_yaw_half_span_deg_,
+                                    fine_angle_step_deg_,
+                                    -M_PI, M_PI, true);
+
+        const std::vector<double> fine_rolls =
+            buildCenteredSamplesDeg(seed.roll,
+                                    fine_roll_half_span_deg_,
+                                    fine_angle_step_deg_,
+                                    lower_bound_of_roll_,
+                                    upper_bound_of_roll_,
+                                    false);
+
+        const std::vector<double> fine_pitchs =
+            buildCenteredSamplesDeg(seed.pitch,
+                                    fine_pitch_half_span_deg_,
+                                    fine_angle_step_deg_,
+                                    lower_bound_of_pitch_,
+                                    upper_bound_of_pitch_,
+                                    false);
+
+        for (double yaw : fine_yaws) {
+            for (double roll : fine_rolls) {
+                for (double pitch : fine_pitchs) {
+                    Pose3DEvalResult cur = evaluate_pose(yaw, roll, pitch);
+                    if (!cur.valid) continue;
+
+                    if (!global_best.valid || cur.score > global_best.score) {
+                        global_best = cur;
+                    }
                 }
             }
         }
     }
+
+    if (!global_best.valid) {
+        const auto& c = coarse_candidates.front();
+        out_replan_pos = c.vertex;
+        out_R = c.R;
+        return true;
+    }
+
+    out_replan_pos = global_best.vertex;
+    out_R = global_best.R;
     return true;
 }
 
-bool PlannerManager::getGoalPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix2d& out_R){
+bool PlannerManager::getGoalPose2D(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_point, const Polyhedron2D &corridor_poly, Eigen::Vector3d &out_replan_pos, Eigen::Matrix2d& out_R)
+{
     vec_E<Hyperplane2D> hyperplanes = corridor_poly.hyperplanes();
     LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
     const int m = lc.A().rows();
-    Eigen::MatrixXd A = lc.A();
-    // direction from start to goal
+    const Eigen::MatrixXd A = lc.A();
+    const Eigen::VectorXd b = lc.b();
+
     Eigen::Vector2d dir = goal_point.head<2>() - start_pos.head<2>();
-    dir.normalize();
-    double best_value = -std::numeric_limits<double>::infinity();
+    const double dir_norm = dir.norm();
+    if (dir_norm < 1e-8) {
+        out_replan_pos = start_pos;
+        out_R.setIdentity();
+        return false;
+    }
+    dir /= dir_norm;
 
     Eigen::Matrix4d T_odom;
     getOdometryInfo(T_odom);
     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-
-    Eigen::VectorXd b_prime(m);
     const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
-    out_replan_pos = start_pos;
-    out_R.setIdentity();
 
-    for (int i = 0; i < num_of_yaw_samples_; ++i) {
-        double yaw = -M_PI + (2.0 * M_PI) * (double(i) / double(num_of_yaw_samples_));
+    const std::vector<double> coarse_yaws =
+        buildUniformSamplesInclusive(-M_PI, M_PI, num_of_yaw_samples_);
+
+    auto evaluate_pose = [&](double yaw) -> Pose2DEvalResult {
+        Pose2DEvalResult res;
+
         Eigen::Matrix2d R;
         R << std::cos(yaw), -std::sin(yaw),
-                std::sin(yaw),  std::cos(yaw);
-        for(int j = 0; j < m; ++j){
+             std::sin(yaw),  std::cos(yaw);
+
+        Eigen::VectorXd b_prime(m);
+        for (int j = 0; j < m; ++j) {
             Eigen::Vector2d aj = A.row(j).transpose();
-            double hj = supportValueVertices(aj, robot_shape_points_2d_d_, R);
-            // clearance shrink:
-            double aj_norm = aj.norm(); 
-            double clearance_ = 0.02; // 2cm
-            double shrink = clearance_ * aj_norm;  
-            b_prime[j] = lc.b()[j] - hj - shrink;
+            const double hj = supportValueVertices(aj, robot_shape_points_2d_d_, R);
+            const double shrink = 0.02 * aj.norm();
+            b_prime[j] = b[j] - hj - shrink;
         }
-        // try exact goal
+
         Eigen::Vector2d best_vertex = start_pos.head<2>();
         bool goal_feasible = true;
-        for(int l = 0; l < m; ++l){
-            if (A.row(l).dot(goal_point.head<2>()) > b_prime[l] + 1e-6) { goal_feasible = false; break; }
+        for (int l = 0; l < m; ++l) {
+            if (A.row(l).dot(goal_point.head<2>()) > b_prime[l] + 1e-6) {
+                goal_feasible = false;
+                break;
+            }
         }
-        if (goal_feasible){
+
+        if (goal_feasible) {
             best_vertex = goal_point.head<2>();
-        }
-         else{
-            double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, best_vertex);
+        } else {
+            const double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, best_vertex);
+            if (!std::isfinite(value)) {
+                return res;
+            }
         }
 
         const double dist_to_goal = (goal_point.head<2>() - best_vertex).norm();
-        // make robot's x axis align with dir
-        Eigen::Vector2d x_axis_world = R.col(0);
-        double align = x_axis_world.dot(dir);
-        // weight in "meters": w_align=0.1 means 10cm worth of alignment
-        double w_align = 0.5;
+        const Eigen::Vector2d x_axis_world = R.col(0);
+        const double align = x_axis_world.dot(dir);
 
-        double angle_diff = std::abs(yaw - robot_yaw);
-        double w_angle_diff = 0.5; // weight for angle difference 
-        double score = -dist_to_goal + align * w_align - angle_diff * w_angle_diff; // weight for alignment
+        const double yaw_err = std::abs(wrapAngleRad(yaw - robot_yaw));
 
-        if (score > best_value){
-            best_value = score;
-            out_replan_pos.head<2>() = best_vertex;
-            out_replan_pos.z() = 0.;
-            out_R = R;
+        const double w_align = 1.0;
+        const double w_angle_diff = 0.5;
+        const double score = -dist_to_goal + align * w_align - yaw_err * w_angle_diff;
+
+        res.valid = true;
+        res.score = score;
+        res.vertex = best_vertex;
+        res.R = R;
+        res.yaw = yaw;
+        return res;
+    };
+
+    // coarse top-K yaw
+    std::vector<YawBasinCandidate2D> coarse_candidates;
+    coarse_candidates.reserve(coarse_yaws.size());
+
+    for (double yaw : coarse_yaws) {
+        Pose2DEvalResult cur = evaluate_pose(yaw);
+        if (!cur.valid) continue;
+
+        YawBasinCandidate2D c;
+        c.valid = true;
+        c.score = cur.score;
+        c.yaw = cur.yaw;
+        c.vertex = cur.vertex;
+        c.R = cur.R;
+        coarse_candidates.push_back(c);
+    }
+
+    if (coarse_candidates.empty()) {
+        out_replan_pos = start_pos;
+        out_R.setIdentity();
+        return false;
+    }
+
+    std::sort(coarse_candidates.begin(), coarse_candidates.end(),
+              [](const YawBasinCandidate2D& a, const YawBasinCandidate2D& b) {
+                  return a.score > b.score;
+              });
+
+    const int K = std::min<int>(top_k_yaw_basins_, coarse_candidates.size());
+
+    Pose2DEvalResult global_best;
+
+    for (int k = 0; k < K; ++k) {
+        const auto& seed = coarse_candidates[k];
+
+        const std::vector<double> fine_yaws =
+            buildCenteredSamplesDeg(seed.yaw,
+                                    fine_yaw_half_span_deg_,
+                                    fine_angle_step_deg_,
+                                    -M_PI, M_PI, true);
+
+        for (double yaw : fine_yaws) {
+            Pose2DEvalResult cur = evaluate_pose(yaw);
+            if (!cur.valid) continue;
+
+            if (!global_best.valid || cur.score > global_best.score) {
+                global_best = cur;
+            }
         }
     }
+
+    if (!global_best.valid) {
+        const auto& c = coarse_candidates.front();
+        out_replan_pos.head<2>() = c.vertex;
+        out_replan_pos.z() = 0.0;
+        out_R = c.R;
+        return true;
+    }
+
+    out_replan_pos.head<2>() = global_best.vertex;
+    out_replan_pos.z() = 0.0;
+    out_R = global_best.R;
     return true;
 } 
 
@@ -1448,54 +1761,7 @@ double PlannerManager::solveLPByEnumeratingVertices3DWithCache(
 
     return best_value;
 }
-
-double PlannerManager::solveLPByEnumeratingVertices3D(const std::vector<Eigen::Vector3d>& Arows, const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector3d &dir, Eigen::Vector3d &best_vertex){
-    const int m = A.rows();
-    const double det_tol = 1e-10;
-    const double feas_tol = 1e-6;
-    double best_value = -std::numeric_limits<double>::infinity();
-
-    for (int i = 0; i < m; ++i) {
-        const Eigen::Vector3d& a1 = Arows[i];
-        for (int j = i + 1; j < m; ++j) {
-            const Eigen::Vector3d& a2 = Arows[j];
-            for (int k = j + 1; k < m; ++k) {
-                const Eigen::Vector3d& a3 = Arows[k];
-
-                // det = a1 · (a2×a3)
-                const Eigen::Vector3d c23 = a2.cross(a3);
-                const double det = a1.dot(c23);
-                if (std::abs(det) < det_tol) continue;
-
-                const Eigen::Vector3d rhs(bprime[i], bprime[j], bprime[k]);
-
-                Eigen::Vector3d vertex =
-                    ( rhs[0] * c23
-                    + rhs[1] * a3.cross(a1)
-                    + rhs[2] * a1.cross(a2) ) / det;
-
-                // feasibility check: Arows[l]·x <= bprime[l]
-                bool feasible = true;
-                for (int l = 0; l < m; ++l) {
-                    if (l == i || l == j || l == k) continue;
-                    if (Arows[l].dot(vertex) > bprime[l] + feas_tol) {
-                        feasible = false;
-                        break;
-                    }
-                }
-                if (!feasible) continue;
-
-                const double dist = dir.dot(vertex);
-                if (dist > best_value) {
-                    best_value = dist;
-                    best_vertex = vertex;
-                }
-            }
-        }
-    }
-    return best_value;
-}
-    
+  
 double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex){
     const int m = A.rows();
     const double det_tol = 1e-10;
@@ -1536,145 +1802,6 @@ double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, 
         }
     }
     return best_value;
-}
-
-void PlannerManager::expandChildren(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates){
-    auto* parent = free_regions_graph_ptr_->getNode(current_node_id);
-    if (!parent) return;
-
-    const double contain_margin = 0.0; 
-    int index = 0;
-    for (const auto &gap : all_candidates) {
-    if (env_type_){
-        const Polyhedron3D& corridor_poly = polys_aniso_3d_[index];
-        Eigen::Vector3d replan_pos;
-        Eigen::Matrix3d R;
-        if (gap.type == 3){
-            bool ok = getGoalPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
-        }
-        else{
-            bool ok = getTargetPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
-        }
-        if (poseContainedInParentPoly3D(start_pos, parent->polys_, replan_pos, R, contain_margin)) {
-            index++;
-            continue; // skip if the replan position is still contained in the parent corridor
-        }
-
-        // build edge
-        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, gap.dir_odom_frame);
-        auto *e = free_regions_graph_ptr_->getEdge(edge_id);
-        e->corridor_3d_ = corridor_poly;
-        e->replan_pos_ = replan_pos;
-        e->R_ = R;
-        e->cost_ = (e->replan_pos_ - parent->state_pos_).norm();
-    }
-    else{
-        const Polyhedron2D& corridor_poly = polys_aniso_2d_[index];
-        Eigen::Vector3d replan_pos;
-        Eigen::Matrix2d R;
-        if (gap.type == 3){
-            bool ok = getGoalPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
-        }
-        else{
-            bool ok = getTargetPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
-        }
-        if (poseContainedInParentPoly2D(start_pos, parent->polys_2d_, replan_pos, R, contain_margin)) {
-            index++;
-            continue; // skip if the replan position is still contained in the parent corridor
-        }
-
-        // build edge
-        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, gap.dir_odom_frame);
-        auto *e = free_regions_graph_ptr_->getEdge(edge_id);
-        e->corridor_2d_ = corridor_poly;
-        e->replan_pos_ = replan_pos;
-        e->R_2d_ = R;
-        e->cost_ = (e->replan_pos_.head<2>() - parent->state_pos_.head<2>()).norm();
-    }
-    ++index;
-}
-}
-
-void PlannerManager::expandChildrenParallel(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates){
-    auto* current_node = free_regions_graph_ptr_->getNode(current_node_id);
-    Eigen::setNbThreads(1);
-    const int N = (int)all_candidates.size();
-
-    struct TmpResult {
-        bool ok = false;
-        Eigen::Vector3d goal = Eigen::Vector3d::Zero();
-        Eigen::Vector3d replan = Eigen::Vector3d::Zero();
-        Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
-        Eigen::Matrix2d R2 = Eigen::Matrix2d::Identity();
-    };
-    std::vector<TmpResult> results(N);
-
-    #pragma omp parallel for schedule(dynamic)
-    for (int i = 0; i < N; ++i){
-        const auto& gap = all_candidates[i];
-        results[i].goal = gap.dir_odom_frame;
-        if (env_type_){
-            const Polyhedron3D& corridor_poly = polys_aniso_3d_[i];
-            Eigen::Vector3d replan_pos;
-            Eigen::Matrix3d R;
-            bool ok = false;
-            if (gap.type == 3){
-                ok = getGoalPose3D(start_pos, results[i].goal, corridor_poly, replan_pos, R);
-            }
-            else{
-                ok = getTargetPose3D(start_pos, results[i].goal, corridor_poly, replan_pos, R);
-            }
-            results[i].ok = ok;
-            results[i].replan = replan_pos;
-            results[i].R = R;
-        }
-        else{
-            const Polyhedron2D& corridor_poly = polys_aniso_2d_[i];
-            Eigen::Vector3d replan_pos;
-            Eigen::Matrix2d R;
-            bool ok = false;
-            if (gap.type == 3){
-                ok = getGoalPose2D(start_pos, results[i].goal, corridor_poly, replan_pos, R);
-            }
-            else{
-                ok = getTargetPose2D(start_pos, results[i].goal, corridor_poly, replan_pos, R);
-            }
-            results[i].ok = ok;
-            results[i].replan = replan_pos;
-            results[i].R2 = R;
-        }
-    }
-
-    // update graph
-    for(int i = 0; i < N; ++i){
-        if (!results[i].ok) continue;
-        if(env_type_){
-            if (poseContainedInParentPoly3D(start_pos, current_node->polys_, results[i].replan, results[i].R, 0.0)) {
-                continue; // skip if the replan position is still contained in the parent corridor
-            }
-        }
-        else{
-            if (poseContainedInParentPoly2D(start_pos, current_node->polys_2d_, results[i].replan, results[i].R2, 0.0)) {
-                continue; // skip if the replan position is still contained in the parent corridor
-            }
-        }
-        // build edge
-        const auto& gap = all_candidates[i];
-        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, results[i].goal);
-        auto *e = free_regions_graph_ptr_->getEdge(edge_id);
-        if (!e) continue;
-        e->replan_pos_ = results[i].replan;
-        if (env_type_){
-            e->R_ = results[i].R;
-            e->corridor_3d_ = polys_aniso_3d_[i];
-            e->cost_ = (e->replan_pos_ - current_node->state_pos_).norm();
-        }
-        else{
-            e->R_2d_ = results[i].R2;
-            e->corridor_2d_ = polys_aniso_2d_[i];
-            e->cost_ = (e->replan_pos_.head<2>() - current_node->state_pos_.head<2>()).norm();
-        }
-    }
 }
 
 EdgeId PlannerManager::selectBestEdgeAtNode(NodeId nid){
@@ -2059,69 +2186,354 @@ ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
     return true;
 }
 
-void PlannerManager::expandNode(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id) {
-    // generate a node polyhedron at start pos
+void PlannerManager::expandNodePrimaryOnly(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id)
+{
+auto t_total_0 = std::chrono::high_resolution_clock::now();
+    // 1) generate node polyhedron at current pose
     generateNodePolyhedron(current_id, start_pos);
 
-    // if this node is reached from a parent edge, prune parent's remaining
-    // untried edges whose target poses are already contained in this node polyhedron
     auto* current_node = free_regions_graph_ptr_->getNode(current_id);
-    if (current_node && current_node->incoming_edge_id_ >= 0) {
+    if (!current_node) return;
+
+    // 2) prune parent's untried edges
+    if (current_node->incoming_edge_id_ >= 0) {
         auto* in_edge = free_regions_graph_ptr_->getEdge(current_node->incoming_edge_id_);
         if (in_edge) {
-            ROS_INFO("[PlannerManager] Prune edge.");
             NodeId parent_id = in_edge->from_;
             pruneUntriedParentEdgesByChildPoly(parent_id, current_id, current_node->incoming_edge_id_);
         }
     }
 
+    // 3) collect / filter / sort candidates
+auto t_pre_0 = std::chrono::high_resolution_clock::now();
+
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> all_candidates;
     filterBackwardGaps(start_pos, current_id, all_candidates);
     sortAllCandidatesGap(goal_pos, all_candidates);
+
     if (all_candidates.empty()) {
         ROS_WARN("[PlannerManager] No gap candidates available for planning.");
+        current_node->deadend_ = true;
         return;
     }
-    
+
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
-    
+
     current_direction_for_visualization_[0] = all_candidates[0].dir_odom_frame[0];
     current_direction_for_visualization_[1] = all_candidates[0].dir_odom_frame[1];
     current_direction_for_visualization_[2] = env_type_ ? all_candidates[0].dir_odom_frame[2] : 0.0;
     current_pos = start_pos;
-    // test
-    // decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
-    // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
-    // first decompose along all gap directions
-auto t0 = std::chrono::high_resolution_clock::now();
-    decomposeAlongGapDirections(start_pos, all_candidates);
-auto t1 = std::chrono::high_resolution_clock::now();
-double ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0).count();
-ROS_INFO("[PlannerManager] decomposeAlongGapDirections elapsed: %.3f ms", ms);
-    
-    // auto* current_node = free_regions_graph_ptr_->getNode(current_id);
-    current_node->edge_ids_.clear();
-    // push all candidates as children of the current node
-auto t2 = std::chrono::high_resolution_clock::now();
-    if (all_candidates.size() < 4){
-        // if candidates are few, no need for parallel
-        expandChildren(start_pos, current_id, all_candidates);
+
+auto t_pre_1 = std::chrono::high_resolution_clock::now();
+double ms_pre = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pre_1 - t_pre_0).count();
+ROS_INFO("[PlannerManager] expandNodePrimaryOnly preprocess elapsed: %.3f ms", ms_pre);
+
+    // optional test visualization: only for the first gap
+    // decomposeAlongGapDirectionsTEST(start_pos, all_candidates[0]);
+    // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates[0]);
+
+    {
+        std::lock_guard<std::mutex> lk(graph_mutex_);
+        current_node->edge_ids_.clear();
     }
-    else{
-        // if candidates are many, expand in parallel
-        expandChildrenParallel(start_pos, current_id, all_candidates);
+
+    // 4) process the first candidate synchronously using LOCAL corridor
+    const Gaps& gap = all_candidates[0];
+
+auto t_decomp_0 = std::chrono::high_resolution_clock::now();
+
+    bool primary_ok = false;
+    Eigen::Vector3d replan_pos = start_pos;
+
+    if (env_type_) {
+        Polyhedron3D corridor_poly;
+        if (computeSingleCorridor3DLocal(start_pos, gap, corridor_poly)) {
+auto t_decomp_1 = std::chrono::high_resolution_clock::now();
+double ms_decomp = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_decomp_1 - t_decomp_0).count();
+ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate decompose elapsed: %.3f ms", ms_decomp);
+
+auto t_pose_0 = std::chrono::high_resolution_clock::now();
+            Eigen::Matrix3d R;
+            bool ok = false;
+            if (gap.type == 3) {
+                ok = getGoalPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+            } else {
+                ok = getTargetPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+            }
+auto t_pose_1 = std::chrono::high_resolution_clock::now();
+double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pose_1 - t_pose_0).count();
+ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate pose elapsed: %.3f ms", ms_pose);
+
+            if (ok) {
+                std::lock_guard<std::mutex> lk(graph_mutex_);
+                auto* node = free_regions_graph_ptr_->getNode(current_id);
+                if (node && !poseContainedInParentPoly3D(start_pos, node->polys_, replan_pos, R, 0.0)) {
+                    EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_id, gap.dir_odom_frame);
+                    auto* e = free_regions_graph_ptr_->getEdge(edge_id);
+                    if (e) {
+                        e->corridor_3d_ = corridor_poly;
+                        e->replan_pos_ = replan_pos;
+                        e->R_ = R;
+                        e->cost_ = (e->replan_pos_ - node->state_pos_).norm();
+                        primary_ok = true;
+                    }
+                }
+            }
+        }
     }
-auto t3 = std::chrono::high_resolution_clock::now();
-double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t3 - t2).count();
-ROS_INFO("[PlannerManager] expandChildren and getTargetPose elapsed: %.3f ms", ms_pose);
+    else {
+        Polyhedron2D corridor_poly;
+        if (computeSingleCorridor2DLocal(start_pos, gap, corridor_poly)) {
+auto t_decomp_1 = std::chrono::high_resolution_clock::now();
+double ms_decomp = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_decomp_1 - t_decomp_0).count();
+ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate decompose elapsed: %.3f ms", ms_decomp);
+
+auto t_pose_0 = std::chrono::high_resolution_clock::now();
+            Eigen::Matrix2d R;
+            bool ok = false;
+            if (gap.type == 3) {
+                ok = getGoalPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+            } else {
+                ok = getTargetPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+            }
+auto t_pose_1 = std::chrono::high_resolution_clock::now();
+double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pose_1 - t_pose_0).count();
+ROS_INFO("[PlannerManager] expandNodePrimaryOnly first-candidate pose elapsed: %.3f ms", ms_pose);
+
+            if (ok) {
+                std::lock_guard<std::mutex> lk(graph_mutex_);
+                auto* node = free_regions_graph_ptr_->getNode(current_id);
+                if (node && !poseContainedInParentPoly2D(start_pos, node->polys_2d_, replan_pos, R, 0.0)) {
+                    EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_id, gap.dir_odom_frame);
+                    auto* e = free_regions_graph_ptr_->getEdge(edge_id);
+                    if (e) {
+                        e->corridor_2d_ = corridor_poly;
+                        e->replan_pos_ = replan_pos;
+                        e->R_2d_ = R;
+                        e->cost_ = (e->replan_pos_.head<2>() - node->state_pos_.head<2>()).norm();
+                        primary_ok = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // 5) store remaining candidates for background expansion
+auto t_pending_0 = std::chrono::high_resolution_clock::now();
+    {
+        std::lock_guard<std::mutex> lk(bg_job_mutex_);
+        pending_expand_job_.node_id = current_id;
+        pending_expand_job_.start_pos = start_pos;
+        pending_expand_job_.candidates.clear();
+
+        if (all_candidates.size() > 1) {
+            pending_expand_job_.candidates.insert(
+                pending_expand_job_.candidates.end(),
+                all_candidates.begin() + 1,
+                all_candidates.end());
+        }
+
+        pending_expand_job_.valid = !pending_expand_job_.candidates.empty();
+    }
+auto t_pending_1 = std::chrono::high_resolution_clock::now();
+double ms_pending = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pending_1 - t_pending_0).count();
+ROS_INFO("[PlannerManager] expandNodePrimaryOnly store-pending elapsed: %.3f ms", ms_pending);
+
+    // 6) mark deadend only based on current available edge(s)
+    {
+        std::lock_guard<std::mutex> lk(graph_mutex_);
+        if (current_node->edge_ids_.empty() || !isFrontierNode(current_id)) {
+            current_node->deadend_ = true;
+        } else {
+            current_node->deadend_ = false;
+        }
+    }
 
     publishTestCube();
 
-    if (current_node->edge_ids_.empty() || !isFrontierNode(current_id)) {
-        current_node->deadend_ = true;
+auto t_total_1 = std::chrono::high_resolution_clock::now();
+double ms_total = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_total_1 - t_total_0).count();
+ROS_INFO("[PlannerManager] expandNodePrimaryOnly total elapsed: %.3f ms", ms_total);
+}
+
+void PlannerManager::startBackgroundExpansion()
+{
+    bool has_job = false;
+    {
+        std::lock_guard<std::mutex> lk(bg_job_mutex_);
+        has_job = pending_expand_job_.valid;
+    }
+
+    if (!has_job) return;
+    if (background_expand_running_) return;
+
+    // if previous thread exists and already finished, join it first
+    if (background_expand_thread_.joinable()) {
+        background_expand_thread_.join();
+    }
+
+    background_expand_running_ = true;
+    background_expand_thread_ = std::thread(&PlannerManager::backgroundExpandWorker, this);
+}
+
+void PlannerManager::backgroundExpandWorker()
+{
+    PendingExpandJob job;
+    {
+        std::lock_guard<std::mutex> lk(bg_job_mutex_);
+        if (!pending_expand_job_.valid) {
+            background_expand_running_ = false;
+            return;
+        }
+        job = pending_expand_job_;
+        pending_expand_job_.valid = false;
+    }
+
+    if (job.node_id < 0 || job.candidates.empty()) {
+        background_expand_running_ = false;
         return;
     }
-    current_node->deadend_ = false;
+
+    ROS_INFO("[PlannerManager] Background expansion started for node %d with %zu pending candidates.",
+             job.node_id, job.candidates.size());
+
+    expandChildrenBackgroundParallel(job.start_pos, job.node_id, job.candidates);
+
+    ROS_INFO("[PlannerManager] Background expansion finished for node %d.", job.node_id);
+    background_expand_running_ = false;
+}
+
+void PlannerManager::expandChildrenBackgroundParallel(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates)
+{
+    if (all_candidates.empty()) return;
+
+    auto* current_node = free_regions_graph_ptr_->getNode(current_node_id);
+    if (!current_node) return;
+
+    Eigen::setNbThreads(1);
+    const int N = static_cast<int>(all_candidates.size());
+
+    // snapshot parent poly once
+    Polyhedron3D parent_poly_3d;
+    Polyhedron2D parent_poly_2d;
+    Eigen::Vector3d parent_state_pos = current_node->state_pos_;
+
+    if (env_type_) {
+        parent_poly_3d = current_node->polys_;
+    } else {
+        parent_poly_2d = current_node->polys_2d_;
+    }
+
+    std::vector<BgExpandResult> results(N);
+
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < N; ++i) {
+        const auto& gap = all_candidates[i];
+        BgExpandResult local_result;
+        local_result.goal = gap.dir_odom_frame;
+
+        if (env_type_) {
+            Polyhedron3D corridor_poly;
+            if (!computeSingleCorridor3DLocal(start_pos, gap, corridor_poly)) {
+                results[i] = local_result;
+                continue;
+            }
+
+            Eigen::Vector3d replan_pos;
+            Eigen::Matrix3d R;
+            bool ok = false;
+
+            if (gap.type == 3) {
+                ok = getGoalPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+            } else {
+                ok = getTargetPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+            }
+
+            if (!ok) {
+                results[i] = local_result;
+                continue;
+            }
+
+            if (poseContainedInParentPoly3D(start_pos, parent_poly_3d, replan_pos, R, 0.0)) {
+                results[i] = local_result;
+                continue;
+            }
+
+            local_result.ok = true;
+            local_result.replan = replan_pos;
+            local_result.R3 = R;
+            local_result.corridor_3d = corridor_poly;
+        }
+        else {
+            Polyhedron2D corridor_poly;
+            if (!computeSingleCorridor2DLocal(start_pos, gap, corridor_poly)) {
+                results[i] = local_result;
+                continue;
+            }
+
+            Eigen::Vector3d replan_pos;
+            Eigen::Matrix2d R;
+            bool ok = false;
+
+            if (gap.type == 3) {
+                ok = getGoalPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+            } else {
+                ok = getTargetPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
+            }
+
+            if (!ok) {
+                results[i] = local_result;
+                continue;
+            }
+
+            if (poseContainedInParentPoly2D(start_pos, parent_poly_2d, replan_pos, R, 0.0)) {
+                results[i] = local_result;
+                continue;
+            }
+
+            local_result.ok = true;
+            local_result.replan = replan_pos;
+            local_result.R2 = R;
+            local_result.corridor_2d = corridor_poly;
+        }
+
+        results[i] = std::move(local_result);
+    }
+
+    // -------- serial merge into graph --------
+    std::lock_guard<std::mutex> lk(graph_mutex_);
+
+    auto* node = free_regions_graph_ptr_->getNode(current_node_id);
+    if (!node) {
+        ROS_WARN("[PlannerManager] expandChildrenBackgroundParallel: node %d invalid during merge.",
+                 current_node_id);
+        return;
+    }
+
+    for (int i = 0; i < N; ++i) {
+        const auto& r = results[i];
+        if (!r.ok) continue;
+
+        EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_node_id, r.goal);
+        auto* e = free_regions_graph_ptr_->getEdge(edge_id);
+        if (!e) continue;
+
+        e->replan_pos_ = r.replan;
+
+        if (env_type_) {
+            e->R_ = r.R3;
+            e->corridor_3d_ = r.corridor_3d;
+            e->cost_ = (e->replan_pos_ - node->state_pos_).norm();
+        } else {
+            e->R_2d_ = r.R2;
+            e->corridor_2d_ = r.corridor_2d;
+            e->cost_ = (e->replan_pos_.head<2>() - node->state_pos_.head<2>()).norm();
+        }
+    }
+
+    if (!node->edge_ids_.empty()) {
+        node->deadend_ = false;
+    }
 }
 
 bool PlannerManager::planGlobalBestAction(const Eigen::Vector3d &global_goal)

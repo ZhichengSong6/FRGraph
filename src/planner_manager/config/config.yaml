@@ -58,10 +58,16 @@ planner:
   gap_extractor/limited_gap_bias_elev: 0.1746 # 10 degrees
 
   # Parameters for trajectory
-  trajectory/num_of_yaw_samples: 72
-  trajectory/num_of_roll_samples: 6
-  trajectory/upper_bound_of_roll: 0.5236 # 30 degrees
-  trajectory/lower_bound_of_roll: -0.5236 # -30 degrees
-  trajectory/num_of_pitch_samples: 6
-  trajectory/upper_bound_of_pitch: 0.5236 # 30 degrees
-  trajectory/lower_bound_of_pitch: -0.5236 # -30 degrees
+  trajectory/num_of_yaw_samples: 18
+  trajectory/num_of_roll_samples: 5
+  trajectory/upper_bound_of_roll: 0.5236   # 30 deg
+  trajectory/lower_bound_of_roll: -0.5236  # -30 deg
+  trajectory/num_of_pitch_samples: 5
+  trajectory/upper_bound_of_pitch: 0.5236  # 30 deg
+  trajectory/lower_bound_of_pitch: -0.5236 # -30 deg
+
+  trajectory/top_k_yaw_basins: 3
+  trajectory/fine_yaw_half_span_deg: 20.0
+  trajectory/fine_roll_half_span_deg: 10.0
+  trajectory/fine_pitch_half_span_deg: 10.0
+  trajectory/fine_angle_step_deg: 5.0

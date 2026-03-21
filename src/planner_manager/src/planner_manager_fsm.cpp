@@ -20,6 +20,13 @@ static BezierSE3 reverseBezierSE3(const BezierSE3& traj)
     return rev;
 }
 
+PlannerManager::~PlannerManager()
+{
+    if (background_expand_thread_.joinable()) {
+        background_expand_thread_.join();
+    }
+}
+
 void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     node_ = nh;
     current_state_ = INIT;
@@ -517,7 +524,7 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
             // ------------------------------------------------------------
             if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::NONE) {
 
-                planner_manager_->expandNode(start_pos_, goal_pos_, planner_manager_->current_node_id_);
+                planner_manager_->expandNodePrimaryOnly(start_pos_, goal_pos_, planner_manager_->current_node_id_);
 
                 bool ok = planner_manager_->planGlobalBestAction(goal_pos_);
                 if (!ok) {
@@ -526,7 +533,6 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
                     return;
                 }
 
-                // If the selected action is an expand edge, we need to optimize a new trajectory
                 if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
                     bool ok2 = planner_manager_->prepareTrajectoryForCurrentEdge(start_pos_);
                     if (!ok2) {
@@ -535,8 +541,6 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
                         return;
                     }
                 }
-                // If the selected action is a graph path edge, do NOT replan trajectory here.
-                // Later the EXEC state will directly use the cached bezier stored in the edge.
                 else if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
                     ROS_INFO("[FSM]: Selected action is a graph path edge, skip trajectory replanning.");
                 }
@@ -545,6 +549,9 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
                     stopRobot();
                     return;
                 }
+
+                // start background expansion AFTER the immediate action is ready
+                planner_manager_->startBackgroundExpansion();
 
                 changeFSMState(EXEC_TRAJECTORY, "FSM");
                 break;
@@ -774,6 +781,7 @@ void PlannerManagerFSM::publishGoalMarker() {
 
 void PlannerManagerFSM::publishGlobalGraph()
 {
+    std::lock_guard<std::mutex> lk(planner_manager_->graph_mutex_);
     visualization_msgs::Marker edge_lines;
     edge_lines.header.frame_id = "odom";
     edge_lines.header.stamp = ros::Time::now();
