@@ -1039,6 +1039,7 @@ bool PlannerManager::getTargetPose3D(const Eigen::Vector3d &start_pos, const Eig
         shrink[l] = clearance * arows[l].norm();
     } 
     
+    const std::vector<TripleCache> triple_cache = buildTripleCache3D(arows);
     // output init
     out_replan_pos = start_pos;
     out_R.setIdentity();
@@ -1071,7 +1072,8 @@ bool PlannerManager::getTargetPose3D(const Eigen::Vector3d &start_pos, const Eig
                     b_prime[l] = b[l] - hl - shrink[l];
                 }
                 Eigen::Vector3d best_vertex;
-                double value = solveLPByEnumeratingVertices3D(arows, A, b_prime, dir, best_vertex);
+                // double value = solveLPByEnumeratingVertices3D(arows, A, b_prime, dir, best_vertex);
+                double value = solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, best_vertex);
 
                 // make robot's x axis align with dir
                 Eigen::Vector3d x_axis_world = R.col(0);
@@ -1132,7 +1134,7 @@ bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eig
         Eigen::Vector2d x_axis_world = R.col(0);
         double align = x_axis_world.dot(dir);
         // weight in "meters": w_align=0.1 means 10cm worth of alignment
-        double w_align = 5.0;
+        double w_align = 1.0;
 
         double angle_diff = std::abs(yaw - robot_yaw);
         double w_angle_diff = 0.5; // weight for angle difference 
@@ -2088,8 +2090,8 @@ void PlannerManager::expandNode(Eigen::Vector3d &start_pos, Eigen::Vector3d &goa
     current_direction_for_visualization_[2] = env_type_ ? all_candidates[0].dir_odom_frame[2] : 0.0;
     current_pos = start_pos;
     // test
-    decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
-    decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
+    // decomposeAlongGapDirectionsTEST(start_pos, all_candidates);
+    // decomposeAlongGapDirections_FRTreeTEST(start_pos, all_candidates);
     // first decompose along all gap directions
 auto t0 = std::chrono::high_resolution_clock::now();
     decomposeAlongGapDirections(start_pos, all_candidates);
