@@ -18,7 +18,7 @@
     <!-- <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" clear_params="true"
             args="-z 0.2 -param robot_description -urdf -model simple_robot" output="screen"/> -->
     <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" clear_params="true"
-        args="-z 1.2 -x -0.5 -param robot_description -urdf -model simple_robot" output="screen"/>
+        args="-z 1.0 -param robot_description -urdf -model simple_robot" output="screen"/>
 
     <node pkg="simple_robot" name="simple_robot" type="simple_robot_node" output="screen">
     </node>
