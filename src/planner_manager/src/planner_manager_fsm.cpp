@@ -20,13 +20,6 @@ static BezierSE3 reverseBezierSE3(const BezierSE3& traj)
     return rev;
 }
 
-PlannerManager::~PlannerManager()
-{
-    if (background_expand_thread_.joinable()) {
-        background_expand_thread_.join();
-    }
-}
-
 void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     node_ = nh;
     current_state_ = INIT;
@@ -53,8 +46,8 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     /* Callback Function */
     FSM_timer_ = node_.createTimer(ros::Duration(0.2), &PlannerManagerFSM::FSMCallback, this);
     cmd_timer_ = node_.createTimer(ros::Duration(0.2), &PlannerManagerFSM::publishCmdCallback, this);
-    replan_check_timer_ = node_.createTimer(ros::Duration(1.0), &PlannerManagerFSM::replanCheckCallback, this);
-    visualization_timer_ = node_.createTimer(ros::Duration(1.0), &PlannerManagerFSM::visualizationCallback, this);
+    replan_check_timer_ = node_.createTimer(ros::Duration(0.1), &PlannerManagerFSM::replanCheckCallback, this);
+    visualization_timer_ = node_.createTimer(ros::Duration(0.1), &PlannerManagerFSM::visualizationCallback, this);
 
     /* ROS subscribers */
     odom_sub_ = node_.subscribe("/odom", 1, &PlannerManagerFSM::odomCallback, this);
@@ -64,6 +57,10 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     goal_marker_pub_ = node_.advertise<visualization_msgs::Marker>("/goal_marker", 1);
     global_graph_pub_ = node_.advertise<visualization_msgs::Marker>("/global_graph", 10);
     global_graph_nodes_pub_ = node_.advertise<visualization_msgs::Marker>("/global_graph_nodes", 10);
+
+    trajectory_pub_  = node_.advertise<nav_msgs::Path>("/robot_trajectory", 1, true);
+    trajectory_msg_.header.frame_id = "odom";
+    trajectory_msg_.poses.clear();
 }
 
 void PlannerManagerFSM::odomCallback(const nav_msgs::OdometryConstPtr &msg) {
@@ -74,6 +71,34 @@ void PlannerManagerFSM::odomCallback(const nav_msgs::OdometryConstPtr &msg) {
     quaternionToRPY(odom_ori_, odom_roll_, odom_pitch_, odom_yaw_);
 
     have_odom_ = true;
+
+    geometry_msgs::PoseStamped pose_stamped;
+    pose_stamped.header.stamp = msg->header.stamp;
+    pose_stamped.header.frame_id = "odom";
+
+    pose_stamped.pose = msg->pose.pose;
+
+    if (env_type_ == 0) {
+        // 2D environment
+        pose_stamped.pose.position.z = 0.0;
+    }
+
+    bool should_append = false;
+    if (trajectory_msg_.poses.empty()) {
+        should_append = true;
+    } else {
+        const auto& last_p = trajectory_msg_.poses.back().pose.position;
+        const double dx = pose_stamped.pose.position.x - last_p.x;
+        const double dy = pose_stamped.pose.position.y - last_p.y;
+        const double dz = pose_stamped.pose.position.z - last_p.z;
+        const double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+        should_append = (dist > traj_min_dist_);
+    }
+
+    if (should_append) {
+        trajectory_msg_.header.stamp = ros::Time::now();
+        trajectory_msg_.poses.push_back(pose_stamped);
+    }
 }
 
 void PlannerManagerFSM::goalCallback(const geometry_msgs::PoseStampedPtr &msg) {
@@ -854,12 +879,22 @@ void PlannerManagerFSM::publishGlobalGraph()
     global_graph_nodes_pub_.publish(node_points);
 }
 
+void PlannerManagerFSM::publishPath() {
+    trajectory_msg_.header.stamp = ros::Time::now();
+    trajectory_msg_.header.frame_id = "odom";
+    trajectory_pub_.publish(trajectory_msg_);
+}
+
 void PlannerManagerFSM::visualizationCallback(const ros::TimerEvent &e) {
     if (have_goal_){
         publishGoalMarker();
     }
     if (planner_manager_->free_regions_graph_ptr_->numNodes() > 0){
         publishGlobalGraph(); 
+        planner_manager_->publishSelectedEdgePolyhedron();
+    }
+    if (have_odom_){
+        publishPath();
     }
 }
 

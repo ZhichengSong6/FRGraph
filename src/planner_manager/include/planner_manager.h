@@ -36,6 +36,7 @@
 #include <cmath>
 #include <limits>
 
+#include <deque>
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -110,6 +111,7 @@ class PlannerManager {
     ros::Publisher traj_after_opt_pub_;
 
     ros::Publisher current_direction_pub_;
+    ros::Publisher selected_edge_poly_pub_;
 
     std::vector<ros::Publisher> traj_iter_pubs_;
     int traj_iter_pub_count_ = 30; 
@@ -135,6 +137,7 @@ class PlannerManager {
     void publishCurrentDirection(Eigen::Vector3d &start_pos, Eigen::Vector3d &gap_direction);
 
     void publishTrajectoryForVisualizationIter(BezierSE2& traj, double worst_violation_time = -1.0, int iter_id = -1);
+    void publishSelectedEdgePolyhedron();
 
     ros::Timer odom_timer_;
     ros::Timer debug_timer_;
@@ -283,7 +286,9 @@ class PlannerManager {
         bool valid = false;
     };
 
-    PendingExpandJob pending_expand_job_;
+    std::deque<PendingExpandJob> pending_expand_jobs_;
+    NodeId background_running_node_id_ = -1;
+    std::atomic<bool> shutting_down_{false};
 
     void expandNodePrimaryOnly(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id);
     void startBackgroundExpansion();

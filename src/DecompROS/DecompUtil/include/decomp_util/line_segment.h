@@ -41,7 +41,7 @@ class LineSegment : public DecompBase<Dim> {
       find_polyhedron_aniso_full(radius, center);
       add_local_bbox_aniso(this->polyhedron_);
 // std::cout << "Aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
-      prune_near_duplicate_hyperplanes(this->polyhedron_, p1_, 5.0, 1e-3);
+      prune_near_duplicate_hyperplanes(this->polyhedron_, p1_, 5.0, 1e-2);
 // std::cout << "After pruning near-duplicate hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
       remove_redundant_hyperplanes(this->polyhedron_);
 // std::cout << "After removing redundant hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;

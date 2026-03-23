@@ -3,11 +3,13 @@
 
 #include <ros/ros.h>
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
 #include <visualization_msgs/Marker.h>
 
 #include <unordered_set>
+#include <cmath>
 
 #include <Eigen/Dense>
 
@@ -53,6 +55,10 @@ class PlannerManagerFSM {
     ros::Publisher global_graph_pub_;        // edges (LINE_LIST)
     ros::Publisher global_graph_nodes_pub_;  // nodes (SPHERE_LIST)
 
+    ros::Publisher trajectory_pub_;
+    nav_msgs::Path trajectory_msg_;
+    double traj_min_dist_ = 0.05; // minimum distance to append new point in trajectory visualization
+
     /* ROS subscribers */
     ros::Subscriber odom_sub_;
     ros::Subscriber goal_sub_;
@@ -88,6 +94,7 @@ class PlannerManagerFSM {
     /* Visualization */
     void publishGoalMarker();
     void publishGlobalGraph();
+    void publishPath();
 
     public:
     PlannerManagerFSM(/* args */) {}

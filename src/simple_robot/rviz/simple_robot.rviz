@@ -6,8 +6,10 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /Grid1
+        - /Path1
       Splitter Ratio: 0.5
-    Tree Height: 549
+    Tree Height: 1079
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -48,7 +50,7 @@ Visualization Manager:
         Y: 0
         Z: 0
       Plane: XY
-      Plane Cell Count: 10
+      Plane Cell Count: 100
       Reference Frame: <Fixed Frame>
       Value: true
     - Alpha: 1
@@ -204,7 +206,7 @@ Visualization Manager:
       Marker Topic: /goal_marker
       Name: Marker
       Namespaces:
-        {}
+        goal_marker: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -212,7 +214,7 @@ Visualization Manager:
       Marker Topic: /global_graph
       Name: Marker
       Namespaces:
-        {}
+        global_graph_edges: true
       Queue Size: 100
       Value: true
     - Alpha: 0.20000000298023224
@@ -238,20 +240,11 @@ Visualization Manager:
       Queue Size: 10
       Scale: 0.10000000149011612
       State: Mesh
-      Topic: /planner/polyhedron_array_aniso
+      Topic: /planner/selected_edge_polyhedron
       Unreliable: false
       Value: true
       VsColor: 0; 255; 0
       VsScale: 1
-    - Alpha: 0.5
-      Class: decomp_rviz_plugins/EllipsoidArray
-      Color: 204; 51; 204
-      Enabled: true
-      Name: EllipsoidArray
-      Queue Size: 10
-      Topic: /planner/planner_manager_sphere
-      Unreliable: false
-      Value: true
     - Alpha: 0.20000000298023224
       BoundColor: 255; 0; 0
       Class: decomp_rviz_plugins/PolyhedronArray
@@ -281,29 +274,29 @@ Visualization Manager:
       VsColor: 0; 255; 0
       VsScale: 1
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /planner/planner_manager_test_cube
       Name: MarkerArray
       Namespaces:
         {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /planner/planner_manager_traj_vis
       Name: MarkerArray
       Namespaces:
         {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /planner/planner_manager_traj_after_opt
       Name: MarkerArray
       Namespaces:
         {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /global_graph_nodes
@@ -312,6 +305,30 @@ Visualization Manager:
         global_graph_nodes: true
       Queue Size: 100
       Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 25; 255; 0
+      Enabled: false
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /robot_trajectory
+      Unreliable: false
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -340,7 +357,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 9.300439834594727
+      Distance: 15.311985969543457
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -348,27 +365,27 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 1.0572776794433594
-        Y: -3.8425955772399902
+        X: 6.052936553955078
+        Y: -5.886306285858154
         Z: 1.430511474609375e-06
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5747973918914795
+      Pitch: 0.529797375202179
       Target Frame: <Fixed Frame>
-      Yaw: 4.665431022644043
+      Yaw: 4.705432891845703
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 846
+  Height: 1376
   Hide Left Dock: false
   Hide Right Dock: false
   Image:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd000000040000000000000156000002b0fc0200000009fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003d000002b0000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a0049006d00610067006502000000480000001b00000280000001e0000000010000010f000002b0fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073010000003d000002b0000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000006770000003efc0100000002fb0000000800540069006d0065010000000000000677000003bc00fffffffb0000000800540069006d0065010000000000000450000000000000000000000406000002b000000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd000000040000000000000156000004c2fc0200000009fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003d000004c2000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a0049006d00610067006502000000480000001b00000280000001e0000000010000010f000004c2fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073010000003d000004c2000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000009b80000003efc0100000002fb0000000800540069006d00650100000000000009b8000003bc00fffffffb0000000800540069006d0065010000000000000450000000000000000000000747000004c200000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:
@@ -377,6 +394,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 1655
-  X: 692
+  Width: 2488
+  X: 72
   Y: 27

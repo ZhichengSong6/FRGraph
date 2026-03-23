@@ -26,6 +26,7 @@
   <gazebo reference="base_link">
     <gravity>false</gravity>
     <kinematic>true</kinematic>
+    <material>Gazebo/Blue</material>
   </gazebo>
 
   <xacro:if value="$(arg if_3D_Lidar)">

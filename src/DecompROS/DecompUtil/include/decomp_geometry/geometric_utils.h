@@ -286,7 +286,7 @@ inline void prune_near_duplicate_hyperplanes(Polyhedron2D &poly,
 }
 
 /// Prune near-duplicate hyperplanes (3D)
-inline void prune_near_duplicate_hyperplanes(Polyhedron3D &poly, const Vec3f &pt, decimal_t angle_deg = 5.0, decimal_t b_thresh = 1e-3){
+inline void prune_near_duplicate_hyperplanes(Polyhedron3D &poly, const Vec3f &pt, decimal_t angle_deg = 5.0, decimal_t b_thresh = 1e-2){
   if (poly.vs_.size() < 2){
     return;
   }

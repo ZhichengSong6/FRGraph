@@ -1078,9 +1078,10 @@ void GapExtractor::splitOpenGapRegion(const GapRegion& region, float yaw_sub_spa
 
     // Decide Ny/Ne (capped by thresholds; at least 1 tile each)
     int Ny = (yaw_sub_span  > 1e-6f) ? (int)std::ceil(yaw_span / yaw_sub_span)  : 1;
-    int Ne = (elev_sub_span > 1e-6f) ? (int)std::ceil(elev_span / elev_sub_span) : 1;
+    // int Ne = (elev_sub_span > 1e-6f) ? (int)std::ceil(elev_span / elev_sub_span) : 1;
     if (Ny < 1) Ny = 1;
-    if (Ne < 1) Ne = 1;
+    // if (Ne < 1) Ne = 1;
+    int Ne = 1;
 
     subregions.resize(Ny);
     for (int iy = 0; iy < Ny; ++iy){
@@ -1231,7 +1232,8 @@ void GapExtractor::splitLimitedGapRegion(const GapRegion& region, float min_yaw_
     // decide main axis based on spans
     const bool yaw_is_axis = (yaw_span >= elev_span);
     int Ny = yaw_is_axis ? std::max(1, (int)std::ceil(yaw_span  / min_yaw_span)) : 1;
-    int Ne = yaw_is_axis ? 1 : std::max(1, (int)std::ceil(elev_span / min_elev_span));
+    // int Ne = yaw_is_axis ? 1 : std::max(1, (int)std::ceil(elev_span / min_elev_span));
+    int Ne = 1;
 
     subregions.resize(Ny);
     for (int iy = 0; iy < Ny; ++iy){
@@ -1283,9 +1285,10 @@ void GapExtractor::splitFreeGapRegion(const GapRegion& region, float yaw_sub_spa
 
     const float TWO_PI = 2.f * static_cast<float>(M_PI);
     int Ny = (yaw_sub_span  > 1e-6f) ? (int)std::ceil(TWO_PI / yaw_sub_span)  : 1;
-    int Ne = (elev_sub_span > 1e-6f) ? (int)std::ceil(elev_span / elev_sub_span) : 1;
+    // int Ne = (elev_sub_span > 1e-6f) ? (int)std::ceil(elev_span / elev_sub_span) : 1;
     if (Ny < 1) Ny = 1;
-    if (Ne < 1) Ne = 1;
+    // if (Ne < 1) Ne = 1;
+    int Ne = 1;
 
     subregions.resize(Ny);
     for (int iy = 0; iy < Ny; ++iy) subregions[iy].resize(Ne);

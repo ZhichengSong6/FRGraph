@@ -1,17 +1,17 @@
 planner:
   env_type: 1 # 0 for 2D, 1 for 3D
   size_of_cropped_pointcloud: [6, 6, 3]
-  goal_z_pos: 0.5
+  goal_z_pos: 2.5
 
   # Parameters for robot shape
-  robot_shape/points: [0.2, 0.1, 0.1,
-                       0.2, -0.1, 0.1,
-                      -0.2, -0.1, 0.1,
-                      -0.2, 0.1, 0.10,
-                       0.2, 0.1, -0.1,
-                       0.2, -0.1, -0.1,
-                      -0.2, -0.1, -0.1,
-                      -0.2, 0.1, -0.1]
+  robot_shape/points: [ 0.2,  0.1,  0.4,
+                        0.2, -0.1,  0.4,
+                       -0.2, -0.1,  0.4,
+                       -0.2,  0.1,  0.4,
+                        0.2,  0.1, -0.1,
+                        0.2, -0.1, -0.1,
+                       -0.2, -0.1, -0.1,
+                       -0.2,  0.1, -0.1]  # include the lidar
   robot_shape/imu_pos: [0.0, 0.0, 0.0]
 
   # robot_shape/points_2d: [0.2, 0.1,
@@ -22,7 +22,7 @@ planner:
 
   # Parameters for lidar
   lidar/min_elev_angle: -30.67    # degrees
-  lidar/max_elev_angle: 20.67     # degrees
+  lidar/max_elev_angle: 30.67     # degrees
 
   # Parameters for gap extractor for 3D environment
   gap_extractor/3D/min_pixels_in_open_gap_region: 20

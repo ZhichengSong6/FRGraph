@@ -202,6 +202,7 @@ void PlannerManager::initPlannerModule(ros::NodeHandle &nh) {
     traj_after_opt_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_traj_after_opt", 1, true);
 
     current_direction_pub_ = node_.advertise<visualization_msgs::MarkerArray>("planner_manager_current_direction", 1, true);
+    selected_edge_poly_pub_ = node_.advertise<decomp_ros_msgs::PolyhedronArray>("selected_edge_polyhedron", 1, true);
 
     traj_iter_pubs_.resize(traj_iter_pub_count_);
     for (int i = 0; i < traj_iter_pub_count_; ++i) {
@@ -2183,9 +2184,7 @@ ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
     return true;
 }
 
-void PlannerManager::expandNodePrimaryOnly(Eigen::Vector3d &start_pos,
-                                           Eigen::Vector3d &goal_pos,
-                                           NodeId current_id)
+void PlannerManager::expandNodePrimaryOnly(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id)
 {
 auto t_total_0 = std::chrono::high_resolution_clock::now();
     // 1) generate node polyhedron at current pose
@@ -2270,8 +2269,8 @@ auto t_pose_0 = std::chrono::high_resolution_clock::now();
 auto t_pose_1 = std::chrono::high_resolution_clock::now();
 double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pose_1 - t_pose_0).count();
 
-ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3f ms, ok=%d",
-            i, ms_decomp, ms_pose, (int)ok);
+ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3f ms, ok=%d", i, ms_decomp, ms_pose, (int)ok);
+ROS_INFO("[PlannerManager] size of corridor polyhedron: num hyperplanes = %zu", corridor_poly.hyperplanes().size());
 
             if (!ok) {
                 continue;
@@ -2375,23 +2374,26 @@ ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3
 auto t_pending_0 = std::chrono::high_resolution_clock::now();
     {
         std::lock_guard<std::mutex> lk(bg_job_mutex_);
-        pending_expand_job_.node_id = current_id;
-        pending_expand_job_.start_pos = start_pos;
-        pending_expand_job_.candidates.clear();
 
-        if (found_primary) {
-            if (primary_idx + 1 < all_candidates.size()) {
-                pending_expand_job_.candidates.insert(
-                    pending_expand_job_.candidates.end(),
-                    all_candidates.begin() + primary_idx + 1,
-                    all_candidates.end());
+        if (!shutting_down_) {
+            PendingExpandJob job;
+            job.node_id = current_id;
+            job.start_pos = start_pos;
+            job.candidates.clear();
+
+            for (size_t i = 0; i < all_candidates.size(); ++i) {
+                if (found_primary && i == primary_idx) continue;
+                job.candidates.push_back(all_candidates[i]);
             }
-        } else {
-            // if no primary edge found, keep all remaining candidates for background expansion
-            pending_expand_job_.candidates = all_candidates;
-        }
 
-        pending_expand_job_.valid = !pending_expand_job_.candidates.empty();
+            job.valid = !job.candidates.empty();
+
+            if (job.valid) {
+                pending_expand_jobs_.push_back(std::move(job));
+                ROS_INFO("[PlannerManager] Queued background expansion job for node %d. Queue size = %zu",
+                        current_id, pending_expand_jobs_.size());
+            }
+        }
     }
 auto t_pending_1 = std::chrono::high_resolution_clock::now();
 double ms_pending = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pending_1 - t_pending_0).count();
@@ -2416,16 +2418,32 @@ ROS_INFO("[PlannerManager] expandNodePrimaryOnly total elapsed: %.3f ms", ms_tot
 
 void PlannerManager::startBackgroundExpansion()
 {
+    if (shutting_down_) {
+        ROS_WARN("[PlannerManager] Skip starting background expansion because PlannerManager is shutting down.");
+        return;
+    }
+
     bool has_job = false;
+    size_t queue_size = 0;
+    NodeId newest_node_id = -1;
+
     {
         std::lock_guard<std::mutex> lk(bg_job_mutex_);
-        has_job = pending_expand_job_.valid;
+        has_job = !pending_expand_jobs_.empty();
+        queue_size = pending_expand_jobs_.size();
+        if (has_job) {
+            newest_node_id = pending_expand_jobs_.back().node_id;
+        }
     }
 
     if (!has_job) return;
-    if (background_expand_running_) return;
 
-    // if previous thread exists and already finished, join it first
+    if (background_expand_running_) {
+        ROS_WARN("[PlannerManager] Background expansion for node %d is queued because node %d is still being processed. Queue size = %zu",
+                 newest_node_id, background_running_node_id_, queue_size);
+        return;
+    }
+
     if (background_expand_thread_.joinable()) {
         background_expand_thread_.join();
     }
@@ -2436,29 +2454,46 @@ void PlannerManager::startBackgroundExpansion()
 
 void PlannerManager::backgroundExpandWorker()
 {
-    PendingExpandJob job;
-    {
-        std::lock_guard<std::mutex> lk(bg_job_mutex_);
-        if (!pending_expand_job_.valid) {
+    for (;;) {
+        if (shutting_down_) {
+            background_running_node_id_ = -1;
             background_expand_running_ = false;
+            ROS_INFO("[PlannerManager] Background expansion worker exits: shutting down.");
             return;
         }
-        job = pending_expand_job_;
-        pending_expand_job_.valid = false;
+
+        PendingExpandJob job;
+
+        {
+            std::lock_guard<std::mutex> lk(bg_job_mutex_);
+            if (pending_expand_jobs_.empty()) {
+                background_running_node_id_ = -1;
+                background_expand_running_ = false;
+                ROS_INFO("[PlannerManager] Background expansion worker exits: queue is empty.");
+                return;
+            }
+
+            job = std::move(pending_expand_jobs_.front());
+            pending_expand_jobs_.pop_front();
+            background_running_node_id_ = job.node_id;
+
+            ROS_INFO("[PlannerManager] Background expansion dequeued node %d. Remaining queue size = %zu",
+                     job.node_id, pending_expand_jobs_.size());
+        }
+
+        if (!job.valid || job.node_id < 0 || job.candidates.empty()) {
+            ROS_WARN("[PlannerManager] Skip invalid background expansion job.");
+            continue;
+        }
+
+        ROS_INFO("[PlannerManager] Background expansion started for node %d with %zu pending candidates.",
+                 job.node_id, job.candidates.size());
+
+        expandChildrenBackgroundParallel(job.start_pos, job.node_id, job.candidates);
+
+        ROS_INFO("[PlannerManager] Background expansion finished for node %d. All pending candidates have been processed.",
+                 job.node_id);
     }
-
-    if (job.node_id < 0 || job.candidates.empty()) {
-        background_expand_running_ = false;
-        return;
-    }
-
-    ROS_INFO("[PlannerManager] Background expansion started for node %d with %zu pending candidates.",
-             job.node_id, job.candidates.size());
-
-    expandChildrenBackgroundParallel(job.start_pos, job.node_id, job.candidates);
-
-    ROS_INFO("[PlannerManager] Background expansion finished for node %d.", job.node_id);
-    background_expand_running_ = false;
 }
 
 void PlannerManager::expandChildrenBackgroundParallel(const Eigen::Vector3d& start_pos, NodeId current_node_id, const std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates)
@@ -3045,10 +3080,7 @@ void PlannerManager::publishTrajectoryForVisualization(BezierSE3 &traj, double w
     traj_vis_pub_.publish(traj_marker_array);
 }
 
-void PlannerManager::publishTrajectoryForVisualizationIter(
-    BezierSE2 &traj,
-    double worst_violation_time,
-    int iter_id)
+void PlannerManager::publishTrajectoryForVisualizationIter(BezierSE2 &traj, double worst_violation_time, int iter_id)
 {
     if (iter_id < 0) return;
     if (iter_id >= (int)traj_iter_pubs_.size()) return;
@@ -3167,9 +3199,54 @@ void PlannerManager::publishCurrentDirection(Eigen::Vector3d &start_pos, Eigen::
     current_direction_pub_.publish(marker_array);
 }
 
+void PlannerManager::publishSelectedEdgePolyhedron()
+{
+    if (!free_regions_graph_ptr_) return;
+    if (current_edge_id_ < 0) return;
+
+    std::lock_guard<std::mutex> lk(graph_mutex_);
+
+    auto* e = free_regions_graph_ptr_->getEdge(current_edge_id_);
+    if (!e) return;
+
+    decomp_ros_msgs::PolyhedronArray poly_msg;
+    poly_msg.header.stamp = ros::Time::now();
+    poly_msg.header.frame_id = "odom";
+
+    if (env_type_) {
+        vec_E<Polyhedron3D> polys;
+        polys.push_back(e->corridor_3d_);
+        poly_msg = DecompROS::polyhedron_array_to_ros(polys);
+    } else {
+        vec_E<Polyhedron2D> polys;
+        polys.push_back(e->corridor_2d_);
+        poly_msg = DecompROS::polyhedron_array_to_ros(polys);
+    }
+
+    poly_msg.header.stamp = ros::Time::now();
+    poly_msg.header.frame_id = "odom";
+    selected_edge_poly_pub_.publish(poly_msg);
+}
+
 void PlannerManager::debugTimerCallback(const ros::TimerEvent &event) {
     publishRobotPoints();
     publishRobotSphere();
     // publishTestCube();
     publishCurrentDirection(current_pos, current_direction_for_visualization_);
+}
+
+PlannerManager::~PlannerManager()
+{
+    shutting_down_ = true;
+
+    {
+        std::lock_guard<std::mutex> lk(bg_job_mutex_);
+        pending_expand_jobs_.clear();
+    }
+
+    if (background_expand_thread_.joinable()) {
+        background_expand_thread_.join();
+    }
+
+    ROS_INFO("[PlannerManager] Destructor: background expansion thread joined.");
 }
