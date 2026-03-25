@@ -1,81 +1,82 @@
-<sdf version='1.7'>
-  <world name='default'>
-    <light name='user_directional_light_back_right' type='directional'>
+<?xml version="1.0" ?>
+<sdf version="1.7">
+  <world name="default">
+    <light name="user_directional_light_0" type="directional">
       <cast_shadows>1</cast_shadows>
-      <pose>-6 -6 10 0 -0 0</pose>
-      <diffuse>0.55 0.55 0.55 1</diffuse>
-      <specular>0.08 0.08 0.08 1</specular>
+      <pose>8.82764 2.91095 1 0 -0 0</pose>
+      <diffuse>0.5 0.5 0.5 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
       <attenuation>
         <range>1000</range>
         <constant>0.9</constant>
         <linear>0.01</linear>
         <quadratic>0.001</quadratic>
       </attenuation>
-      <direction>0.35 0.35 -0.87</direction>
+      <direction>0.1 0.1 -0.9</direction>
       <spot>
         <inner_angle>0</inner_angle>
         <outer_angle>0</outer_angle>
         <falloff>0</falloff>
       </spot>
     </light>
-    <light name='user_directional_light_back_left' type='directional'>
+    <light name="user_directional_light_1" type="directional">
       <cast_shadows>1</cast_shadows>
-      <pose>-6 6 10 0 -0 0</pose>
-      <diffuse>0.55 0.55 0.55 1</diffuse>
-      <specular>0.08 0.08 0.08 1</specular>
+      <pose>-7.8244 2.91635 1 0 -0 0</pose>
+      <diffuse>0.5 0.5 0.5 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
       <attenuation>
         <range>1000</range>
         <constant>0.9</constant>
         <linear>0.01</linear>
         <quadratic>0.001</quadratic>
       </attenuation>
-      <direction>0.35 -0.35 -0.87</direction>
+      <direction>0.1 0.1 -0.9</direction>
       <spot>
         <inner_angle>0</inner_angle>
         <outer_angle>0</outer_angle>
         <falloff>0</falloff>
       </spot>
     </light>
-    <light name='user_directional_light_front_right' type='directional'>
+    <light name="user_directional_light_2" type="directional">
       <cast_shadows>1</cast_shadows>
-      <pose>6 -6 10 0 -0 0</pose>
-      <diffuse>0.55 0.55 0.55 1</diffuse>
-      <specular>0.08 0.08 0.08 1</specular>
+      <pose>-7.75772 -4.88479 1 0 -0 0</pose>
+      <diffuse>0.5 0.5 0.5 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
       <attenuation>
         <range>1000</range>
         <constant>0.9</constant>
         <linear>0.01</linear>
         <quadratic>0.001</quadratic>
       </attenuation>
-      <direction>-0.35 0.35 -0.87</direction>
+      <direction>0.1 0.1 -0.9</direction>
       <spot>
         <inner_angle>0</inner_angle>
         <outer_angle>0</outer_angle>
         <falloff>0</falloff>
       </spot>
     </light>
-    <light name='user_directional_light_front_left' type='directional'>
+    <light name="user_directional_light_3" type="directional">
       <cast_shadows>1</cast_shadows>
-      <pose>6 6 10 0 -0 0</pose>
-      <diffuse>0.55 0.55 0.55 1</diffuse>
-      <specular>0.08 0.08 0.08 1</specular>
+      <pose>8.88456 -3.92028 1 0 -0 0</pose>
+      <diffuse>0.5 0.5 0.5 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
       <attenuation>
         <range>1000</range>
         <constant>0.9</constant>
         <linear>0.01</linear>
         <quadratic>0.001</quadratic>
       </attenuation>
-      <direction>-0.35 -0.35 -0.87</direction>
+      <direction>0.1 0.1 -0.9</direction>
       <spot>
         <inner_angle>0</inner_angle>
         <outer_angle>0</outer_angle>
         <falloff>0</falloff>
       </spot>
     </light>
-    <model name='ground_plane'>
+    <model name="ground_plane">
       <static>1</static>
-      <link name='link'>
-        <collision name='collision'>
+      <link name="link">
+        <collision name="collision">
           <geometry>
             <plane>
               <normal>0 0 1</normal>
@@ -100,7 +101,7 @@
           </surface>
           <max_contacts>10</max_contacts>
         </collision>
-        <visual name='visual'>
+        <visual name="visual">
           <cast_shadows>0</cast_shadows>
           <geometry>
             <plane>
@@ -119,11 +120,12 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
+      <pose>0 0 0 0 -0 0</pose>
     </model>
     <gravity>0 0 -9.8</gravity>
     <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
-    <atmosphere type='adiabatic'/>
-    <physics type='ode'>
+    <atmosphere type="adiabatic"/>
+    <physics type="ode">
       <max_step_size>0.001</max_step_size>
       <real_time_factor>1</real_time_factor>
       <real_time_update_rate>1000</real_time_update_rate>
@@ -141,10 +143,10 @@
       <elevation>0</elevation>
       <heading_deg>0</heading_deg>
     </spherical_coordinates>
-    <model name='region_wall_left'>
+    <model name="region_wall_left">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <box>
               <size>0.1 5.2 1</size>
@@ -156,7 +158,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <box>
               <size>0.1 5.2 1</size>
@@ -182,10 +184,10 @@
       </link>
       <pose>-2.55 0 0.5 0 -0 0</pose>
     </model>
-    <model name='region_wall_right'>
+    <model name="region_wall_right">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <box>
               <size>0.1 5.2 1</size>
@@ -197,7 +199,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <box>
               <size>0.1 5.2 1</size>
@@ -223,10 +225,10 @@
       </link>
       <pose>2.55 0 0.5 0 -0 0</pose>
     </model>
-    <model name='region_wall_bottom'>
+    <model name="region_wall_bottom">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <box>
               <size>5 0.1 1</size>
@@ -238,7 +240,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <box>
               <size>5 0.1 1</size>
@@ -264,10 +266,10 @@
       </link>
       <pose>0 -2.55 0.5 0 -0 0</pose>
     </model>
-    <model name='region_wall_top'>
+    <model name="region_wall_top">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <box>
               <size>5 0.1 1</size>
@@ -279,7 +281,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <box>
               <size>5 0.1 1</size>
@@ -305,10 +307,10 @@
       </link>
       <pose>0 2.55 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_0'>
+    <model name="blue_cylinder_0">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -321,7 +323,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -348,10 +350,10 @@
       </link>
       <pose>2.00979 -0.969959 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_1'>
+    <model name="blue_cylinder_1">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -364,7 +366,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -391,10 +393,10 @@
       </link>
       <pose>0.036672 -1.82413 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_2'>
+    <model name="blue_cylinder_2">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -407,7 +409,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -434,10 +436,10 @@
       </link>
       <pose>-2.13635 1.43056 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_3'>
+    <model name="blue_cylinder_3">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -450,7 +452,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -477,10 +479,10 @@
       </link>
       <pose>1.19154 1.26825 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_4'>
+    <model name="blue_cylinder_4">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -493,7 +495,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -518,12 +520,12 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>0.834756 0.044504 0.5 0 -0 0</pose>
+      <pose>1.0395 0.114704 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_5'>
+    <model name="blue_cylinder_5">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -536,7 +538,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -563,10 +565,10 @@
       </link>
       <pose>-0.522202 2.15883 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_6'>
+    <model name="blue_cylinder_6">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -579,7 +581,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -604,12 +606,12 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>1.20325 -1.76537 0.5 0 -0 0</pose>
+      <pose>1.14475 -1.95257 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_7'>
+    <model name="blue_cylinder_7">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -622,7 +624,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -649,10 +651,10 @@
       </link>
       <pose>0.606536 0.977576 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_8'>
+    <model name="blue_cylinder_8">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -665,7 +667,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -692,10 +694,10 @@
       </link>
       <pose>-1.963 0.193201 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_9'>
+    <model name="blue_cylinder_9">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -708,7 +710,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -735,10 +737,10 @@
       </link>
       <pose>-0.962573 -1.42307 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_10'>
+    <model name="blue_cylinder_10">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -751,7 +753,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -778,10 +780,10 @@
       </link>
       <pose>-1.95138 -1.57151 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_11'>
+    <model name="blue_cylinder_11">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -794,7 +796,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -821,10 +823,10 @@
       </link>
       <pose>-1.38526 1.02107 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_12'>
+    <model name="blue_cylinder_12">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -837,7 +839,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -864,10 +866,10 @@
       </link>
       <pose>-1.03112 -0.081843 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_13'>
+    <model name="blue_cylinder_13">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -880,7 +882,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -905,12 +907,12 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-0.478007 0.534955 0.5 0 -0 0</pose>
+      <pose>-0.40781 0.728001 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_14'>
+    <model name="blue_cylinder_14">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -923,7 +925,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -948,12 +950,12 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-0.039515 1.51691 0.5 0 -0 0</pose>
+      <pose>0.001434 1.56956 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_15'>
+    <model name="blue_cylinder_15">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -966,7 +968,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -993,10 +995,10 @@
       </link>
       <pose>1.19446 -0.892826 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_16'>
+    <model name="blue_cylinder_16">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1009,7 +1011,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1036,10 +1038,10 @@
       </link>
       <pose>-1.35375 2.1246 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_17'>
+    <model name="blue_cylinder_17">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1052,7 +1054,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1079,10 +1081,10 @@
       </link>
       <pose>0.724038 1.9563 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_18'>
+    <model name="blue_cylinder_18">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1095,7 +1097,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1120,12 +1122,12 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>0.099034 -0.291286 0.5 0 -0 0</pose>
+      <pose>-0.006263 -0.262038 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_19'>
+    <model name="blue_cylinder_19">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1138,7 +1140,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1165,10 +1167,10 @@
       </link>
       <pose>1.88887 0.883061 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_20'>
+    <model name="blue_cylinder_20">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1181,7 +1183,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1208,10 +1210,10 @@
       </link>
       <pose>-0.325364 -0.992765 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_21'>
+    <model name="blue_cylinder_21">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1224,7 +1226,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1251,10 +1253,10 @@
       </link>
       <pose>1.94902 -0.182709 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_22'>
+    <model name="blue_cylinder_22">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1267,7 +1269,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1294,10 +1296,10 @@
       </link>
       <pose>-1.35697 -2.14467 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_23'>
+    <model name="blue_cylinder_23">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1310,7 +1312,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1337,10 +1339,10 @@
       </link>
       <pose>-1.52676 -0.545568 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_24'>
+    <model name="blue_cylinder_24">
       <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
+      <link name="link">
+        <visual name="visual">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1353,7 +1355,7 @@
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
-        <collision name='collision'>
+        <collision name="collision">
           <geometry>
             <cylinder>
               <radius>0.3</radius>
@@ -1380,326 +1382,326 @@
       </link>
       <pose>2.08696 2.13368 0.5 0 -0 0</pose>
     </model>
-    <state world_name='default'>
+    <state world_name="default">
       <sim_time>296 271000000</sim_time>
       <real_time>77 66388769</real_time>
       <wall_time>1774409522 717373505</wall_time>
       <iterations>76557</iterations>
-      <model name='blue_cylinder_0'>
+      <model name="blue_cylinder_0">
         <pose>2.00979 -0.969959 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>2.00979 -0.969959 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_1'>
+      <model name="blue_cylinder_1">
         <pose>0.036672 -1.82413 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>0.036672 -1.82413 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_10'>
+      <model name="blue_cylinder_10">
         <pose>-1.95138 -1.57151 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-1.95138 -1.57151 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_11'>
+      <model name="blue_cylinder_11">
         <pose>-1.38526 1.02107 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-1.38526 1.02107 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_12'>
+      <model name="blue_cylinder_12">
         <pose>-1.03112 -0.081843 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-1.03112 -0.081843 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_13'>
+      <model name="blue_cylinder_13">
         <pose>-0.40781 0.728001 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-0.40781 0.728001 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_14'>
+      <model name="blue_cylinder_14">
         <pose>0.001434 1.56956 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>0.001434 1.56956 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_15'>
+      <model name="blue_cylinder_15">
         <pose>1.19446 -0.892826 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>1.19446 -0.892826 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_16'>
+      <model name="blue_cylinder_16">
         <pose>-1.35375 2.1246 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-1.35375 2.1246 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_17'>
+      <model name="blue_cylinder_17">
         <pose>0.724038 1.9563 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>0.724038 1.9563 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_18'>
+      <model name="blue_cylinder_18">
         <pose>-0.006263 -0.262038 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-0.006263 -0.262038 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_19'>
+      <model name="blue_cylinder_19">
         <pose>1.88887 0.883061 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>1.88887 0.883061 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_2'>
+      <model name="blue_cylinder_2">
         <pose>-2.13635 1.43056 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-2.13635 1.43056 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_20'>
+      <model name="blue_cylinder_20">
         <pose>-0.325364 -0.992765 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-0.325364 -0.992765 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_21'>
+      <model name="blue_cylinder_21">
         <pose>1.94902 -0.182709 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>1.94902 -0.182709 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_22'>
+      <model name="blue_cylinder_22">
         <pose>-1.35697 -2.14467 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-1.35697 -2.14467 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_23'>
+      <model name="blue_cylinder_23">
         <pose>-1.52676 -0.545568 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-1.52676 -0.545568 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_24'>
+      <model name="blue_cylinder_24">
         <pose>2.08696 2.13368 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>2.08696 2.13368 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_3'>
+      <model name="blue_cylinder_3">
         <pose>1.19154 1.26825 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>1.19154 1.26825 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_4'>
+      <model name="blue_cylinder_4">
         <pose>1.0395 0.114704 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>1.0395 0.114704 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_5'>
+      <model name="blue_cylinder_5">
         <pose>-0.522202 2.15883 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-0.522202 2.15883 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_6'>
+      <model name="blue_cylinder_6">
         <pose>1.14475 -1.95257 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>1.14475 -1.95257 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_7'>
+      <model name="blue_cylinder_7">
         <pose>0.606536 0.977576 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>0.606536 0.977576 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_8'>
+      <model name="blue_cylinder_8">
         <pose>-1.963 0.193201 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-1.963 0.193201 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='blue_cylinder_9'>
+      <model name="blue_cylinder_9">
         <pose>-0.962573 -1.42307 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-0.962573 -1.42307 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='ground_plane'>
+      <model name="ground_plane">
         <pose>0 0 0 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>0 0 0 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='region_wall_bottom'>
+      <model name="region_wall_bottom">
         <pose>0 -2.55 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>0 -2.55 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='region_wall_left'>
+      <model name="region_wall_left">
         <pose>-2.55 0 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>-2.55 0 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='region_wall_right'>
+      <model name="region_wall_right">
         <pose>2.55 0 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>2.55 0 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='region_wall_top'>
+      <model name="region_wall_top">
         <pose>0 2.55 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
-        <link name='link'>
+        <link name="link">
           <pose>0 2.55 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <light name='user_directional_light_back_left'>
-        <pose>-6 6 10 0 -0 0</pose>
+      <light name="user_directional_light_0">
+        <pose>8.82764 2.91095 1 0 -0 0</pose>
       </light>
-      <light name='user_directional_light_back_right'>
-        <pose>-6 -6 10 0 -0 0</pose>
+      <light name="user_directional_light_1">
+        <pose>-7.8244 2.91635 1 0 -0 0</pose>
       </light>
-      <light name='user_directional_light_front_left'>
-        <pose>6 6 10 0 -0 0</pose>
+      <light name="user_directional_light_2">
+        <pose>-7.75772 -4.88479 1 0 -0 0</pose>
       </light>
-      <light name='user_directional_light_front_right'>
-        <pose>6 -6 10 0 -0 0</pose>
+      <light name="user_directional_light_3">
+        <pose>8.88456 -3.92028 1 0 -0 0</pose>
       </light>
     </state>
-    <gui fullscreen='0'>
-      <camera name='user_camera'>
+    <gui fullscreen="0">
+      <camera name="user_camera">
         <pose>0 0 12 3.14159 1.57079 -1.57079</pose>
         <view_controller>orbit</view_controller>
         <projection_type>perspective</projection_type>
