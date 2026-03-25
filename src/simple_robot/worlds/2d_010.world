@@ -1,5 +1,77 @@
 <sdf version='1.7'>
   <world name='default'>
+    <light name='user_directional_light_back_right' type='directional'>
+      <cast_shadows>1</cast_shadows>
+      <pose>-6 -6 10 0 -0 0</pose>
+      <diffuse>0.55 0.55 0.55 1</diffuse>
+      <specular>0.08 0.08 0.08 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>0.35 0.35 -0.87</direction>
+      <spot>
+        <inner_angle>0</inner_angle>
+        <outer_angle>0</outer_angle>
+        <falloff>0</falloff>
+      </spot>
+    </light>
+    <light name='user_directional_light_back_left' type='directional'>
+      <cast_shadows>1</cast_shadows>
+      <pose>-6 6 10 0 -0 0</pose>
+      <diffuse>0.55 0.55 0.55 1</diffuse>
+      <specular>0.08 0.08 0.08 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>0.35 -0.35 -0.87</direction>
+      <spot>
+        <inner_angle>0</inner_angle>
+        <outer_angle>0</outer_angle>
+        <falloff>0</falloff>
+      </spot>
+    </light>
+    <light name='user_directional_light_front_right' type='directional'>
+      <cast_shadows>1</cast_shadows>
+      <pose>6 -6 10 0 -0 0</pose>
+      <diffuse>0.55 0.55 0.55 1</diffuse>
+      <specular>0.08 0.08 0.08 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.35 0.35 -0.87</direction>
+      <spot>
+        <inner_angle>0</inner_angle>
+        <outer_angle>0</outer_angle>
+        <falloff>0</falloff>
+      </spot>
+    </light>
+    <light name='user_directional_light_front_left' type='directional'>
+      <cast_shadows>1</cast_shadows>
+      <pose>6 6 10 0 -0 0</pose>
+      <diffuse>0.55 0.55 0.55 1</diffuse>
+      <specular>0.08 0.08 0.08 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.35 -0.35 -0.87</direction>
+      <spot>
+        <inner_angle>0</inner_angle>
+        <outer_angle>0</outer_angle>
+        <falloff>0</falloff>
+      </spot>
+    </light>
     <model name='ground_plane'>
       <static>1</static>
       <link name='link'>
@@ -81,7 +153,7 @@
           <material>
             <ambient>0.17 0.17 0.18 1</ambient>
             <diffuse>0.26 0.27 0.3 1</diffuse>
-            <specular>0.03 0.03 0.03 1</specular>
+            <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
         <collision name='collision'>
@@ -122,7 +194,7 @@
           <material>
             <ambient>0.17 0.17 0.18 1</ambient>
             <diffuse>0.26 0.27 0.3 1</diffuse>
-            <specular>0.03 0.03 0.03 1</specular>
+            <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
         <collision name='collision'>
@@ -163,7 +235,7 @@
           <material>
             <ambient>0.17 0.17 0.18 1</ambient>
             <diffuse>0.26 0.27 0.3 1</diffuse>
-            <specular>0.03 0.03 0.03 1</specular>
+            <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
         <collision name='collision'>
@@ -204,7 +276,7 @@
           <material>
             <ambient>0.17 0.17 0.18 1</ambient>
             <diffuse>0.26 0.27 0.3 1</diffuse>
-            <specular>0.03 0.03 0.03 1</specular>
+            <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
         <collision name='collision'>
@@ -244,8 +316,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -274,7 +346,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-2.02153 -0.975783 0.5 0 -0 0</pose>
+      <pose>2.00979 -0.969959 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_1'>
       <static>1</static>
@@ -287,8 +359,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -317,7 +389,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-0.448812 -1.83311 0.5 0 -0 0</pose>
+      <pose>0.036672 -1.82413 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_2'>
       <static>1</static>
@@ -330,8 +402,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -360,7 +432,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>1.03121 1.96466 0.5 0 -0 0</pose>
+      <pose>-2.13635 1.43056 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_3'>
       <static>1</static>
@@ -373,8 +445,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -403,7 +475,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-2.05193 -1.85215 0.5 0 -0 0</pose>
+      <pose>1.19154 1.26825 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_4'>
       <static>1</static>
@@ -416,8 +488,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -446,50 +518,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>1.00553 -1.75601 0.5 0 -0 0</pose>
-    </model>
-    <model name='blue_cylinder_7'>
-      <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <collision name='collision'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <max_contacts>10</max_contacts>
-          <surface>
-            <contact>
-              <ode/>
-            </contact>
-            <bounce/>
-            <friction>
-              <torsional>
-                <ode/>
-              </torsional>
-              <ode/>
-            </friction>
-          </surface>
-        </collision>
-        <self_collide>0</self_collide>
-        <enable_wind>0</enable_wind>
-        <kinematic>0</kinematic>
-      </link>
-      <pose>2.0137 1.41178 0.5 0 -0 0</pose>
+      <pose>0.834756 0.044504 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_5'>
       <static>1</static>
@@ -502,8 +531,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -532,7 +561,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-0.347512 0.21218 0.5 0 -0 0</pose>
+      <pose>-0.522202 2.15883 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_6'>
       <static>1</static>
@@ -545,8 +574,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -575,7 +604,50 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>1.85282 -1.38516 0.5 0 -0 0</pose>
+      <pose>1.20325 -1.76537 0.5 0 -0 0</pose>
+    </model>
+    <model name='blue_cylinder_7'>
+      <static>1</static>
+      <link name='link'>
+        <visual name='visual'>
+          <geometry>
+            <cylinder>
+              <radius>0.3</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
+            <specular>0.02 0.02 0.02 1</specular>
+          </material>
+        </visual>
+        <collision name='collision'>
+          <geometry>
+            <cylinder>
+              <radius>0.3</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <self_collide>0</self_collide>
+        <enable_wind>0</enable_wind>
+        <kinematic>0</kinematic>
+      </link>
+      <pose>0.606536 0.977576 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_8'>
       <static>1</static>
@@ -588,8 +660,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -618,7 +690,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>2.22024 -0.160359 0.5 0 -0 0</pose>
+      <pose>-1.963 0.193201 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_9'>
       <static>1</static>
@@ -631,8 +703,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -661,7 +733,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>0.112682 0.044557 0.5 0 -0 0</pose>
+      <pose>-0.962573 -1.42307 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_10'>
       <static>1</static>
@@ -674,8 +746,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -704,7 +776,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-1.44832 1.48531 0.5 0 -0 0</pose>
+      <pose>-1.95138 -1.57151 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_11'>
       <static>1</static>
@@ -717,8 +789,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -747,7 +819,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>0.490815 -1.23928 0.5 0 -0 0</pose>
+      <pose>-1.38526 1.02107 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_12'>
       <static>1</static>
@@ -760,8 +832,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -790,7 +862,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-1.24716 -2.20407 0.5 0 -0 0</pose>
+      <pose>-1.03112 -0.081843 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_13'>
       <static>1</static>
@@ -803,8 +875,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -833,7 +905,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-1.43984 0.306608 0.5 0 -0 0</pose>
+      <pose>-0.478007 0.534955 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_14'>
       <static>1</static>
@@ -846,8 +918,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -876,7 +948,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-1.2551 1.96772 0.5 0 -0 0</pose>
+      <pose>-0.039515 1.51691 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_15'>
       <static>1</static>
@@ -889,8 +961,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -919,7 +991,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-0.181512 1.44933 0.5 0 -0 0</pose>
+      <pose>1.19446 -0.892826 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_16'>
       <static>1</static>
@@ -932,8 +1004,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -962,7 +1034,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>1.16257 -0.581713 0.5 0 -0 0</pose>
+      <pose>-1.35375 2.1246 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_17'>
       <static>1</static>
@@ -975,8 +1047,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -1005,7 +1077,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-0.574487 1.84951 0.5 0 -0 0</pose>
+      <pose>0.724038 1.9563 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_18'>
       <static>1</static>
@@ -1018,8 +1090,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -1048,7 +1120,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-0.919066 -0.805421 0.5 0 -0 0</pose>
+      <pose>0.099034 -0.291286 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_19'>
       <static>1</static>
@@ -1061,8 +1133,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -1091,7 +1163,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>0.416491 0.043608 0.5 0 -0 0</pose>
+      <pose>1.88887 0.883061 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_20'>
       <static>1</static>
@@ -1104,8 +1176,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -1134,7 +1206,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-1.81865 0.816871 0.5 0 -0 0</pose>
+      <pose>-0.325364 -0.992765 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_21'>
       <static>1</static>
@@ -1147,8 +1219,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -1177,7 +1249,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-1.35589 -1.10094 0.5 0 -0 0</pose>
+      <pose>1.94902 -0.182709 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_22'>
       <static>1</static>
@@ -1190,8 +1262,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -1220,7 +1292,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>0.446477 1.46771 0.5 0 -0 0</pose>
+      <pose>-1.35697 -2.14467 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_23'>
       <static>1</static>
@@ -1233,8 +1305,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -1263,7 +1335,7 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>0.594449 0.932922 0.5 0 -0 0</pose>
+      <pose>-1.52676 -0.545568 0.5 0 -0 0</pose>
     </model>
     <model name='blue_cylinder_24'>
       <static>1</static>
@@ -1276,8 +1348,8 @@
             </cylinder>
           </geometry>
           <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
+            <ambient>0.06 0.07 0.112 1</ambient>
+            <diffuse>0.14 0.17 0.27 1</diffuse>
             <specular>0.02 0.02 0.02 1</specular>
           </material>
         </visual>
@@ -1306,595 +1378,258 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>1.72 0.789458 0.5 0 -0 0</pose>
+      <pose>2.08696 2.13368 0.5 0 -0 0</pose>
     </model>
-    <model name='blue_cylinder_25'>
-      <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <collision name='collision'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <max_contacts>10</max_contacts>
-          <surface>
-            <contact>
-              <ode/>
-            </contact>
-            <bounce/>
-            <friction>
-              <torsional>
-                <ode/>
-              </torsional>
-              <ode/>
-            </friction>
-          </surface>
-        </collision>
-        <self_collide>0</self_collide>
-        <enable_wind>0</enable_wind>
-        <kinematic>0</kinematic>
-      </link>
-      <pose>0.504349 1.42762 0.5 0 -0 0</pose>
-    </model>
-    <model name='blue_cylinder_26'>
-      <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <collision name='collision'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <max_contacts>10</max_contacts>
-          <surface>
-            <contact>
-              <ode/>
-            </contact>
-            <bounce/>
-            <friction>
-              <torsional>
-                <ode/>
-              </torsional>
-              <ode/>
-            </friction>
-          </surface>
-        </collision>
-        <self_collide>0</self_collide>
-        <enable_wind>0</enable_wind>
-        <kinematic>0</kinematic>
-      </link>
-      <pose>-0.126498 2.13613 0.5 0 -0 0</pose>
-    </model>
-    <model name='blue_cylinder_27'>
-      <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <collision name='collision'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <max_contacts>10</max_contacts>
-          <surface>
-            <contact>
-              <ode/>
-            </contact>
-            <bounce/>
-            <friction>
-              <torsional>
-                <ode/>
-              </torsional>
-              <ode/>
-            </friction>
-          </surface>
-        </collision>
-        <self_collide>0</self_collide>
-        <enable_wind>0</enable_wind>
-        <kinematic>0</kinematic>
-      </link>
-      <pose>-0.586935 -0.841391 0.5 0 -0 0</pose>
-    </model>
-    <model name='blue_cylinder_28'>
-      <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <collision name='collision'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <max_contacts>10</max_contacts>
-          <surface>
-            <contact>
-              <ode/>
-            </contact>
-            <bounce/>
-            <friction>
-              <torsional>
-                <ode/>
-              </torsional>
-              <ode/>
-            </friction>
-          </surface>
-        </collision>
-        <self_collide>0</self_collide>
-        <enable_wind>0</enable_wind>
-        <kinematic>0</kinematic>
-      </link>
-      <pose>1.59876 -0.917171 0.5 0 -0 0</pose>
-    </model>
-    <model name='blue_cylinder_29'>
-      <static>1</static>
-      <link name='link'>
-        <visual name='visual'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <material>
-            <ambient>0.06 0.07 0.108 1</ambient>
-            <diffuse>0.14 0.166 0.255 1</diffuse>
-            <specular>0.02 0.02 0.02 1</specular>
-          </material>
-        </visual>
-        <collision name='collision'>
-          <geometry>
-            <cylinder>
-              <radius>0.3</radius>
-              <length>1</length>
-            </cylinder>
-          </geometry>
-          <max_contacts>10</max_contacts>
-          <surface>
-            <contact>
-              <ode/>
-            </contact>
-            <bounce/>
-            <friction>
-              <torsional>
-                <ode/>
-              </torsional>
-              <ode/>
-            </friction>
-          </surface>
-        </collision>
-        <self_collide>0</self_collide>
-        <enable_wind>0</enable_wind>
-        <kinematic>0</kinematic>
-      </link>
-      <pose>0.760619 2.10871 0.5 0 -0 0</pose>
-    </model>
-    <light name='user_directional_light_0' type='directional'>
-      <pose>8.82764 2.91095 1 0 -0 0</pose>
-      <diffuse>0.5 0.5 0.5 1</diffuse>
-      <specular>0.1 0.1 0.1 1</specular>
-      <direction>0.1 0.1 -0.9</direction>
-      <attenuation>
-        <range>20</range>
-        <constant>0.5</constant>
-        <linear>0.01</linear>
-        <quadratic>0.001</quadratic>
-      </attenuation>
-      <cast_shadows>1</cast_shadows>
-      <spot>
-        <inner_angle>0</inner_angle>
-        <outer_angle>0</outer_angle>
-        <falloff>0</falloff>
-      </spot>
-    </light>
-    <light name='user_directional_light_1' type='directional'>
-      <pose>-7.8244 2.91635 1 0 -0 0</pose>
-      <diffuse>0.5 0.5 0.5 1</diffuse>
-      <specular>0.1 0.1 0.1 1</specular>
-      <direction>0.1 0.1 -0.9</direction>
-      <attenuation>
-        <range>20</range>
-        <constant>0.5</constant>
-        <linear>0.01</linear>
-        <quadratic>0.001</quadratic>
-      </attenuation>
-      <cast_shadows>1</cast_shadows>
-      <spot>
-        <inner_angle>0</inner_angle>
-        <outer_angle>0</outer_angle>
-        <falloff>0</falloff>
-      </spot>
-    </light>
-    <light name='user_directional_light_2' type='directional'>
-      <pose>-7.75772 -4.88479 1 0 -0 0</pose>
-      <diffuse>0.5 0.5 0.5 1</diffuse>
-      <specular>0.1 0.1 0.1 1</specular>
-      <direction>0.1 0.1 -0.9</direction>
-      <attenuation>
-        <range>20</range>
-        <constant>0.5</constant>
-        <linear>0.01</linear>
-        <quadratic>0.001</quadratic>
-      </attenuation>
-      <cast_shadows>1</cast_shadows>
-      <spot>
-        <inner_angle>0</inner_angle>
-        <outer_angle>0</outer_angle>
-        <falloff>0</falloff>
-      </spot>
-    </light>
-    <light name='user_directional_light_3' type='directional'>
-      <pose>8.88456 -3.92028 1 0 -0 0</pose>
-      <diffuse>0.5 0.5 0.5 1</diffuse>
-      <specular>0.1 0.1 0.1 1</specular>
-      <direction>0.1 0.1 -0.9</direction>
-      <attenuation>
-        <range>20</range>
-        <constant>0.5</constant>
-        <linear>0.01</linear>
-        <quadratic>0.001</quadratic>
-      </attenuation>
-      <cast_shadows>1</cast_shadows>
-      <spot>
-        <inner_angle>0</inner_angle>
-        <outer_angle>0</outer_angle>
-        <falloff>0</falloff>
-      </spot>
-    </light>
     <state world_name='default'>
-      <sim_time>1037 796000000</sim_time>
-      <real_time>89 677390241</real_time>
-      <wall_time>1774356680 189292643</wall_time>
-      <iterations>89120</iterations>
+      <sim_time>296 271000000</sim_time>
+      <real_time>77 66388769</real_time>
+      <wall_time>1774409522 717373505</wall_time>
+      <iterations>76557</iterations>
       <model name='blue_cylinder_0'>
-        <pose>-1.72904 -0.888033 0.5 0 -0 0</pose>
+        <pose>2.00979 -0.969959 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-1.72904 -0.888033 0.5 0 -0 0</pose>
+          <pose>2.00979 -0.969959 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_1'>
-        <pose>-0.302566 -1.89161 0.5 0 -0 0</pose>
+        <pose>0.036672 -1.82413 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-0.302566 -1.89161 0.5 0 -0 0</pose>
+          <pose>0.036672 -1.82413 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_10'>
-        <pose>-1.82855 1.02902 0.5 0 -0 0</pose>
+        <pose>-1.95138 -1.57151 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-1.82855 1.02902 0.5 0 -0 0</pose>
+          <pose>-1.95138 -1.57151 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_11'>
-        <pose>0.496663 -0.946788 0.5 0 -0 0</pose>
+        <pose>-1.38526 1.02107 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>0.496663 -0.946788 0.5 0 -0 0</pose>
+          <pose>-1.38526 1.02107 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_12'>
-        <pose>-1.24716 -2.20407 0.5 0 -0 0</pose>
+        <pose>-1.03112 -0.081843 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-1.24716 -2.20407 0.5 0 -0 0</pose>
+          <pose>-1.03112 -0.081843 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_13'>
-        <pose>-1.22925 0.031669 0.5 0 -0 0</pose>
+        <pose>-0.40781 0.728001 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-1.22925 0.031669 0.5 0 -0 0</pose>
+          <pose>-0.40781 0.728001 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_14'>
-        <pose>-1.2551 1.96772 0.5 0 -0 0</pose>
+        <pose>0.001434 1.56956 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-1.2551 1.96772 0.5 0 -0 0</pose>
+          <pose>0.001434 1.56956 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_15'>
-        <pose>-0.181512 1.44933 0.5 0 -0 0</pose>
+        <pose>1.19446 -0.892826 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-0.181512 1.44933 0.5 0 -0 0</pose>
+          <pose>1.19446 -0.892826 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_16'>
-        <pose>1.33807 -1.33049 0.5 0 -0 0</pose>
+        <pose>-1.35375 2.1246 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>1.33807 -1.33049 0.5 0 -0 0</pose>
+          <pose>-1.35375 2.1246 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_17'>
-        <pose>-0.574487 1.84951 0.5 0 -0 0</pose>
+        <pose>0.724038 1.9563 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-0.574487 1.84951 0.5 0 -0 0</pose>
+          <pose>0.724038 1.9563 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_18'>
-        <pose>-0.866416 -1.01601 0.5 0 -0 0</pose>
+        <pose>-0.006263 -0.262038 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-0.866416 -1.01601 0.5 0 -0 0</pose>
+          <pose>-0.006263 -0.262038 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_19'>
-        <pose>0.357994 -0.079239 0.5 0 -0 0</pose>
+        <pose>1.88887 0.883061 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>0.357994 -0.079239 0.5 0 -0 0</pose>
+          <pose>1.88887 0.883061 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_2'>
-        <pose>1.26522 -0.170526 0.5 0 -0 0</pose>
+        <pose>-2.13635 1.43056 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>1.26522 -0.170526 0.5 0 -0 0</pose>
+          <pose>-2.13635 1.43056 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_20'>
-        <pose>-0.865125 0.945577 0.5 0 -0 0</pose>
+        <pose>-0.325364 -0.992765 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-0.865125 0.945577 0.5 0 -0 0</pose>
+          <pose>-0.325364 -0.992765 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_21'>
-        <pose>-1.35589 -1.10094 0.5 0 -0 0</pose>
+        <pose>1.94902 -0.182709 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-1.35589 -1.10094 0.5 0 -0 0</pose>
+          <pose>1.94902 -0.182709 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_22'>
-        <pose>1.02561 1.23957 0.5 0 -0 0</pose>
+        <pose>-1.35697 -2.14467 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>1.02561 1.23957 0.5 0 -0 0</pose>
+          <pose>-1.35697 -2.14467 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_23'>
-        <pose>0.594449 0.932922 0.5 0 -0 0</pose>
+        <pose>-1.52676 -0.545568 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>0.594449 0.932922 0.5 0 -0 0</pose>
+          <pose>-1.52676 -0.545568 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_24'>
-        <pose>1.72 0.789458 0.5 0 -0 0</pose>
+        <pose>2.08696 2.13368 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>1.72 0.789458 0.5 0 -0 0</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='blue_cylinder_25'>
-        <pose>-2.10466 -0.11091 0.5 0 -0 0</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>-2.10466 -0.11091 0.5 0 -0 0</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='blue_cylinder_26'>
-        <pose>-0.126498 2.13613 0.5 0 -0 0</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>-0.126498 2.13613 0.5 0 -0 0</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='blue_cylinder_27'>
-        <pose>-0.475783 -1.34448 0.5 0 -0 0</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>-0.475783 -1.34448 0.5 0 -0 0</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='blue_cylinder_28'>
-        <pose>0.25331 -2.18659 0.5 0 -0 0</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>0.25331 -2.18659 0.5 0 -0 0</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='blue_cylinder_29'>
-        <pose>0.760619 2.10871 0.5 0 -0 0</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>0.760619 2.10871 0.5 0 -0 0</pose>
+          <pose>2.08696 2.13368 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_3'>
-        <pose>-2.05193 -1.85215 0.5 0 -0 0</pose>
+        <pose>1.19154 1.26825 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-2.05193 -1.85215 0.5 0 -0 0</pose>
+          <pose>1.19154 1.26825 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_4'>
-        <pose>0.906081 -1.49862 0.5 0 -0 0</pose>
+        <pose>1.0395 0.114704 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>0.906081 -1.49862 0.5 0 -0 0</pose>
+          <pose>1.0395 0.114704 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_5'>
-        <pose>-0.294864 0.20633 0.5 0 -0 0</pose>
+        <pose>-0.522202 2.15883 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-0.294864 0.20633 0.5 0 -0 0</pose>
+          <pose>-0.522202 2.15883 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_6'>
-        <pose>1.85282 -1.38516 0.5 0 -0 0</pose>
+        <pose>1.14475 -1.95257 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>1.85282 -1.38516 0.5 0 -0 0</pose>
+          <pose>1.14475 -1.95257 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_7'>
-        <pose>2.0137 1.41178 0.5 0 -0 0</pose>
+        <pose>0.606536 0.977576 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>2.0137 1.41178 0.5 0 -0 0</pose>
+          <pose>0.606536 0.977576 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_8'>
-        <pose>2.22024 -0.160359 0.5 0 -0 0</pose>
+        <pose>-1.963 0.193201 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>2.22024 -0.160359 0.5 0 -0 0</pose>
+          <pose>-1.963 0.193201 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='blue_cylinder_9'>
-        <pose>0.112682 0.044557 0.5 0 -0 0</pose>
+        <pose>-0.962573 -1.42307 0.5 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>0.112682 0.044557 0.5 0 -0 0</pose>
+          <pose>-0.962573 -1.42307 0.5 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
@@ -1950,17 +1685,17 @@
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <light name='user_directional_light_0'>
-        <pose>8.82764 2.91095 1 0 -0 0</pose>
+      <light name='user_directional_light_back_left'>
+        <pose>-6 6 10 0 -0 0</pose>
       </light>
-      <light name='user_directional_light_1'>
-        <pose>-7.8244 2.91635 1 0 -0 0</pose>
+      <light name='user_directional_light_back_right'>
+        <pose>-6 -6 10 0 -0 0</pose>
       </light>
-      <light name='user_directional_light_2'>
-        <pose>-7.75772 -4.88479 1 0 -0 0</pose>
+      <light name='user_directional_light_front_left'>
+        <pose>6 6 10 0 -0 0</pose>
       </light>
-      <light name='user_directional_light_3'>
-        <pose>8.88456 -3.92028 1 0 -0 0</pose>
+      <light name='user_directional_light_front_right'>
+        <pose>6 -6 10 0 -0 0</pose>
       </light>
     </state>
     <gui fullscreen='0'>
