@@ -190,7 +190,7 @@ public:
 private:
     ros::NodeHandle node_;
 
-    Eigen::Vector3d size_of_cropped_pointcloud_;
+    double size_of_cropped_pointcloud_;
     
     bool env_type_; // 0 for 2D, 1 for 3D environment
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ptr_;

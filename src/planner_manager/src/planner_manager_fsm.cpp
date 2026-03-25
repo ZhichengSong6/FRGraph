@@ -29,14 +29,7 @@ void PlannerManagerFSM::init(ros::NodeHandle &nh) {
     node_.param<int>("env_type", env_type_, 1); // 0 for 2D, 1 for 3D environment
     node_.param<double>("goal_z_pos", goal_z_pos_, 0.5); // default goal z pos for 3D environment
     ROS_INFO("[PlannerManagerFSM] env_type: %d", env_type_);
-    std::vector<double> crop_size_vec;
-    node_.param<std::vector<double>>("size_of_cropped_pointcloud", crop_size_vec, {3, 3, 2});
-    if (crop_size_vec.size() == 3) {
-        size_of_cropped_pointcloud_ = Eigen::Vector3d(crop_size_vec[0], crop_size_vec[1], crop_size_vec[2]);
-    } else {
-        size_of_cropped_pointcloud_ = Eigen::Vector3d(3, 3, 2); // 默认值
-        ROS_WARN("size_of_cropped_pointcloud param size error, using default (3,3,2)");
-    }
+    node_.param<double>("size_of_cropped_pointcloud", size_of_cropped_pointcloud_, 3);
 
     planner_manager_.reset(new PlannerManager());
     planner_manager_->setEnvType(env_type_);

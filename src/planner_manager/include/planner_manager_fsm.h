@@ -33,7 +33,7 @@ class PlannerManagerFSM {
 
     bool have_odom_, have_goal_;
     bool graph_inited_ = false;
-    Eigen::Vector3d size_of_cropped_pointcloud_;
+    double size_of_cropped_pointcloud_;
 
     Eigen::Vector3d odom_pos_, odom_vel_, odom_omega_;
     Eigen::Quaterniond odom_ori_;

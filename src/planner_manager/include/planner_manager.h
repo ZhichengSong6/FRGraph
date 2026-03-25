@@ -74,7 +74,7 @@ class PlannerManager {
     private:
     ros::NodeHandle node_;
     bool env_type_;
-    Eigen::Vector3d size_of_cropped_pointcloud_;
+    double size_of_cropped_pointcloud_;
 
     // gap candidates
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> gap_candidates_open_;
@@ -86,7 +86,7 @@ class PlannerManager {
     ~PlannerManager();
     void setEnvType(int env_type) { env_type_ = env_type; }
     void getEnvType(int &env_type) { env_type = env_type_; }
-    void setSizeOfCroppedPointcloud(const Eigen::Vector3d &size) { size_of_cropped_pointcloud_ = size; }
+    void setSizeOfCroppedPointcloud(double size) { size_of_cropped_pointcloud_ = size; }
 
     typedef std::unique_ptr<PlannerManager> Ptr;
 

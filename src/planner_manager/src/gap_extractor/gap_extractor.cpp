@@ -180,14 +180,7 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
         node_.param<float>("gap_extractor/2D/limited_gap_elev_span",                        params_.limited_gap_elev_span, M_PI / 6); // 30 degrees
         node_.param<int>  ("gap_extractor/2D/min_pixels_in_limited_subregion",              params_.min_pixels_in_limited_subregion, 2);
     }
-    std::vector<double> crop_size_vec;
-    node_.param<std::vector<double>>("size_of_cropped_pointcloud", crop_size_vec, {3, 3, 2});
-    if (crop_size_vec.size() == 3) {
-        size_of_cropped_pointcloud_ = Eigen::Vector3d(crop_size_vec[0], crop_size_vec[1], crop_size_vec[2]);
-    } else {
-        size_of_cropped_pointcloud_ = Eigen::Vector3d(3, 3, 2); // 默认值
-        ROS_WARN("size_of_cropped_pointcloud param size error, using default (3,3,2)");
-    }
+    node_.param<double>("size_of_cropped_pointcloud", size_of_cropped_pointcloud_, 3); // radius
     cloud_ptr_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
 
     if (env_type_){
@@ -1697,18 +1690,15 @@ void GapExtractor::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg)
     pcl::PointCloud<pcl::PointXYZ> cloud_in;
     pcl::fromROSMsg(*msg, cloud_in);
 
-    const double hx = size_of_cropped_pointcloud_[0] / 2.0;
-    const double hy = size_of_cropped_pointcloud_[1] / 2.0;
-    const double hz = size_of_cropped_pointcloud_[2] / 2.0;
+    const double radius_sq = size_of_cropped_pointcloud_ * size_of_cropped_pointcloud_;
 
     for (const auto &pt : cloud_in.points)
     {
         if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.z))
             continue;
 
-        if (pt.x > -hx && pt.x < hx &&
-            pt.y > -hy && pt.y < hy &&
-            pt.z > -hz && pt.z < hz)
+        const double d_sq = pt.x * pt.x + pt.y * pt.y + pt.z * pt.z;
+        if (d_sq < radius_sq)
         {
             cloud_ptr_->points.push_back(pt);
         }
@@ -1734,8 +1724,7 @@ void GapExtractor::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg)
     }
     cloud_ptr_->clear();
 
-    const double hx = size_of_cropped_pointcloud_[0] / 2.0;
-    const double hy = size_of_cropped_pointcloud_[1] / 2.0;
+    const double radius_sq = size_of_cropped_pointcloud_ * size_of_cropped_pointcloud_;
 
     double angle = msg->angle_min;
     for (const float &r : msg->ranges)
@@ -1748,9 +1737,9 @@ void GapExtractor::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg)
 
         const double x = r * std::cos(angle);
         const double y = r * std::sin(angle);
+        const double d_sq = x * x + y * y;
 
-        if (x > -hx && x < hx &&
-            y > -hy && y < hy)
+        if (d_sq < radius_sq)
         {
             pcl::PointXYZ p;
             p.x = static_cast<float>(x);

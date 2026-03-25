@@ -249,13 +249,14 @@ void PlannerManager::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &ms
     vec_Vec3f pointcloud = DecompROS::cloud_to_vec(cloud);
     vec_Vec3f pointcloud_cropped;
 
-    // crop the point cloud
+    const double radius_sq = size_of_cropped_pointcloud_ * size_of_cropped_pointcloud_;
+
+    // crop the point cloud with a spherical region
     for (const auto &pt : pointcloud) {
-        if (pt[0] > -size_of_cropped_pointcloud_[0]/2 && pt[0] < size_of_cropped_pointcloud_[0]/2 &&
-            pt[1] > -size_of_cropped_pointcloud_[1]/2 && pt[1] < size_of_cropped_pointcloud_[1]/2 &&
-            pt[2] > -size_of_cropped_pointcloud_[2]/2 && pt[2] < size_of_cropped_pointcloud_[2]/2) {
-                pointcloud_cropped.push_back(pt);
-            }
+        const double d_sq = pt[0] * pt[0] + pt[1] * pt[1] + pt[2] * pt[2];
+        if (d_sq < radius_sq) {
+            pointcloud_cropped.push_back(pt);
+        }
     }
 
     // pointcloud are in scan frame, transform it into odom frame
@@ -283,6 +284,7 @@ void PlannerManager::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg) {
         ROS_WARN("[Planner_manager] Received empty laser scan data");
         return;
         }
+
     vec_Vec2f pointcloud_2d;
     double angle = msg->angle_min;
     for (const auto &range : msg->ranges) {
@@ -295,13 +297,14 @@ void PlannerManager::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg) {
     }
 
     vec_Vec2f pointcloud_cropped_2d;
+    const double radius_sq = size_of_cropped_pointcloud_ * size_of_cropped_pointcloud_;
 
-    // crop the point cloud
+    // crop the point cloud with a circular region
     for (const auto &pt : pointcloud_2d) {
-        if (pt[0] > -size_of_cropped_pointcloud_[0]/2 && pt[0] < size_of_cropped_pointcloud_[0]/2 &&
-            pt[1] > -size_of_cropped_pointcloud_[1]/2 && pt[1] < size_of_cropped_pointcloud_[1]/2) {
-                pointcloud_cropped_2d.push_back(pt);
-            }
+        const double d_sq = pt[0] * pt[0] + pt[1] * pt[1];
+        if (d_sq < radius_sq) {
+            pointcloud_cropped_2d.push_back(pt);
+        }
     }
 
     // pointcloud are in scan frame, transform it into odom frame
@@ -411,15 +414,27 @@ bool PlannerManager::computeSingleCorridor3DLocal(const Eigen::Vector3d& start_p
 
     LineSegment3D line_segment_aniso(p1, p2);
 
-    if (gap.type == 1 || gap.type == 3) {
-        line_segment_aniso.set_local_bbox_aniso(
-            Vec3f(0.3f, 0.5f, 0.5f),
-            Vec3f(0.3f, 0.5f, 0.5f));
+    const double seg_len = (p2 - p1).norm();
+    const double remain_len = size_of_cropped_pointcloud_ - seg_len;
+
+    Vec3f pos_ext;
+    Vec3f neg_ext;
+
+    if (gap.type == 3) {
+        pos_ext = Vec3f(0.3, 0.5, 0.5);
+        neg_ext = Vec3f(0.3, 0.5, 0.5);
     } else {
-        line_segment_aniso.set_local_bbox_aniso(
-            Vec3f(0.0f, 0.5f, 0.5f),
-            Vec3f(0.3f, 0.5f, 0.5f));
+        pos_ext = Vec3f(0.0, 0.5, 0.5);
+        neg_ext = Vec3f(0.3, 0.5, 0.5);
     }
+
+    if (remain_len <= 0.0) {
+        pos_ext(0) = 0.0;
+    } else {
+        pos_ext(0) = std::min(pos_ext(0), remain_len);
+    }
+
+    line_segment_aniso.set_local_bbox_aniso(pos_ext, neg_ext);
 
     line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_);
     line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
@@ -461,15 +476,27 @@ bool PlannerManager::computeSingleCorridor2DLocal(const Eigen::Vector3d& start_p
 
     LineSegment2D line_segment_aniso(p1, p2);
 
-    if (gap.type == 1 || gap.type == 3) {
-        line_segment_aniso.set_local_bbox_aniso(
-            Vec2f(0.3f, 0.5f),
-            Vec2f(0.3f, 0.5f));
+    const double seg_len = (p2 - p1).norm();
+    const double remain_len = size_of_cropped_pointcloud_ - seg_len;
+
+    Vec2f pos_ext;
+    Vec2f neg_ext;
+
+    if (gap.type == 3) {
+        pos_ext = Vec2f(0.3, 0.5);
+        neg_ext = Vec2f(0.3, 0.5);
     } else {
-        line_segment_aniso.set_local_bbox_aniso(
-            Vec2f(0.5f, 0.5f),
-            Vec2f(0.3f, 0.5f));
+        pos_ext = Vec2f(0.0, 0.5);
+        neg_ext = Vec2f(0.3, 0.5);
     }
+
+    if (remain_len <= 0.0) {
+        pos_ext(0) = 0.0;
+    } else {
+        pos_ext(0) = std::min(pos_ext(0), remain_len);
+    }
+
+    line_segment_aniso.set_local_bbox_aniso(pos_ext, neg_ext);
 
     line_segment_aniso.set_obs_aniso(pointcloud_cropped_odom_frame_2d_);
     line_segment_aniso.set_robot_shape_pts(robot_shape_points_odom);
