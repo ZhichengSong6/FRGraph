@@ -84,20 +84,20 @@ NodeId FreeRegionsGraph::upsertNode(const Eigen::Vector3d& state_pos,
     }
 
     // polyhedron inside check
-    for (NodeId cid : candidates) {
-        auto* n = getNode(cid);
-        if (!n) continue;
-        bool cond1 = true;
-        bool cond2 = true;
+    // for (NodeId cid : candidates) {
+    //     auto* n = getNode(cid);
+    //     if (!n) continue;
+    //     bool cond1 = true;
+    //     bool cond2 = true;
 
-        cond1 = n->polys_.inside(state_pos);
-        cond2 = local_poly_3d.inside(n->state_pos_);
-        if (cond1 && cond2){
-            // n->state_pos_ = state_pos;
-            // n->polys_ = local_poly_3d;
-            return cid;
-        }
-    }
+    //     cond1 = n->polys_.inside(state_pos);
+    //     cond2 = local_poly_3d.inside(n->state_pos_);
+    //     if (cond1 && cond2){
+    //         // n->state_pos_ = state_pos;
+    //         // n->polys_ = local_poly_3d;
+    //         return cid;
+    //     }
+    // }
     NodeId nid = createNode();
     auto* nn = getNode(nid);
     nn->state_pos_ = state_pos;
@@ -125,21 +125,21 @@ NodeId FreeRegionsGraph::upsertNode(const Eigen::Vector2d& state_pos,
     }
 
     // polyhedron inside check
-    for (NodeId cid : candidates) {
-        auto* n = getNode(cid);
-        if (!n) continue;
-        bool cond1 = true;
-        bool cond2 = true;
+    // for (NodeId cid : candidates) {
+    //     auto* n = getNode(cid);
+    //     if (!n) continue;
+    //     bool cond1 = true;
+    //     bool cond2 = true;
 
-        cond1 = n->polys_2d_.inside(state_pos);
-        cond2 = local_poly_2d.inside(n->state_pos_.head<2>());
-        if (cond1 && cond2){
-            // n->state_pos_.head<2>() = state_pos;
-            // n->state_pos_(2) = 0.0;
-            // n->polys_2d_ = local_poly_2d;
-            return cid;
-        }
-    }
+    //     cond1 = n->polys_2d_.inside(state_pos);
+    //     cond2 = local_poly_2d.inside(n->state_pos_.head<2>());
+    //     if (cond1 && cond2){
+    //         // n->state_pos_.head<2>() = state_pos;
+    //         // n->state_pos_(2) = 0.0;
+    //         // n->polys_2d_ = local_poly_2d;
+    //         return cid;
+    //     }
+    // }
     NodeId nid = createNode();
     auto* nn = getNode(nid);
     nn->state_pos_.head<2>() = state_pos;

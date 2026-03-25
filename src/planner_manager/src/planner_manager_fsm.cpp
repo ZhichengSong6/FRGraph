@@ -617,10 +617,22 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
             // check if reached the goal
             double distance_to_goal = (odom_pos_ - goal_pos_).norm();
             // ROS_INFO("[FSM]: Distance to goal: %.2f", distance_to_goal);
-            if (distance_to_goal < 0.1){
+            if (distance_to_goal < 0.11){
                 ROS_INFO("[FSM]: Reached the goal!");
                 have_goal_ = false;
                 stopRobot();
+                double path_length = 0.0;
+                if (env_type_ == 1){
+                    path_length = computePathLength3D();
+                }
+                else{
+                    path_length = computePathLength2D();
+                }
+                double decomp_avg_ms = computeDecompAverageTime();
+                double traj_avg_ms = computeTrajOptAverageTime();
+
+ROS_INFO("[FSM]: Path length: %.2f m, Decomp average time: %.3f ms, Traj opt average time: %.3f ms",
+         path_length, decomp_avg_ms, traj_avg_ms);
                 changeFSMState(WAIT_GOAL, "FSM");
                 return;
             }
@@ -773,6 +785,47 @@ double PlannerManagerFSM::so3Angle(const Eigen::Matrix3d& R) {
 
 double PlannerManagerFSM::so2Angle(const Eigen::Matrix2d& R) {
     return std::atan2(R(1,0), R(0,0));
+}
+
+double PlannerManagerFSM::computePathLength2D(){
+    if (trajectory_msg_.poses.size() < 2) {
+        return 0.0;
+    }
+    double length = 0.0;
+    for (size_t i = 1; i < trajectory_msg_.poses.size(); ++i) {
+        const auto& p0 = trajectory_msg_.poses[i-1].pose.position;
+        const auto& p1 = trajectory_msg_.poses[i].pose.position;
+        double dx = p1.x - p0.x;
+        double dy = p1.y - p0.y;
+        length += std::sqrt(dx*dx + dy*dy);
+    }
+    return length;
+}
+
+double PlannerManagerFSM::computePathLength3D(){
+    if (trajectory_msg_.poses.size() < 2) {
+        return 0.0;
+    }
+    double length = 0.0;
+    for (size_t i = 1; i < trajectory_msg_.poses.size(); ++i) {
+        const auto& p0 = trajectory_msg_.poses[i-1].pose.position;
+        const auto& p1 = trajectory_msg_.poses[i].pose.position;
+        double dx = p1.x - p0.x;
+        double dy = p1.y - p0.y;
+        double dz = p1.z - p0.z;
+        length += std::sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    return length;
+}
+
+double PlannerManagerFSM::computeDecompAverageTime() {
+    if (planner_manager_->decomp_count_ == 0) return 0.0;
+    return planner_manager_->decomp_time_sum_ms_ / planner_manager_->decomp_count_;
+}
+
+double PlannerManagerFSM::computeTrajOptAverageTime() {
+    if (planner_manager_->traj_opt_time_count_ == 0) return 0.0;
+    return planner_manager_->traj_opt_time_sum_ms_ / planner_manager_->traj_opt_time_count_;
 }
 
 void PlannerManagerFSM::publishGoalMarker() {

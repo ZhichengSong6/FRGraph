@@ -214,6 +214,8 @@ class PlannerManager {
     void filterBackwardGaps(const Eigen::Vector3d &start_pos,
                             NodeId current_node_id, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
 
+    void pruneSimilarGapCandidates(const Eigen::Vector3d& start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates);
+
     void reorderCandidatesGapWithGoal(Eigen:: Vector3d &goal_pos, 
                                      std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates);
 
@@ -298,6 +300,12 @@ class PlannerManager {
 
     Eigen::Vector3d current_direction_for_visualization_;
     Eigen::Vector3d current_pos;
+
+    double decomp_time_sum_ms_ = 0.0;
+    int decomp_count_ = 0;
+
+    double traj_opt_time_sum_ms_ = 0.0;
+    int traj_opt_time_count_ = 0;
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

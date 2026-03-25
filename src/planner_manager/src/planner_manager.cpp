@@ -411,10 +411,9 @@ bool PlannerManager::computeSingleCorridor3DLocal(const Eigen::Vector3d& start_p
 
     LineSegment3D line_segment_aniso(p1, p2);
 
-    // keep exactly the same bbox logic as your original version
     if (gap.type == 1 || gap.type == 3) {
         line_segment_aniso.set_local_bbox_aniso(
-            Vec3f(0.5f, 0.5f, 0.5f),
+            Vec3f(0.3f, 0.5f, 0.5f),
             Vec3f(0.3f, 0.5f, 0.5f));
     } else {
         line_segment_aniso.set_local_bbox_aniso(
@@ -462,10 +461,9 @@ bool PlannerManager::computeSingleCorridor2DLocal(const Eigen::Vector3d& start_p
 
     LineSegment2D line_segment_aniso(p1, p2);
 
-    // keep exactly the same bbox logic as your original version
     if (gap.type == 1 || gap.type == 3) {
         line_segment_aniso.set_local_bbox_aniso(
-            Vec2f(0.5f, 0.5f),
+            Vec2f(0.3f, 0.5f),
             Vec2f(0.3f, 0.5f));
     } else {
         line_segment_aniso.set_local_bbox_aniso(
@@ -684,7 +682,7 @@ void PlannerManager::generateNodePolyhedron(NodeId nid, const Eigen::Vector3d& s
     else{
         // 2D
         SeedDecomp2D seed_decomp_2d(start_pos.head<2>());
-        seed_decomp_2d.set_local_bbox(Vec2f(0.3f, 0.3f));
+        seed_decomp_2d.set_local_bbox(Vec2f(0.5f, 0.5f));
         seed_decomp_2d.set_obs(pointcloud_cropped_odom_frame_2d_);
         seed_decomp_2d.dilate(0.1);  
         Polyhedron2D node_poly = seed_decomp_2d.get_polyhedron();
@@ -809,7 +807,7 @@ void PlannerManager::filterBackwardGaps(const Eigen::Vector3d &start_pos, NodeId
         }
     }
     // filter out the gaps that are backward facing
-    const double cos_backward = std::cos(120.0 * M_PI / 180.0); // 150 degrees
+    const double cos_backward = std::cos(120.0 * M_PI / 180.0); // 120 degrees
     std::vector<Gaps, Eigen::aligned_allocator<Gaps>> filtered;
     filtered.reserve(all_candidates.size());
     int removed = 0;
@@ -835,6 +833,55 @@ void PlannerManager::filterBackwardGaps(const Eigen::Vector3d &start_pos, NodeId
     }
     all_candidates.swap(filtered);
     ROS_INFO("[PlannerManager] Filtered out %d backward-facing gaps, %lu remaining.", removed, all_candidates.size());
+}
+
+void PlannerManager::pruneSimilarGapCandidates(const Eigen::Vector3d& start_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>>& all_candidates)
+{
+    if (all_candidates.size() <= 1) return;
+
+    const double angle_thresh_deg = env_type_ ? 15.0 : 10.0;
+    const double cos_thresh = std::cos(angle_thresh_deg * M_PI / 180.0);
+
+    std::vector<Gaps, Eigen::aligned_allocator<Gaps>> kept;
+    kept.reserve(all_candidates.size());
+
+    int removed = 0;
+
+    for (const auto& gap : all_candidates) {
+        Eigen::Vector3d vg = gap.dir_odom_frame - start_pos;
+        double dg = vg.norm();
+
+        if (dg < 1e-6) {
+            kept.push_back(gap);
+            continue;
+        }
+        vg /= dg;
+
+        bool redundant = false;
+
+        for (const auto& k : kept) {
+            Eigen::Vector3d vk = k.dir_odom_frame - start_pos;
+            double dk = vk.norm();
+            if (dk < 1e-6) continue;
+            vk /= dk;
+
+            if (vg.dot(vk) > cos_thresh) {
+                redundant = true;
+                break;
+            }
+        }
+
+        if (!redundant) {
+            kept.push_back(gap);
+        } else {
+            removed++;
+        }
+    }
+
+    all_candidates.swap(kept);
+
+    ROS_INFO("[PlannerManager] pruneSimilarGapCandidates: removed %d similar gap(s), %zu remaining.",
+             removed, all_candidates.size());
 }
 
 void PlannerManager::sortAllCandidatesGap(Eigen::Vector3d &goal_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates) {
@@ -2145,7 +2192,7 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
         publishTrajectoryForVisualization(traj, wv.t);
 auto t4 = std::chrono::high_resolution_clock::now();
         for (int it=0; it<30; ++it) {
-std::cout << "Iteration " << it << ": repairing trajectory..." << std::endl;
+// std::cout << "Iteration " << it << ": repairing trajectory..." << std::endl;
             bool ok = RepairOnce_PIQP(A,b,verts,traj,opt,wv,
                 /*Kcp=*/4,
                 /*topKplanes=*/5,
@@ -2163,8 +2210,8 @@ std::cout << "Iteration " << it << ": repairing trajectory..." << std::endl;
             }
             wv = FindWorstViolationContinuous2D(A,b,verts,traj,opt);
 publishTrajectoryForVisualizationIter(traj, wv.t, it);
-std::cout << "Iteration " << it << ": worst violation g = " << wv.g << ", t = " << wv.t << std::endl;
-std::cout << "After iteration, safe = " << wv.safe << std::endl;
+// std::cout << "Iteration " << it << ": worst violation g = " << wv.g << ", t = " << wv.t << std::endl;
+// std::cout << "After iteration, safe = " << wv.safe << std::endl;
             // ROS_INFO("[it %d] safe=%d g=%g t=%g", it, (int)wv.safe, wv.g, wv.t);
             if (wv.safe) break;
         }
@@ -2175,6 +2222,8 @@ std::cout << "After iteration, safe = " << wv.safe << std::endl;
 auto t5 = std::chrono::high_resolution_clock::now();
 double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
 ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
+traj_opt_time_sum_ms_ += ms_opt;
+traj_opt_time_count_ += 1;
     }
     e0->has_traj_ = true;
     e0->traj_is_se3_ = false;
@@ -2215,6 +2264,7 @@ auto t_pre_0 = std::chrono::high_resolution_clock::now();
         return;
     }
 
+    pruneSimilarGapCandidates(start_pos, all_candidates);
     reorderCandidatesGapWithGoal(goal_pos, all_candidates);
 
     current_direction_for_visualization_[0] = all_candidates[0].dir_odom_frame[0];
@@ -2239,10 +2289,21 @@ ROS_INFO("[PlannerManager] expandNodePrimaryOnly preprocess elapsed: %.3f ms", m
     bool found_primary = false;
     size_t primary_idx = 0;
 
+    // fallback: if all feasible candidates are contained, keep the best-ranked one
+    bool fallback_valid = false;
+    bool used_fallback_primary = false;
+    size_t fallback_idx = 0;
+    Eigen::Vector3d fallback_goal = Eigen::Vector3d::Zero();
+    Eigen::Vector3d fallback_replan = Eigen::Vector3d::Zero();
+    Eigen::Matrix3d fallback_R3 = Eigen::Matrix3d::Identity();
+    Eigen::Matrix2d fallback_R2 = Eigen::Matrix2d::Identity();
+    Polyhedron3D fallback_corridor_3d;
+    Polyhedron2D fallback_corridor_2d;
+
     for (size_t i = 0; i < all_candidates.size(); ++i) {
         const Gaps& gap = all_candidates[i];
 
-        auto t_decomp_0 = std::chrono::high_resolution_clock::now();
+auto t_decomp_0 = std::chrono::high_resolution_clock::now();
 
         if (env_type_) {
             Polyhedron3D corridor_poly;
@@ -2262,7 +2323,8 @@ auto t_pose_0 = std::chrono::high_resolution_clock::now();
 
             if (gap.type == 3) {
                 ok = getGoalPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
-            } else {
+            }
+            else {
                 ok = getTargetPose3D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
             }
 
@@ -2270,6 +2332,8 @@ auto t_pose_1 = std::chrono::high_resolution_clock::now();
 double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pose_1 - t_pose_0).count();
 
 ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3f ms, ok=%d", i, ms_decomp, ms_pose, (int)ok);
+decomp_time_sum_ms_ += ms_decomp;
+decomp_count_ += 1;
 ROS_INFO("[PlannerManager] size of corridor polyhedron: num hyperplanes = %zu", corridor_poly.hyperplanes().size());
 
             if (!ok) {
@@ -2304,6 +2368,18 @@ ROS_INFO("[PlannerManager] size of corridor polyhedron: num hyperplanes = %zu", 
                 }
             }
 
+            // record fallback only for the FIRST feasible contained candidate
+            if (!found_primary && contained && !fallback_valid) {
+                fallback_valid = true;
+                fallback_idx = i;
+                fallback_goal = gap.dir_odom_frame;
+                fallback_replan = replan_pos;
+                fallback_R3 = R;
+                fallback_corridor_3d = corridor_poly;
+
+                ROS_WARN("[PlannerManager] candidate %zu recorded as fallback primary (contained case).", i);
+            }
+
             if (found_primary) break;
         }
         else {
@@ -2324,15 +2400,17 @@ auto t_pose_0 = std::chrono::high_resolution_clock::now();
 
             if (gap.type == 3) {
                 ok = getGoalPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
-            } else {
+            }
+            else {
                 ok = getTargetPose2D(start_pos, gap.dir_odom_frame, corridor_poly, replan_pos, R);
             }
 
 auto t_pose_1 = std::chrono::high_resolution_clock::now();
 double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pose_1 - t_pose_0).count();
-
+decomp_time_sum_ms_ += ms_decomp;
+decomp_count_ += 1;
 ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3f ms, ok=%d",
-            i, ms_decomp, ms_pose, (int)ok);
+         i, ms_decomp, ms_pose, (int)ok);
 
             if (!ok) {
                 continue;
@@ -2366,7 +2444,49 @@ ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3
                 }
             }
 
+            if (!found_primary && contained && !fallback_valid) {
+                fallback_valid = true;
+                fallback_idx = i;
+                fallback_goal = gap.dir_odom_frame;
+                fallback_replan = replan_pos;
+                fallback_R2 = R;
+                fallback_corridor_2d = corridor_poly;
+
+                ROS_WARN("[PlannerManager] candidate %zu recorded as fallback primary (contained case).", i);
+            }
+
             if (found_primary) break;
+        }
+    }
+
+    // 4.5) fallback: if all feasible candidates were contained, keep the best-ranked one
+    if (!found_primary && fallback_valid) {
+        std::lock_guard<std::mutex> lk(graph_mutex_);
+        auto* node = free_regions_graph_ptr_->getNode(current_id);
+        if (node) {
+            EdgeId edge_id = free_regions_graph_ptr_->addEdge(current_id, fallback_goal);
+            auto* e = free_regions_graph_ptr_->getEdge(edge_id);
+            if (e) {
+                if (env_type_) {
+                    e->corridor_3d_ = fallback_corridor_3d;
+                    e->replan_pos_ = fallback_replan;
+                    e->R_ = fallback_R3;
+                    e->cost_ = (e->replan_pos_ - node->state_pos_).norm();
+                }
+                else {
+                    e->corridor_2d_ = fallback_corridor_2d;
+                    e->replan_pos_ = fallback_replan;
+                    e->R_2d_ = fallback_R2;
+                    e->cost_ = (e->replan_pos_.head<2>() - node->state_pos_.head<2>()).norm();
+                }
+
+                found_primary = true;
+                used_fallback_primary = true;
+                primary_idx = fallback_idx;
+
+                ROS_WARN("[PlannerManager] All candidates were contained. Fallback keeps candidate %zu as the ONLY edge, edge_id=%d",
+                         fallback_idx, edge_id);
+            }
         }
     }
 
@@ -2381,9 +2501,13 @@ auto t_pending_0 = std::chrono::high_resolution_clock::now();
             job.start_pos = start_pos;
             job.candidates.clear();
 
-            for (size_t i = 0; i < all_candidates.size(); ++i) {
-                if (found_primary && i == primary_idx) continue;
-                job.candidates.push_back(all_candidates[i]);
+            // If fallback is used, do NOT enqueue the other contained candidates.
+            // This node is treated as having only one edge.
+            if (found_primary && !used_fallback_primary) {
+                for (size_t i = 0; i < all_candidates.size(); ++i) {
+                    if (i == primary_idx) continue;
+                    job.candidates.push_back(all_candidates[i]);
+                }
             }
 
             job.valid = !job.candidates.empty();
@@ -2391,7 +2515,7 @@ auto t_pending_0 = std::chrono::high_resolution_clock::now();
             if (job.valid) {
                 pending_expand_jobs_.push_back(std::move(job));
                 ROS_INFO("[PlannerManager] Queued background expansion job for node %d. Queue size = %zu",
-                        current_id, pending_expand_jobs_.size());
+                         current_id, pending_expand_jobs_.size());
             }
         }
     }
@@ -2404,7 +2528,8 @@ ROS_INFO("[PlannerManager] expandNodePrimaryOnly store-pending elapsed: %.3f ms"
         std::lock_guard<std::mutex> lk(graph_mutex_);
         if (current_node->edge_ids_.empty() || !isFrontierNode(current_id)) {
             current_node->deadend_ = true;
-        } else {
+        }
+        else {
             current_node->deadend_ = false;
         }
     }

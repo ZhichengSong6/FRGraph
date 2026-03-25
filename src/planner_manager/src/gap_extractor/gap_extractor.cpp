@@ -180,7 +180,14 @@ void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
         node_.param<float>("gap_extractor/2D/limited_gap_elev_span",                        params_.limited_gap_elev_span, M_PI / 6); // 30 degrees
         node_.param<int>  ("gap_extractor/2D/min_pixels_in_limited_subregion",              params_.min_pixels_in_limited_subregion, 2);
     }
-
+    std::vector<double> crop_size_vec;
+    node_.param<std::vector<double>>("size_of_cropped_pointcloud", crop_size_vec, {3, 3, 2});
+    if (crop_size_vec.size() == 3) {
+        size_of_cropped_pointcloud_ = Eigen::Vector3d(crop_size_vec[0], crop_size_vec[1], crop_size_vec[2]);
+    } else {
+        size_of_cropped_pointcloud_ = Eigen::Vector3d(3, 3, 2); // 默认值
+        ROS_WARN("size_of_cropped_pointcloud param size error, using default (3,3,2)");
+    }
     cloud_ptr_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
 
     if (env_type_){
@@ -771,6 +778,14 @@ void GapExtractor::buildGapMasks_FromSingleFFEdge(std::vector<std::vector<uint8_
         else if (old != s) old = 0; // conflict => unknown (conservative)
     };
 
+    const bool is_2d = (H == 1);
+
+    const int du_keep = 1;
+
+    // last kept u for horizontal FF edges, separated by side tag
+    std::vector<int> last_keep_u_L(H, -1000000000);
+    std::vector<int> last_keep_u_R(H, -1000000000);
+
     for (const auto& e : selected_edges_) {
         if (e.edge_class != EdgeClass::FF) continue;
 
@@ -778,7 +793,28 @@ void GapExtractor::buildGapMasks_FromSingleFFEdge(std::vector<std::vector<uint8_
         int u = e.u;
 
         if (v < 0 || v >= H) continue;
-        u %= W; if (u < 0) u += W;
+        u %= W;
+        if (u < 0) u += W;
+
+        // In 2D, thin out dense horizontal FF seeds.
+        // Keep vertical FF edges unchanged.
+        if (is_2d && e.type == 0) {
+            int* last_u_ptr = nullptr;
+
+            if (e.h_edge_type == HEdgeType::L) {
+                last_u_ptr = &last_keep_u_L[v];
+            } else if (e.h_edge_type == HEdgeType::R) {
+                last_u_ptr = &last_keep_u_R[v];
+            }
+
+            if (last_u_ptr != nullptr) {
+                // same-side FF seeds that are too close are treated as duplicates
+                if (u - *last_u_ptr < du_keep) {
+                    continue;
+                }
+                *last_u_ptr = u;
+            }
+        }
 
         // seed limited mask
         mask_limited[v][u] = 1;
@@ -1651,35 +1687,81 @@ void GapExtractor::velodyneCallback(const sensor_msgs::PointCloud2ConstPtr &msg)
         ROS_WARN("[GapExtractor] Received empty point cloud data");
         return;
     }
-    // process point cloud to pcl::PointCloud<pcl::PointXYZ>::Ptr
-    pcl::fromROSMsg(*msg, *cloud_ptr_);
+
+    if (!cloud_ptr_)
+    {
+        cloud_ptr_.reset(new pcl::PointCloud<pcl::PointXYZ>());
+    }
+    cloud_ptr_->clear();
+
+    pcl::PointCloud<pcl::PointXYZ> cloud_in;
+    pcl::fromROSMsg(*msg, cloud_in);
+
+    const double hx = size_of_cropped_pointcloud_[0] / 2.0;
+    const double hy = size_of_cropped_pointcloud_[1] / 2.0;
+    const double hz = size_of_cropped_pointcloud_[2] / 2.0;
+
+    for (const auto &pt : cloud_in.points)
+    {
+        if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.z))
+            continue;
+
+        if (pt.x > -hx && pt.x < hx &&
+            pt.y > -hy && pt.y < hy &&
+            pt.z > -hz && pt.z < hz)
+        {
+            cloud_ptr_->points.push_back(pt);
+        }
+    }
+
+    cloud_ptr_->width = cloud_ptr_->points.size();
+    cloud_ptr_->height = 1;
+    cloud_ptr_->is_dense = false;
 }
 
-void GapExtractor::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg){
+void GapExtractor::scan2dCallback(const sensor_msgs::LaserScanConstPtr &msg)
+{
     // Process the 2D laser scan data
     if (msg->ranges.empty())
     {
         ROS_WARN("[GapExtractor] Received empty laser scan data");
         return;
     }
-    // process laser scan to pcl::PointCloud<pcl::PointXYZ>::Ptr
-    if (!cloud_ptr_){
+
+    if (!cloud_ptr_)
+    {
         cloud_ptr_.reset(new pcl::PointCloud<pcl::PointXYZ>());
     }
     cloud_ptr_->clear();
+
+    const double hx = size_of_cropped_pointcloud_[0] / 2.0;
+    const double hy = size_of_cropped_pointcloud_[1] / 2.0;
+
     double angle = msg->angle_min;
-    for (const float& r : msg->ranges){
-        if (!std::isfinite(r) || r < msg->range_min || r > msg->range_max){
+    for (const float &r : msg->ranges)
+    {
+        if (!std::isfinite(r) || r < msg->range_min || r > msg->range_max)
+        {
             angle += msg->angle_increment;
             continue;
         }
-        pcl::PointXYZ p;
-        p.x = r * std::cos(angle);
-        p.y = r * std::sin(angle);
-        p.z = 0.0f;
-        cloud_ptr_->points.push_back(p);
+
+        const double x = r * std::cos(angle);
+        const double y = r * std::sin(angle);
+
+        if (x > -hx && x < hx &&
+            y > -hy && y < hy)
+        {
+            pcl::PointXYZ p;
+            p.x = static_cast<float>(x);
+            p.y = static_cast<float>(y);
+            p.z = 0.0f;
+            cloud_ptr_->points.push_back(p);
+        }
+
         angle += msg->angle_increment;
     }
+
     cloud_ptr_->width = cloud_ptr_->points.size();
     cloud_ptr_->height = 1;
     cloud_ptr_->is_dense = false;

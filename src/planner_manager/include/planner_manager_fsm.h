@@ -91,6 +91,12 @@ class PlannerManagerFSM {
     double so3Angle(const Eigen::Matrix3d& R);
     double so2Angle(const Eigen::Matrix2d& R);
 
+    /* */
+    double computePathLength2D();
+    double computePathLength3D();
+    double computeDecompAverageTime();
+    double computeTrajOptAverageTime();
+
     /* Visualization */
     void publishGoalMarker();
     void publishGlobalGraph();
