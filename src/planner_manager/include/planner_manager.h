@@ -307,6 +307,9 @@ class PlannerManager {
     double traj_opt_time_sum_ms_ = 0.0;
     int traj_opt_time_count_ = 0;
 
+    double pose_time_sum_ms_ = 0.0;
+    int pose_time_count_ = 0;
+
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 

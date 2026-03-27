@@ -623,9 +623,10 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
                 }
                 double decomp_avg_ms = computeDecompAverageTime();
                 double traj_avg_ms = computeTrajOptAverageTime();
+                double pose_avg_ms = computePoseSelectionAverageTime();
 
-ROS_INFO("[FSM]: Path length: %.2f m, Decomp average time: %.3f ms, Traj opt average time: %.3f ms",
-         path_length, decomp_avg_ms, traj_avg_ms);
+ROS_INFO("[FSM]: Path length: %.2f m, Decomp average time: %.3f ms, Traj opt average time: %.3f ms, Pose selection average time: %.3f ms",
+         path_length, decomp_avg_ms, traj_avg_ms, pose_avg_ms);
                 changeFSMState(WAIT_GOAL, "FSM");
                 return;
             }
@@ -819,6 +820,11 @@ double PlannerManagerFSM::computeDecompAverageTime() {
 double PlannerManagerFSM::computeTrajOptAverageTime() {
     if (planner_manager_->traj_opt_time_count_ == 0) return 0.0;
     return planner_manager_->traj_opt_time_sum_ms_ / planner_manager_->traj_opt_time_count_;
+}
+
+double PlannerManagerFSM::computePoseSelectionAverageTime(){
+    if (planner_manager_->pose_time_count_ == 0) return 0.0;
+    return planner_manager_->pose_time_sum_ms_ / planner_manager_->pose_time_count_;
 }
 
 void PlannerManagerFSM::publishGoalMarker() {

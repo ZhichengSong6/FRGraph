@@ -13,8 +13,8 @@
         <!-- <arg name="world_name" value="$(find simple_robot)/worlds/sixboxes.world"/> -->
         <!-- <arg name="world_name" value="$(find simple_robot)/worlds/2d_006.world"/> -->
         <!-- <arg name="world_name" value="$(find simple_robot)/worlds/2d_008.world"/> -->
-        <arg name="world_name" value="$(find simple_robot)/worlds/2d_010.world"/>
-        <!-- <arg name="world_name" value="$(find simple_robot)/worlds/2d_012.world"/> -->
+        <!-- <arg name="world_name" value="$(find simple_robot)/worlds/2d_010.world"/> -->
+        <arg name="world_name" value="$(find simple_robot)/worlds/2d_012.world"/>
         <!-- <arg name="world_name" value="$(find simple_robot)/worlds/3d.world"/> -->
         <arg name="gui" value="true"/>
     </include>

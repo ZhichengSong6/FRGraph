@@ -96,6 +96,7 @@ class PlannerManagerFSM {
     double computePathLength3D();
     double computeDecompAverageTime();
     double computeTrajOptAverageTime();
+    double computePoseSelectionAverageTime();
 
     /* Visualization */
     void publishGoalMarker();

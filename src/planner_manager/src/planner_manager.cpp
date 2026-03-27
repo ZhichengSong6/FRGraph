@@ -2158,6 +2158,8 @@ auto t4 = std::chrono::high_resolution_clock::now();
         }
 auto t5 = std::chrono::high_resolution_clock::now();
 double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
+traj_opt_time_sum_ms_ += ms_opt;
+traj_opt_time_count_ += 1;
 ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
     }
     e0->has_traj_ = true;
@@ -2361,6 +2363,8 @@ double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::m
 ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3f ms, ok=%d", i, ms_decomp, ms_pose, (int)ok);
 decomp_time_sum_ms_ += ms_decomp;
 decomp_count_ += 1;
+pose_time_sum_ms_ += ms_pose;
+pose_time_count_ += 1;
 ROS_INFO("[PlannerManager] size of corridor polyhedron: num hyperplanes = %zu", corridor_poly.hyperplanes().size());
 
             if (!ok) {
@@ -2436,6 +2440,8 @@ auto t_pose_1 = std::chrono::high_resolution_clock::now();
 double ms_pose = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_pose_1 - t_pose_0).count();
 decomp_time_sum_ms_ += ms_decomp;
 decomp_count_ += 1;
+pose_time_sum_ms_ += ms_pose;
+pose_time_count_ += 1;
 ROS_INFO("[PlannerManager] candidate %zu sync trial: decompose=%.3f ms, pose=%.3f ms, ok=%d",
          i, ms_decomp, ms_pose, (int)ok);
 
