@@ -420,7 +420,7 @@ bool PlannerManager::computeSingleCorridor3DLocal(const Eigen::Vector3d& start_p
     Vec3f pos_ext;
     Vec3f neg_ext;
 
-    if (gap.type == 3) {
+    if (gap.type == 3 || gap.type == 1) {
         pos_ext = Vec3f(0.3, 0.5, 0.5);
         neg_ext = Vec3f(0.3, 0.5, 0.5);
     } else {
@@ -482,7 +482,7 @@ bool PlannerManager::computeSingleCorridor2DLocal(const Eigen::Vector3d& start_p
     Vec2f pos_ext;
     Vec2f neg_ext;
 
-    if (gap.type == 3) {
+    if (gap.type == 3 || gap.type == 1) {
         pos_ext = Vec2f(0.3, 0.5);
         neg_ext = Vec2f(0.3, 0.5);
     } else {

@@ -136,6 +136,22 @@ static inline void quaternionToRPY(const Eigen::Quaterniond &q, double &roll, do
     yaw = atan2(siny_cosp, cosy_cosp);
 }
 
+static inline float snapElevToZeroIfCovered(const std::vector<float>& vals, float fallback) {
+    if (vals.empty()) return fallback;
+
+    float vmin = vals[0];
+    float vmax = vals[0];
+    for (float v : vals) {
+        if (v < vmin) vmin = v;
+        if (v > vmax) vmax = v;
+    }
+
+    if (vmin <= 0.f && vmax >= 0.f) {
+        return 0.f;
+    }
+    return fallback;
+}
+
 void GapExtractor::initialize(ros::NodeHandle &nh, bool env_type)
 {
     node_ = nh;
@@ -953,8 +969,6 @@ void GapExtractor::bfsGapRegion(int v0, int u0, const std::vector<std::vector<ui
     visited[v0][u0] = 1;
     q.emplace(v0, u0);
 
-    // Accumulators for spherical mean and angle spans
-    float sum_x = 0.f, sum_y = 0.f, sum_z = 0.f;
     std::vector<float> az_list;
     std::vector<float> el_list;
     az_list.reserve(256);
@@ -982,22 +996,20 @@ void GapExtractor::bfsGapRegion(int v0, int u0, const std::vector<std::vector<ui
         az_list.push_back(yaw);
         el_list.push_back(elev);
 
-        // visit neighbors (8-connectivity)
         for (int dv = -1; dv <= 1; ++dv){
             for (int du = -1; du <= 1; ++du){
                 if (dv == 0 && du == 0) continue;
                 int vv = v + dv;
                 if (vv < 0 || vv >= H) continue;
-                int uu = (u + du + W) % W; // wrap around
-                if (!mask[vv][uu]) continue; // not a gap cell
-                if (visited[vv][uu]) continue;          // already visited
+                int uu = (u + du + W) % W;
+                if (!mask[vv][uu]) continue;
+                if (visited[vv][uu]) continue;
                 visited[vv][uu] = 1;
                 q.emplace(vv, uu);
             }
         }
     }
 
-    // Compute mean direction
     float center_yaw = 0.f;
     float center_elev = 0.f;
 
@@ -1007,7 +1019,7 @@ void GapExtractor::bfsGapRegion(int v0, int u0, const std::vector<std::vector<ui
         std::vector<float> yaw_s;
         yaw_s.reserve(az_list.size());
         for (float a : az_list){
-            yaw_s.push_back(yawShiftedByOffset(a, offset));     //[0,2pi]
+            yaw_s.push_back(yawShiftedByOffset(a, offset));
         }
 
         std::vector<float> tmp_y = yaw_s;
@@ -1024,7 +1036,7 @@ void GapExtractor::bfsGapRegion(int v0, int u0, const std::vector<std::vector<ui
         const float TWO_PI = 2.0f * static_cast<float>(M_PI);
         while (yaw_rec >= TWO_PI) yaw_rec -= TWO_PI;
         while (yaw_rec < 0.f) yaw_rec += TWO_PI;
-        if (yaw_rec > M_PI) yaw_rec -= TWO_PI; // back to [-pi, pi]
+        if (yaw_rec > M_PI) yaw_rec -= TWO_PI;
         center_yaw = yaw_rec;
     }
 
@@ -1038,7 +1050,15 @@ void GapExtractor::bfsGapRegion(int v0, int u0, const std::vector<std::vector<ui
             float lower = *std::max_element(tmp_e.begin(), tmp_e.begin() + me);
             med_e = 0.5f * (med_e + lower);
         }
-        center_elev = med_e;
+
+        float emin = el_list[0];
+        float emax = el_list[0];
+        for (float e : el_list){
+            emin = std::min(emin, e);
+            emax = std::max(emax, e);
+        }
+
+        center_elev = (emin <= 0.f && emax >= 0.f) ? 0.f : med_e;
     }
 
     region.center_yaw = center_yaw;
@@ -1050,7 +1070,6 @@ void GapExtractor::bfsGapRegion(int v0, int u0, const std::vector<std::vector<ui
         region.dir_z = std::sin(center_elev);
     }
 
-    // Angular spans
     region.yaw_span = circularSpanRad(az_list);
     region.elev_span = linearSpanRad(el_list);
 }
@@ -1107,10 +1126,10 @@ void GapExtractor::splitOpenGapRegion(const GapRegion& region, float yaw_sub_spa
 
     // Decide Ny/Ne (capped by thresholds; at least 1 tile each)
     int Ny = (yaw_sub_span  > 1e-6f) ? (int)std::ceil(yaw_span / yaw_sub_span)  : 1;
-    // int Ne = (elev_sub_span > 1e-6f) ? (int)std::ceil(elev_span / elev_sub_span) : 1;
+    int Ne = (elev_sub_span > 1e-6f) ? (int)std::ceil(elev_span / elev_sub_span) : 1;
     if (Ny < 1) Ny = 1;
-    // if (Ne < 1) Ne = 1;
-    int Ne = 1;
+    if (Ne < 1) Ne = 1;
+    // int Ne = 1;
 
     subregions.resize(Ny);
     for (int iy = 0; iy < Ny; ++iy){
@@ -1261,8 +1280,8 @@ void GapExtractor::splitLimitedGapRegion(const GapRegion& region, float min_yaw_
     // decide main axis based on spans
     const bool yaw_is_axis = (yaw_span >= elev_span);
     int Ny = yaw_is_axis ? std::max(1, (int)std::ceil(yaw_span  / min_yaw_span)) : 1;
-    // int Ne = yaw_is_axis ? 1 : std::max(1, (int)std::ceil(elev_span / min_elev_span));
-    int Ne = 1;
+    int Ne = yaw_is_axis ? 1 : std::max(1, (int)std::ceil(elev_span / min_elev_span));
+    // int Ne = 1;
 
     subregions.resize(Ny);
     for (int iy = 0; iy < Ny; ++iy){
@@ -1314,10 +1333,10 @@ void GapExtractor::splitFreeGapRegion(const GapRegion& region, float yaw_sub_spa
 
     const float TWO_PI = 2.f * static_cast<float>(M_PI);
     int Ny = (yaw_sub_span  > 1e-6f) ? (int)std::ceil(TWO_PI / yaw_sub_span)  : 1;
-    // int Ne = (elev_sub_span > 1e-6f) ? (int)std::ceil(elev_span / elev_sub_span) : 1;
+    int Ne = (elev_sub_span > 1e-6f) ? (int)std::ceil(elev_span / elev_sub_span) : 1;
     if (Ny < 1) Ny = 1;
-    // if (Ne < 1) Ne = 1;
-    int Ne = 1;
+    if (Ne < 1) Ne = 1;
+    // int Ne = 1;
 
     subregions.resize(Ny);
     for (int iy = 0; iy < Ny; ++iy) subregions[iy].resize(Ne);
@@ -1370,16 +1389,16 @@ void GapExtractor::computeStateForCell(GapSubRegion& cell) const {
     double r_sum = 0.0;
 
     std::vector<float> yz; yz.reserve(cell.pixels.size());
-    std::vector<float> el; el .reserve(cell.pixels.size());
+    std::vector<float> el; el.reserve(cell.pixels.size());
 
     for (const auto& pv : cell.pixels){
         const int v = pv.first;
         const int u = pv.second;
         float r = range_map_.range[v][u];
         if (!std::isfinite(r)){
-            r = params_.map_size; // max range
+            r = params_.map_size;
         }
-        r_sum += (double) r;
+        r_sum += (double)r;
 
         yz.push_back(range_map_.azimuth[v][u]);
         el.push_back(range_map_.elevation[v][u]);
@@ -1392,7 +1411,7 @@ void GapExtractor::computeStateForCell(GapSubRegion& cell) const {
         std::vector<float> yaw_s;
         yaw_s.reserve(yz.size());
         for (float a : yz){
-            yaw_s.push_back(yawShiftedByOffset(a, offset));     //[0,2pi]
+            yaw_s.push_back(yawShiftedByOffset(a, offset));
         }
 
         std::vector<float> tmp_y = yaw_s;
@@ -1404,11 +1423,12 @@ void GapExtractor::computeStateForCell(GapSubRegion& cell) const {
             float lower = *std::max_element(tmp_y.begin(), tmp_y.begin() + m);
             med_y = 0.5f * (med_y + lower);
         }
+
         float yaw_rec = med_y + offset;
         const float TWO_PI = 2.0f * static_cast<float>(M_PI);
         while (yaw_rec >= TWO_PI) yaw_rec -= TWO_PI;
         while (yaw_rec < 0.f) yaw_rec += TWO_PI;
-        if (yaw_rec > M_PI) yaw_rec -= TWO_PI; // back to [-pi, pi]
+        if (yaw_rec > M_PI) yaw_rec -= TWO_PI;
         center_yaw = yaw_rec;
     }
 
@@ -1423,7 +1443,15 @@ void GapExtractor::computeStateForCell(GapSubRegion& cell) const {
             float lower = *std::max_element(tmp_e.begin(), tmp_e.begin() + m);
             med_e = 0.5f * (med_e + lower);
         }
-        center_elev = med_e;
+
+        float emin = el[0];
+        float emax = el[0];
+        for (float e : el){
+            emin = std::min(emin, e);
+            emax = std::max(emax, e);
+        }
+
+        center_elev = (emin <= 0.f && emax >= 0.f) ? 0.f : med_e;
     }
 
     cell.center_yaw = center_yaw;
@@ -1434,9 +1462,7 @@ void GapExtractor::computeStateForCell(GapSubRegion& cell) const {
 
     cell.range_mean = (cell.size > 0) ? (float)(r_sum / (double)cell.size) : 0.0f;
 
-    // ---------------- LIMITED bias (use side maps) ----------------
     if (cell.type == 1 && cell.size > 0) {
-
         int lr_sum = 0, lr_cnt = 0;
         int ud_sum = 0, ud_cnt = 0;
 
@@ -1464,21 +1490,10 @@ void GapExtractor::computeStateForCell(GapSubRegion& cell) const {
 
         if (lr_dir != 0 && cell.yaw_span > 1e-6f) {
             cell.yaw_bias = lr_dir * kYaw;
-            // float dyaw = lr_dir * kYaw;
-            // // wrap back to [-pi, pi]
-            // cell.center_yaw += dyaw;
-            // while (cell.center_yaw >  (float)M_PI) cell.center_yaw -= 2.f * (float)M_PI;
-            // while (cell.center_yaw < -(float)M_PI) cell.center_yaw += 2.f * (float)M_PI;
         }
 
         if (ud_dir != 0 && cell.elev_span > 1e-6f) {
             cell.elev_bias = ud_dir * kElev;
-            // float de = ud_dir * kElev;
-
-            // // clamp to lidar elevation range
-            // const float min_e = params_.min_elev * (float)M_PI / 180.f;
-            // const float max_e = params_.max_elev * (float)M_PI / 180.f;
-            // cell.center_elev = std::max(min_e, std::min(max_e, cell.center_elev + de));
         }
     }
 }
