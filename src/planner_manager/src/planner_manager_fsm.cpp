@@ -143,8 +143,10 @@ void PlannerManagerFSM::publishCmdCallback(const ros::TimerEvent &e)
     const Eigen::Matrix3d R_bw = R_wb.transpose();
 
     // Measured velocities in base frame
-    const Eigen::Vector3d v_b = odom_vel_;
-    const Eigen::Vector3d w_meas_b = odom_omega_;
+    const Eigen::Vector3d v_w = odom_vel_;
+    const Eigen::Vector3d w_w = odom_omega_;
+    const Eigen::Vector3d v_b = R_bw * v_w;
+    const Eigen::Vector3d w_meas_b = R_bw * w_w;
 
     geometry_msgs::Twist cmd;
 

@@ -937,7 +937,7 @@ void PlannerManager::sortAllCandidatesGap(Eigen::Vector3d &goal_pos, std::vector
 }
 
 void PlannerManager::reorderCandidatesGapWithGoal(Eigen::Vector3d &goal_pos, std::vector<Gaps, Eigen::aligned_allocator<Gaps>> &all_candidates){
-    if (all_candidates.empty()) return;
+    // if (all_candidates.empty()) return;
     gap_extractor_ptr_->checkGoalStatus(goal_pos);
     GoalStatus goal_status = gap_extractor_ptr_->getGoalStatus();
     if (goal_status == GoalStatus::BLOCKED || goal_status == GoalStatus::OUT_OF_VIEW){
@@ -2287,15 +2287,15 @@ auto t_pre_0 = std::chrono::high_resolution_clock::now();
     filterBackwardGaps(start_pos, current_id, all_candidates);
     sortAllCandidatesGap(goal_pos, all_candidates);
 
+    
+    pruneSimilarGapCandidates(start_pos, all_candidates);
+    reorderCandidatesGapWithGoal(goal_pos, all_candidates);
+    
     if (all_candidates.empty()) {
         ROS_WARN("[PlannerManager] No gap candidates available for planning.");
         current_node->deadend_ = true;
         return;
     }
-
-    pruneSimilarGapCandidates(start_pos, all_candidates);
-    reorderCandidatesGapWithGoal(goal_pos, all_candidates);
-
     current_direction_for_visualization_[0] = all_candidates[0].dir_odom_frame[0];
     current_direction_for_visualization_[1] = all_candidates[0].dir_odom_frame[1];
     current_direction_for_visualization_[2] = env_type_ ? all_candidates[0].dir_odom_frame[2] : 0.0;
