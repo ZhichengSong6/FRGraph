@@ -1884,6 +1884,7 @@ EdgeId PlannerManager::selectBestEdgeAtNode(NodeId nid){
         auto* edge = free_regions_graph_ptr_->getEdge(eid);
         if (!edge) continue;
         if (edge->tried_) continue;
+        if (edge->traj_failed_) continue;
         return eid;
     }
     return -1;
@@ -1903,7 +1904,7 @@ bool PlannerManager::isFrontierNode(NodeId nid)
     for (EdgeId eid : node->edge_ids_) {
         auto* edge = free_regions_graph_ptr_->getEdge(eid);
         if (!edge) continue;
-        if (!edge->tried_) {
+        if (!edge->tried_ && !edge->traj_failed_) {
             return true;
         }
     }
@@ -2087,6 +2088,11 @@ bool PlannerManager::planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, Ed
     auto* e0 = free_regions_graph_ptr_->getEdge(edge_id);
     if (!e0) return false;
 
+    if (e0->traj_failed_) {
+        ROS_WARN("[PlannerManager] Edge %d is already marked as traj_failed_.", edge_id);
+        return false;
+    }
+
     Eigen::Vector3d start_xyz = start_pos;
     Eigen::Vector3d goal_xyz  = e0->replan_pos_;
     
@@ -2094,18 +2100,19 @@ bool PlannerManager::planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, Ed
     getOdometryInfo(T_odom);
     Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
     base_pos_odom = T_odom.block<3,1>(0,3);
-    // get rpy in odom frame
+
     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
     double robot_roll =  std::atan2(base_rot_mat(2,1), base_rot_mat(2,2));
     double robot_pitch = std::atan2(-base_rot_mat(2,0), std::sqrt(base_rot_mat(2,1)*base_rot_mat(2,1) + base_rot_mat(2,2)*base_rot_mat(2,2)));
     double robot_yaw =   std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
-    // get goal yaw based on R
+
     Eigen::Matrix3d R_goal = e0->R_;
     double goal_roll =  std::atan2(R_goal(2,1), R_goal(2,2));
     double goal_pitch = std::atan2(-R_goal(2,0), std::sqrt(R_goal(2,1)*R_goal(2,1) + R_goal(2,2)*R_goal(2,2)));
     double goal_yaw =   std::atan2(R_goal(1,0), R_goal(0,0));
+
     BezierSE3 traj = BezierSE3::initFromEndpoints(start_xyz, Eigen::Vector3d(robot_roll, robot_pitch, robot_yaw),
-                                                    goal_xyz,  Eigen::Vector3d(goal_roll, goal_pitch, goal_yaw));
+                                                  goal_xyz,  Eigen::Vector3d(goal_roll, goal_pitch, goal_yaw));
 
     VerifyOptions opt;
     opt.eps = 1e-6;
@@ -2114,7 +2121,6 @@ bool PlannerManager::planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, Ed
     opt.unit_normals = false;
 
     std::vector<Eigen::Vector3d> verts;
-    // put robot_shape_points_ in verts
     for (const auto &pt : robot_shape_points_){
         verts.push_back(Eigen::Vector3d(pt[0], pt[1], pt[2]));
     }
@@ -2125,54 +2131,84 @@ bool PlannerManager::planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, Ed
     Eigen::VectorXd b = lc.b();
 
     WorstViolation wv = FindWorstViolationContinuous3D(A, b, verts, traj, opt);
+
+    bool success = false;
+
     if (wv.safe){
         ROS_INFO("[PlannerManager] Found a safe trajectory");
         publishTrajectoryForVisualization(traj);
+        success = true;
     }
     else{
-        // Not safe, update the traj
         ROS_INFO("Bezier verify: safe=%d, g=%g, t=%g, k=%d, i=%d",
-                (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
+                 (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
 
         publishTrajectoryForVisualization(traj, wv.t);
+
 auto t4 = std::chrono::high_resolution_clock::now();
-        for (int it=0; it<30; ++it) {
-            bool ok = RepairOnce_PIQP(A,b,verts,traj,opt,wv,
-                /*Kcp=*/4,
-                /*topKplanes=*/5,
-                /*eps_add=*/1e-6,
-                /*margin=*/1e-4,
-                /*delta_p=*/0.10,
-                /*delta_th=*/0.20,
-                /*w_p=*/1.0,
-                /*w_th=*/1.0,
-                /*w_slack=*/1e4);
+
+        for (int it = 0; it < 30; ++it) {
+            bool ok = RepairOnce_PIQP(A, b, verts, traj, opt, wv,
+                                      /*Kcp=*/4,
+                                      /*topKplanes=*/5,
+                                      /*eps_add=*/1e-6,
+                                      /*margin=*/1e-4,
+                                      /*delta_p=*/0.10,
+                                      /*delta_th=*/0.20,
+                                      /*w_p=*/1.0,
+                                      /*w_th=*/1.0,
+                                      /*w_slack=*/1e4);
             if (!ok) {
                 publishTrajectoryForVisualization(traj, wv.t);
-                ROS_WARN("repair failed");
+                ROS_WARN("[PlannerManager] RepairOnce_PIQP failed for edge %d", edge_id);
+
+                e0->has_traj_ = false;
+                e0->tried_ = true;
+                e0->traj_failed_ = true;
+                return false;
+            }
+
+            wv = FindWorstViolationContinuous3D(A, b, verts, traj, opt);
+            if (wv.safe) {
+                success = true;
                 break;
             }
-            wv = FindWorstViolationContinuous3D(A,b,verts,traj,opt);
-            // ROS_INFO("[it %d] safe=%d g=%g t=%g", it, (int)wv.safe, wv.g, wv.t);
-            if (wv.safe) break;
         }
+
 auto t5 = std::chrono::high_resolution_clock::now();
 double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
 traj_opt_time_sum_ms_ += ms_opt;
 traj_opt_time_count_ += 1;
-ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
+        ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
+
+        if (!success) {
+            publishTrajectoryForVisualization(traj, wv.t);
+            ROS_WARN("[PlannerManager] Failed to find a safe 3D trajectory after optimization for edge %d", edge_id);
+
+            e0->has_traj_ = false;
+            e0->tried_ = true;
+            e0->traj_failed_ = true;
+            return false;
+        }
     }
+
     e0->has_traj_ = true;
     e0->traj_is_se3_ = true;
     e0->traj3_ = traj;
     e0->tried_ = true;
+    e0->traj_failed_ = false;
+
     publishTrajectoryAfterOptimization(traj);
     return true;
 }
-
 bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id) {
     auto* e0 = free_regions_graph_ptr_->getEdge(edge_id);
     if (!e0) return false;
+
+    if (e0->traj_failed_) {
+        ROS_WARN("[PlannerManager] Edge %d is already marked as traj_failed_.", edge_id);
+        return false;
+    }
 
     Eigen::Vector3d start_xyz = start_pos;
     Eigen::Vector3d goal_xyz  = e0->replan_pos_;
@@ -2189,7 +2225,7 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
     double goal_yaw = std::atan2(R_goal(1,0), R_goal(0,0));
 
     BezierSE2 traj = BezierSE2::initFromEndpoints(start_xyz.head<2>(), robot_yaw,
-                                                    goal_xyz.head<2>(),  goal_yaw);
+                                                    goal_xyz.head<2>(), goal_yaw);
 
     VerifyOptions opt;
     opt.eps = 1e-6;
@@ -2198,7 +2234,6 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
     opt.unit_normals = false;
 
     std::vector<Eigen::Vector2d> verts;
-    // put robot_shape_points_ in verts
     for (const auto &pt : robot_shape_points_2d_){
         verts.push_back(Eigen::Vector2d(pt[0], pt[1]));
     }
@@ -2209,55 +2244,75 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
     Eigen::VectorXd b = lc.b();
 
     WorstViolation wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
+
+    bool success = false;
+
     if (wv.safe){
         ROS_INFO("[PlannerManager] Found a safe trajectory");
         publishTrajectoryForVisualization(traj);
+        success = true;
     }
     else{
-        // Not safe, update the traj
         ROS_INFO("Bezier verify: safe=%d, g=%g, t=%g, k=%d, i=%d",
-                (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
+                 (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
 
         publishTrajectoryForVisualization(traj, wv.t);
+
 auto t4 = std::chrono::high_resolution_clock::now();
-        for (int it=0; it<30; ++it) {
-// std::cout << "Iteration " << it << ": repairing trajectory..." << std::endl;
-            bool ok = RepairOnce_PIQP(A,b,verts,traj,opt,wv,
-                /*Kcp=*/4,
-                /*topKplanes=*/5,
-                /*eps_add=*/1e-6,
-                /*margin=*/1e-4,
-                /*delta_p=*/0.10,
-                /*delta_th=*/0.10,
-                /*w_p=*/1.0,
-                /*w_th=*/0.1,
-                /*w_slack=*/1e4);
+
+        for (int it = 0; it < 30; ++it) {
+            bool ok = RepairOnce_PIQP(A, b, verts, traj, opt, wv,
+                                      /*Kcp=*/4,
+                                      /*topKplanes=*/5,
+                                      /*eps_add=*/1e-6,
+                                      /*margin=*/1e-4,
+                                      /*delta_p=*/0.10,
+                                      /*delta_th=*/0.10,
+                                      /*w_p=*/1.0,
+                                      /*w_th=*/0.1,
+                                      /*w_slack=*/1e4);
             if (!ok) {
                 publishTrajectoryForVisualization(traj, wv.t);
-                ROS_WARN("repair failed");
+                ROS_WARN("[PlannerManager] RepairOnce_PIQP failed for edge %d", edge_id);
+
+                e0->has_traj_ = false;
+                e0->tried_ = true;
+                e0->traj_failed_ = true;
+                return false;
+            }
+
+            wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
+            publishTrajectoryForVisualizationIter(traj, wv.t, it);
+
+            if (wv.safe) {
+                success = true;
                 break;
             }
-            wv = FindWorstViolationContinuous2D(A,b,verts,traj,opt);
-publishTrajectoryForVisualizationIter(traj, wv.t, it);
-// std::cout << "Iteration " << it << ": worst violation g = " << wv.g << ", t = " << wv.t << std::endl;
-// std::cout << "After iteration, safe = " << wv.safe << std::endl;
-            // ROS_INFO("[it %d] safe=%d g=%g t=%g", it, (int)wv.safe, wv.g, wv.t);
-            if (wv.safe) break;
         }
-        if (!wv.safe){
-            publishTrajectoryForVisualization(traj, wv.t);
-            ROS_WARN("Failed to find a safe trajectory after optimization");
-        }
+
 auto t5 = std::chrono::high_resolution_clock::now();
 double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
 ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
 traj_opt_time_sum_ms_ += ms_opt;
 traj_opt_time_count_ += 1;
+
+        if (!success){
+            publishTrajectoryForVisualization(traj, wv.t);
+            ROS_WARN("[PlannerManager] Failed to find a safe 2D trajectory after optimization for edge %d", edge_id);
+
+            e0->has_traj_ = false;
+            e0->tried_ = true;
+            e0->traj_failed_ = true;
+            return false;
+        }
     }
+
     e0->has_traj_ = true;
     e0->traj_is_se3_ = false;
     e0->traj2_ = traj;
     e0->tried_ = true;
+    e0->traj_failed_ = false;
+
     publishTrajectoryAfterOptimization(traj);
     return true;
 }
@@ -2838,22 +2893,52 @@ bool PlannerManager::planGlobalBestAction(const Eigen::Vector3d &global_goal)
 }
 
 bool PlannerManager::prepareTrajectoryForCurrentEdge(const Eigen::Vector3d &start_pos){
-    if (current_edge_id_ < 0) {
-        ROS_WARN("[PlannerManager] planTrajectoryToCurrentEdge: current_edge_id_ invalid.");
+    while (true) {
+        if (current_edge_id_ < 0) {
+            ROS_WARN("[PlannerManager] prepareTrajectoryForCurrentEdge: current_edge_id_ invalid.");
+            return false;
+        }
+
+        auto* edge = free_regions_graph_ptr_->getEdge(current_edge_id_);
+        if (!edge) {
+            ROS_WARN("[PlannerManager] prepareTrajectoryForCurrentEdge: current edge invalid.");
+            return false;
+        }
+
+        bool ok = false;
+        if (env_type_) {
+            ok = planTrajectoryToEdge3D(start_pos, current_edge_id_);
+        } else {
+            ok = planTrajectoryToEdge2D(start_pos, current_edge_id_);
+        }
+
+        if (ok) {
+            return true;
+        }
+
+        ROS_WARN("[PlannerManager] Edge %d failed trajectory generation. Try another edge.",
+                 current_edge_id_);
+
+        if (current_edge_exec_type_ == EdgeExecType::EXPAND_EDGE) {
+            EdgeId next_eid = selectBestEdgeAtNode(current_node_id_);
+            if (next_eid < 0) {
+                auto* node = free_regions_graph_ptr_->getNode(current_node_id_);
+                if (node) node->deadend_ = true;
+
+                ROS_WARN("[PlannerManager] No more expandable edges at node %d after failure.",
+                         current_node_id_);
+                return false;
+            }
+
+            current_edge_id_ = next_eid;
+            ROS_INFO("[PlannerManager] Switch to next edge %d at current node %d.",
+                     current_edge_id_, current_node_id_);
+            continue;
+        }
+
+        ROS_WARN("[PlannerManager] Current failed edge is a PATH_EDGE. Please re-run global action planning.");
         return false;
     }
-
-    auto* edge = free_regions_graph_ptr_->getEdge(current_edge_id_);
-    if (!edge) {
-        ROS_WARN("[PlannerManager] planTrajectoryToCurrentEdge: current edge invalid.");
-        return false;
-    }
-
-    if (env_type_) {
-        return planTrajectoryToEdge3D(start_pos, current_edge_id_);
-    } else {
-        return planTrajectoryToEdge2D(start_pos, current_edge_id_);
-    }   
 }
 
 void PlannerManager::publishRobotPoints() {

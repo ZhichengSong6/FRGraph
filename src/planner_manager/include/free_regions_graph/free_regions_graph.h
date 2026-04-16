@@ -35,6 +35,7 @@ struct GraphEdge{
     Eigen::Vector3d replan_pos_;
 
     bool tried_ = false;
+    bool traj_failed_ = false;
 
     double cost_ = 0.0;
 };
