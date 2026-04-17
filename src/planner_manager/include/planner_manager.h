@@ -134,7 +134,7 @@ class PlannerManager {
     void publishTrajectoryForVisualization(BezierSE3& traj, double worst_violation_time = -1.0);
     void publishTrajectoryAfterOptimization(BezierSE2& traj);
     void publishTrajectoryAfterOptimization(BezierSE3& traj);
-    void publishCurrentDirection(Eigen::Vector3d &start_pos, Eigen::Vector3d &gap_direction);
+    void publishCurrentDirection();
 
     void publishTrajectoryForVisualizationIter(BezierSE2& traj, double worst_violation_time = -1.0, int iter_id = -1);
     void publishSelectedEdgePolyhedron();
@@ -256,8 +256,8 @@ class PlannerManager {
     double supportValueVertices(const Eigen::Vector3d &norm, const std::vector<Eigen::Vector3d> &vertices, const Eigen::Matrix3d& R);
     double supportValueVertices(const Eigen::Vector2d &norm, const std::vector<Eigen::Vector2d> &vertices, const Eigen::Matrix2d& R);
 
-    double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex);
-    double solveLPByEnumeratingVertices3DWithCache(const std::vector<TripleCache>& cache, const std::vector<Eigen::Vector3d>& Arows, const Eigen::VectorXd& bprime, const Eigen::Vector3d& dir, Eigen::Vector3d& best_vertex);
+    double solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, const Eigen::Vector2d &start_pos, Eigen::Vector2d &best_vertex);
+    double solveLPByEnumeratingVertices3DWithCache(const std::vector<TripleCache>& cache, const std::vector<Eigen::Vector3d>& Arows, const Eigen::VectorXd& bprime, const Eigen::Vector3d& dir, const Eigen::Vector3d& start_pos, Eigen::Vector3d& best_vertex);
     std::vector<TripleCache> buildTripleCache3D(const std::vector<Eigen::Vector3d>& Arows);
 
     EdgeId selectBestEdgeAtNode(NodeId nid);

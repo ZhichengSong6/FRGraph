@@ -1120,7 +1120,7 @@ bool PlannerManager::getTargetPose3D(const Eigen::Vector3d &start_pos, const Eig
     const int m = lc.A().rows();
     std::vector<Eigen::Vector3d> arows(m);
     std::vector<double> shrink(m);
-    const double clearance = 0.02;
+    const double clearance = 0.005;
     for (int l = 0; l < m; ++l) {
         arows[l] = lc.A().row(l).transpose();
         shrink[l] = clearance * arows[l].norm();
@@ -1140,7 +1140,7 @@ bool PlannerManager::getTargetPose3D(const Eigen::Vector3d &start_pos, const Eig
 
         Eigen::Vector3d best_vertex = start_pos;
         const double value =
-            solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, best_vertex);
+            solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, start_pos, best_vertex);
 
         if (!std::isfinite(value)) {
             return res;
@@ -1309,7 +1309,7 @@ bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eig
         }
 
         Eigen::Vector2d best_vertex;
-        const double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, best_vertex);
+        const double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, start_pos.head<2>(), best_vertex);
         if (!std::isfinite(value)) {
             return res;
         }
@@ -1319,8 +1319,8 @@ bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eig
 
         const double yaw_err = std::abs(wrapAngleRad(yaw - robot_yaw));
 
-        const double w_align = 1.0;
-        const double w_angle_diff = 0.5;
+        const double w_align = 0.5;
+        const double w_angle_diff = 0.1;
         const double score = value + align * w_align - yaw_err * w_angle_diff;
 
         res.valid = true;
@@ -1428,7 +1428,7 @@ bool PlannerManager::getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen
     const int m = lc.A().rows();
     std::vector<Eigen::Vector3d> arows(m);
     std::vector<double> shrink(m);
-    const double clearance = 0.02;
+    const double clearance = 0.005;
     for (int l = 0; l < m; ++l) {
         arows[l] = lc.A().row(l).transpose();
         shrink[l] = clearance * arows[l].norm();
@@ -1459,7 +1459,7 @@ bool PlannerManager::getGoalPose3D(const Eigen::Vector3d &start_pos, const Eigen
             best_vertex = goal_point;
         } else {
             const double value =
-                solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, best_vertex);
+                solveLPByEnumeratingVertices3DWithCache(triple_cache, arows, b_prime, dir, start_pos, best_vertex);
             if (!std::isfinite(value)) {
                 return res;
             }
@@ -1638,7 +1638,7 @@ bool PlannerManager::getGoalPose2D(const Eigen::Vector3d &start_pos, const Eigen
         if (goal_feasible) {
             best_vertex = goal_point.head<2>();
         } else {
-            const double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, best_vertex);
+            const double value = solveLPByEnumeratingVertices2D(A, b_prime, dir, start_pos.head<2>(), best_vertex);
             if (!std::isfinite(value)) {
                 return res;
             }
@@ -1799,6 +1799,7 @@ double PlannerManager::solveLPByEnumeratingVertices3DWithCache(
     const std::vector<Eigen::Vector3d>& Arows,
     const Eigen::VectorXd& bprime,
     const Eigen::Vector3d& dir,
+    const Eigen::Vector3d& start_pos,
     Eigen::Vector3d& best_vertex)
 {
     const int m = static_cast<int>(Arows.size());
@@ -1824,9 +1825,10 @@ double PlannerManager::solveLPByEnumeratingVertices3DWithCache(
         }
         if (!feasible) continue;
 
-        const double dist = dir.dot(vertex);
-        if (dist > best_value) {
-            best_value = dist;
+        const double progress = dir.dot(vertex - start_pos);
+
+        if (progress > best_value) {
+            best_value = progress;
             best_vertex = vertex;
         }
     }
@@ -1834,7 +1836,8 @@ double PlannerManager::solveLPByEnumeratingVertices3DWithCache(
     return best_value;
 }
   
-double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, Eigen::Vector2d &best_vertex){
+double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, const Eigen::VectorXd &bprime, const Eigen::Vector2d &dir, const Eigen::Vector2d &start_pos, Eigen::Vector2d &best_vertex)
+{
     const int m = A.rows();
     const double det_tol = 1e-10;
     const double feas_tol = 1e-6;
@@ -1845,16 +1848,18 @@ double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, 
             Eigen::Matrix2d M;
             M.row(0) = A.row(i);
             M.row(1) = A.row(j);
+
             double a11 = M(0,0), a12 = M(0,1);
             double a21 = M(1,0), a22 = M(1,1);
-            double det = a11*a22 - a12*a21;
-            if (std::abs(det) < det_tol) continue; // skip near-singular
+            double det = a11 * a22 - a12 * a21;
+            if (std::abs(det) < det_tol) continue;
+
             Eigen::Vector2d rhs(bprime[i], bprime[j]);
-            // Eigen::Vector2d vertex = M.inverse() * rhs;
+
             Eigen::Vector2d vertex;
-            vertex.x() = ( rhs[0]*a22 - a12*rhs[1]) / det;
-            vertex.y() = ( a11*rhs[1] - rhs[0]*a21) / det;
-            // check feasibility
+            vertex.x() = ( rhs[0] * a22 - a12 * rhs[1]) / det;
+            vertex.y() = ( a11 * rhs[1] - rhs[0] * a21) / det;
+
             bool feasible = true;
             for (int k = 0; k < m; ++k){
                 double val = A.row(k).dot(vertex);
@@ -1866,9 +1871,11 @@ double PlannerManager::solveLPByEnumeratingVertices2D(const Eigen::MatrixXd &A, 
             if (!feasible){
                 continue;
             }
-            double dist = dir.dot(vertex);
-            if (dist > best_value){
-                best_value = dist;
+
+            const double progress = dir.dot(vertex - start_pos);
+
+            if (progress > best_value){
+                best_value = progress;
                 best_vertex = vertex;
             }
         }
@@ -3409,36 +3416,63 @@ void PlannerManager::publishTrajectoryForVisualizationIter(BezierSE2 &traj, doub
     traj_iter_pubs_[iter_id].publish(traj_marker_array);
 }
 
-void PlannerManager::publishCurrentDirection(Eigen::Vector3d &start_pos, Eigen::Vector3d &gap_direction) {
+void PlannerManager::publishCurrentDirection() {
     
+    if (!free_regions_graph_ptr_) return;
+    if (current_node_id_ < 0) return;
+    if (current_edge_id_ < 0) return;
+
+    auto* node = free_regions_graph_ptr_->getNode(current_node_id_);
+    auto* edge = free_regions_graph_ptr_->getEdge(current_edge_id_);
+    if (!node || !edge) return;
+
     visualization_msgs::MarkerArray marker_array;
+
     visualization_msgs::Marker dir_marker;
     dir_marker.header.frame_id = "odom";
     dir_marker.header.stamp = ros::Time::now();
-    dir_marker.ns = "current_direction";
+    dir_marker.ns = "primary_edge_gap_direction";
     dir_marker.id = 0;
     dir_marker.type = visualization_msgs::Marker::LINE_LIST;
     dir_marker.action = visualization_msgs::Marker::ADD;
-    dir_marker.scale.x = 0.02f;        // line width
-    dir_marker.color.r = 1.0f;         // magenta
-    dir_marker.color.g = 0.0f;
-    dir_marker.color.b = 1.0f;
-    dir_marker.color.a = 1.0f;
+    dir_marker.scale.x = 0.03;
+    dir_marker.color.r = 0.0;
+    dir_marker.color.g = 1.0;
+    dir_marker.color.b = 0.0;
+    dir_marker.color.a = 1.0;
 
     geometry_msgs::Point start_pt;
-    start_pt.x = start_pos[0];
-    start_pt.y = start_pos[1];
-    start_pt.z = env_type_ ? start_pos[2] : 0.0;
+    start_pt.x = node->state_pos_[0];
+    start_pt.y = node->state_pos_[1];
+    start_pt.z = env_type_ ? node->state_pos_[2] : 0.0;
 
     geometry_msgs::Point end_pt;
-    end_pt.x = start_pos[0] + gap_direction[0];
-    end_pt.y = start_pos[1] + gap_direction[1];
-    end_pt.z = env_type_ ? start_pos[2] + gap_direction[2] : 0.0;
+    end_pt.x = edge->goal_[0];
+    end_pt.y = edge->goal_[1];
+    end_pt.z = env_type_ ? edge->goal_[2] : 0.0;
 
     dir_marker.points.push_back(start_pt);
     dir_marker.points.push_back(end_pt);
-
     marker_array.markers.push_back(dir_marker);
+
+    visualization_msgs::Marker goal_marker;
+    goal_marker.header.frame_id = "odom";
+    goal_marker.header.stamp = ros::Time::now();
+    goal_marker.ns = "primary_edge_gap_direction";
+    goal_marker.id = 1;
+    goal_marker.type = visualization_msgs::Marker::SPHERE;
+    goal_marker.action = visualization_msgs::Marker::ADD;
+    goal_marker.pose.position = end_pt;
+    goal_marker.pose.orientation.w = 1.0;
+    goal_marker.scale.x = 0.08;
+    goal_marker.scale.y = 0.08;
+    goal_marker.scale.z = 0.08;
+    goal_marker.color.r = 1.0;
+    goal_marker.color.g = 1.0;
+    goal_marker.color.b = 0.0;
+    goal_marker.color.a = 1.0;
+    marker_array.markers.push_back(goal_marker);
+
     current_direction_pub_.publish(marker_array);
 }
 
@@ -3475,7 +3509,7 @@ void PlannerManager::debugTimerCallback(const ros::TimerEvent &event) {
     publishRobotPoints();
     publishRobotSphere();
     // publishTestCube();
-    publishCurrentDirection(current_pos, current_direction_for_visualization_);
+    publishCurrentDirection();
 }
 
 PlannerManager::~PlannerManager()

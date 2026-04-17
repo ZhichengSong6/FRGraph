@@ -365,13 +365,13 @@ void PlannerManagerFSM::replanCheckCallback(const ros::TimerEvent &e) {
     }
 
     // thresholds
-    const double pos_threshold = 0.1; // meters
+    const double pos_threshold = 0.05; // meters
     double angle_threshold;
     if(env_type_){
         angle_threshold = 15.0 * M_PI / 180.0; // 15 degrees for 3D
     }
     else{
-        angle_threshold = 10.0 * M_PI / 180.0; // 10 degrees for 2D
+        angle_threshold = 2.0 * M_PI / 180.0; // 10 degrees for 2D
     }
     if (distance_to_subgoal < pos_threshold && angle_to_subgoal < angle_threshold){
         ROS_INFO("[FSM]: Reached subgoal, pos=%.2f m, ang=%.2f deg. Replanning...",
@@ -538,6 +538,7 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
         {
             // set current pos as start pos
             start_pos_ = odom_pos_;
+
             // ------------------------------------------------------------
             // Case 1: current node is newly realized
             // Need to expand this node and choose the globally best next action
@@ -556,9 +557,38 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
                 if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
                     bool ok2 = planner_manager_->prepareTrajectoryForCurrentEdge(start_pos_);
                     if (!ok2) {
-                        ROS_WARN("[FSM]: Failed to prepare trajectory for current expand edge.");
-                        stopRobot();
-                        return;
+                        ROS_WARN("[FSM]: Failed to prepare trajectory for current expand edge. Try replanning globally.");
+
+                        planner_manager_->current_edge_id_ = -1;
+                        planner_manager_->current_edge_exec_type_ = PlannerManager::EdgeExecType::NONE;
+                        planner_manager_->target_expand_edge_id_ = -1;
+                        planner_manager_->target_frontier_node_id_ = -1;
+                        planner_manager_->planned_path_edges_.clear();
+                        planner_manager_->planned_path_index_ = 0;
+
+                        bool ok3 = planner_manager_->planGlobalBestAction(goal_pos_);
+                        if (!ok3) {
+                            ROS_WARN("[FSM]: Global replanning failed after expand-edge prepare failure.");
+                            stopRobot();
+                            return;
+                        }
+
+                        if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
+                            bool ok4 = planner_manager_->prepareTrajectoryForCurrentEdge(start_pos_);
+                            if (!ok4) {
+                                ROS_WARN("[FSM]: Failed again to prepare trajectory after global replanning.");
+                                stopRobot();
+                                return;
+                            }
+                        }
+                        else if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
+                            ROS_INFO("[FSM]: Replanned action is a graph path edge, skip trajectory replanning.");
+                        }
+                        else {
+                            ROS_WARN("[FSM]: current_edge_exec_type_ is NONE after global replanning.");
+                            stopRobot();
+                            return;
+                        }
                     }
                 }
                 else if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
@@ -584,9 +614,38 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
             if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
                 bool ok = planner_manager_->prepareTrajectoryForCurrentEdge(start_pos_);
                 if (!ok) {
-                    ROS_WARN("[FSM]: Failed to prepare trajectory for expand edge.");
-                    stopRobot();
-                    return;
+                    ROS_WARN("[FSM]: Failed to prepare trajectory for expand edge. Try replanning globally.");
+
+                    planner_manager_->current_edge_id_ = -1;
+                    planner_manager_->current_edge_exec_type_ = PlannerManager::EdgeExecType::NONE;
+                    planner_manager_->target_expand_edge_id_ = -1;
+                    planner_manager_->target_frontier_node_id_ = -1;
+                    planner_manager_->planned_path_edges_.clear();
+                    planner_manager_->planned_path_index_ = 0;
+
+                    bool ok2 = planner_manager_->planGlobalBestAction(goal_pos_);
+                    if (!ok2) {
+                        ROS_WARN("[FSM]: Global replanning failed after expand-edge prepare failure.");
+                        stopRobot();
+                        return;
+                    }
+
+                    if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::EXPAND_EDGE) {
+                        bool ok3 = planner_manager_->prepareTrajectoryForCurrentEdge(start_pos_);
+                        if (!ok3) {
+                            ROS_WARN("[FSM]: Failed again to prepare trajectory after global replanning.");
+                            stopRobot();
+                            return;
+                        }
+                    }
+                    else if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
+                        ROS_INFO("[FSM]: Replanned action is a graph path edge, skip trajectory replanning.");
+                    }
+                    else {
+                        ROS_WARN("[FSM]: current_edge_exec_type_ is NONE after global replanning.");
+                        stopRobot();
+                        return;
+                    }
                 }
 
                 changeFSMState(EXEC_TRAJECTORY, "FSM");
@@ -594,15 +653,16 @@ void PlannerManagerFSM::FSMCallback(const ros::TimerEvent &e) {
             }
 
             // ------------------------------------------------------------
-            // Case 3: PATH_EDGE should normally never enter PLAN_TRAJECTORY
+            // Case 3: current selected action is PATH_EDGE
+            // No trajectory generation needed here because path edge should
+            // already have cached trajectory.
             // ------------------------------------------------------------
             if (planner_manager_->current_edge_exec_type_ == PlannerManager::EdgeExecType::PATH_EDGE) {
-                ROS_WARN("[FSM]: PATH_EDGE should not normally enter PLAN_TRAJECTORY.");
-                stopRobot();
-                return;
+                changeFSMState(EXEC_TRAJECTORY, "FSM");
+                break;
             }
 
-            ROS_WARN("[FSM]: Unknown planning state in PLAN_TRAJECTORY.");
+            ROS_WARN("[FSM]: Unknown PLAN_TRAJECTORY branch.");
             stopRobot();
             return;
 }
