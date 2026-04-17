@@ -268,6 +268,7 @@ class PlannerManager {
     NodeId otherEndpoint(EdgeId eid, NodeId nid);
     double edgeTravelCost(NodeId nid, EdgeId eid);
     void runDijkstraFrom(NodeId start_nid, std::vector<double>& dist, std::vector<NodeId>& parent_node, std::vector<EdgeId>& parent_edge);
+    std::vector<EdgeId> getIncidentEdges(NodeId nid) const;
     bool selectBestFrontierNode(NodeId current_nid, const Eigen::Vector3d& global_goal, NodeId& out_frontier_nid, std::vector<EdgeId>& out_path_edges, EdgeId& out_expand_edge_id);
 
     bool reconstructPathToNode(NodeId start_nid, NodeId target_nid, const std::vector<NodeId>& parent_node, const std::vector<EdgeId>& parent_edge, std::vector<EdgeId>& out_path_edges);        

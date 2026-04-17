@@ -1949,7 +1949,37 @@ double PlannerManager::edgeTravelCost(NodeId u, EdgeId eid)
     return (node->state_pos_ - edge->replan_pos_).norm();
 }
 
-void PlannerManager::runDijkstraFrom(NodeId start_nid, std::vector<double>& dist, std::vector<NodeId>& parent_node, std::vector<EdgeId>& parent_edge){
+std::vector<EdgeId> PlannerManager::getIncidentEdges(NodeId nid) const
+{
+    std::vector<EdgeId> eids;
+
+    if (!free_regions_graph_ptr_) return eids;
+
+    auto* node = free_regions_graph_ptr_->getNode(nid);
+    if (!node) return eids;
+
+    eids = node->edge_ids_;
+
+    if (node->incoming_edge_id_ >= 0) {
+        bool exists = false;
+        for (EdgeId eid : eids) {
+            if (eid == node->incoming_edge_id_) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            eids.push_back(node->incoming_edge_id_);
+        }
+    }
+
+    return eids;
+}
+
+void PlannerManager::runDijkstraFrom(NodeId start_nid,
+                                     std::vector<double>& dist,
+                                     std::vector<NodeId>& parent_node,
+                                     std::vector<EdgeId>& parent_edge){
     const int N = free_regions_graph_ptr_->numNodes();
     
     dist.assign(N, std::numeric_limits<double>::infinity());
@@ -1967,34 +1997,73 @@ void PlannerManager::runDijkstraFrom(NodeId start_nid, std::vector<double>& dist
     dist[start_nid] = 0.0;
     pq.push({0.0, start_nid});
 
+    // ROS_INFO("[dijkstra] start_nid=%d, num_nodes=%d", start_nid, N);
+
     while (!pq.empty()){
         const auto [cur_dist, u] = pq.top();
         pq.pop();
 
-        if (cur_dist > dist[u])           continue;
+        if (cur_dist > dist[u]) continue;
 
         auto* node_u = free_regions_graph_ptr_->getNode(u);
-        if (!node_u) continue;
+        if (!node_u) {
+            ROS_WARN("[dijkstra] node %d is null", u);
+            continue;
+        }
 
-        for (EdgeId eid : node_u->edge_ids_){
-            if (!isTraversableEdge(eid)) continue;
+        std::vector<EdgeId> incident_eids = getIncidentEdges(u);
 
-            NodeId v = otherEndpoint(eid, u);
-            if (v < 0) continue;
+        // ROS_INFO("[dijkstra] pop node u=%d dist=%.3f edge_count=%zu outgoing_count=%zu incoming_eid=%d",
+        //          u, cur_dist, incident_eids.size(), node_u->edge_ids_.size(), node_u->incoming_edge_id_);
+
+        for (EdgeId eid : incident_eids){
+            auto* e = free_regions_graph_ptr_->getEdge(eid);
+            if (!e) {
+                ROS_WARN("[dijkstra] u=%d eid=%d edge=null", u, eid);
+                continue;
+            }
+
+            const bool traversable = isTraversableEdge(eid);
+            const NodeId v = otherEndpoint(eid, u);
+
+            // ROS_INFO("[dijkstra] u=%d eid=%d from=%d to=%d tried=%d traj_failed=%d traversable=%d other=%d",
+            //          u, eid,
+            //          e->from_, e->to_,
+            //          (int)e->tried_,
+            //          (int)e->traj_failed_,
+            //          (int)traversable,
+            //          v);
+
+            if (!traversable) continue;
+            if (v < 0) {
+                // ROS_WARN("[dijkstra] u=%d eid=%d skipped because otherEndpoint < 0", u, eid);
+                continue;
+            }
 
             const double w = edgeTravelCost(u, eid);
-            if(!std::isfinite(w)) continue;
+            if (!std::isfinite(w)) {
+                // ROS_WARN("[dijkstra] u=%d eid=%d skipped because weight is not finite", u, eid);
+                continue;
+            }
 
             const double new_dist = dist[u] + w;
+
+            // ROS_INFO("[dijkstra] relax u=%d -> v=%d via eid=%d w=%.3f old_dist=%.3f new_dist=%.3f",
+            //          u, v, eid, w, dist[v], new_dist);
+
             if (new_dist < dist[v]){
                 dist[v] = new_dist;
                 parent_node[v] = u;
                 parent_edge[v] = eid;
                 pq.push({new_dist, v});
+
+                ROS_INFO("[dijkstra] update v=%d parent_node=%d parent_edge=%d dist=%.3f",
+                         v, u, eid, new_dist);
             }
         }
     }
 }
+
 
 bool PlannerManager::reconstructPathToNode(NodeId start_nid, NodeId target_nid, const std::vector<NodeId>& parent_node, const std::vector<EdgeId>& parent_edge, std::vector<EdgeId>& out_path_edges){
     out_path_edges.clear();
@@ -2050,9 +2119,16 @@ bool PlannerManager::selectBestFrontierNode(NodeId current_nid, const Eigen::Vec
     for (NodeId nid = 0; nid < N; ++nid){
         auto* node = free_regions_graph_ptr_->getNode(nid);
         if (!node) continue;
-        if (node->deadend_) continue;
-        if (!isFrontierNode(nid)) continue;
-        if (!std::isfinite(dist[nid])) continue;
+        const bool dead = node->deadend_;
+        const bool frontier = isFrontierNode(nid);
+        const bool reachable = std::isfinite(dist[nid]);
+
+        ROS_INFO("[frontier-scan] nid=%d deadend=%d frontier=%d reachable=%d dist=%.3f edge_count=%zu",
+                nid, (int)dead, (int)frontier, (int)reachable, dist[nid], node->edge_ids_.size());
+
+        if (dead) continue;
+        if (!frontier) continue;
+        if (!reachable) continue;
 
         EdgeId local_eid = selectBestEdgeAtNode(nid);
         if (local_eid < 0) continue;
@@ -2208,6 +2284,122 @@ traj_opt_time_count_ += 1;
     publishTrajectoryAfterOptimization(traj);
     return true;
 }
+
+// bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id) {
+//     auto* e0 = free_regions_graph_ptr_->getEdge(edge_id);
+//     if (!e0) return false;
+
+//     if (e0->traj_failed_) {
+//         ROS_WARN("[PlannerManager] Edge %d is already marked as traj_failed_.", edge_id);
+//         return false;
+//     }
+
+//     Eigen::Vector3d start_xyz = start_pos;
+//     Eigen::Vector3d goal_xyz  = e0->replan_pos_;
+    
+//     Eigen::Matrix4d T_odom;
+//     getOdometryInfo(T_odom);
+//     Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
+//     base_pos_odom = T_odom.block<3,1>(0,3);
+//     // get rpy in odom frame
+//     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
+//     double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
+//     // get goal yaw based on R
+//     Eigen::Matrix2d R_goal = e0->R_2d_;
+//     double goal_yaw = std::atan2(R_goal(1,0), R_goal(0,0));
+
+//     BezierSE2 traj = BezierSE2::initFromEndpoints(start_xyz.head<2>(), robot_yaw,
+//                                                     goal_xyz.head<2>(), goal_yaw);
+
+//     VerifyOptions opt;
+//     opt.eps = 1e-6;
+//     opt.min_dt = 5e-3;
+//     opt.max_nodes = 1000;
+//     opt.unit_normals = false;
+
+//     std::vector<Eigen::Vector2d> verts;
+//     for (const auto &pt : robot_shape_points_2d_){
+//         verts.push_back(Eigen::Vector2d(pt[0], pt[1]));
+//     }
+
+//     vec_E<Hyperplane2D> hyperplanes = e0->corridor_2d_.hyperplanes();
+//     LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
+//     Eigen::MatrixXd A = lc.A();
+//     Eigen::VectorXd b = lc.b();
+
+//     WorstViolation wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
+
+//     bool success = false;
+
+//     if (wv.safe){
+//         ROS_INFO("[PlannerManager] Found a safe trajectory");
+//         publishTrajectoryForVisualization(traj);
+//         success = true;
+//     }
+//     else{
+//         ROS_INFO("Bezier verify: safe=%d, g=%g, t=%g, k=%d, i=%d",
+//                  (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
+
+//         publishTrajectoryForVisualization(traj, wv.t);
+
+// auto t4 = std::chrono::high_resolution_clock::now();
+
+//         for (int it = 0; it < 30; ++it) {
+//             bool ok = RepairOnce_PIQP(A, b, verts, traj, opt, wv,
+//                                       /*Kcp=*/4,
+//                                       /*topKplanes=*/5,
+//                                       /*eps_add=*/1e-6,
+//                                       /*margin=*/1e-4,
+//                                       /*delta_p=*/0.10,
+//                                       /*delta_th=*/0.10,
+//                                       /*w_p=*/1.0,
+//                                       /*w_th=*/0.1,
+//                                       /*w_slack=*/1e4);
+//             if (!ok) {
+//                 publishTrajectoryForVisualization(traj, wv.t);
+//                 ROS_WARN("[PlannerManager] RepairOnce_PIQP failed for edge %d", edge_id);
+
+//                 e0->has_traj_ = false;
+//                 e0->tried_ = true;
+//                 e0->traj_failed_ = true;
+//                 return false;
+//             }
+
+//             wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
+//             publishTrajectoryForVisualizationIter(traj, wv.t, it);
+
+//             if (wv.safe) {
+//                 success = true;
+//                 break;
+//             }
+//         }
+
+// auto t5 = std::chrono::high_resolution_clock::now();
+// double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
+// ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
+// traj_opt_time_sum_ms_ += ms_opt;
+// traj_opt_time_count_ += 1;
+
+//         if (!success){
+//             publishTrajectoryForVisualization(traj, wv.t);
+//             ROS_WARN("[PlannerManager] Failed to find a safe 2D trajectory after optimization for edge %d", edge_id);
+
+//             e0->has_traj_ = false;
+//             e0->tried_ = true;
+//             e0->traj_failed_ = true;
+//             return false;
+//         }
+//     }
+
+//     e0->has_traj_ = true;
+//     e0->traj_is_se3_ = false;
+//     e0->traj2_ = traj;
+//     e0->tried_ = true;
+//     e0->traj_failed_ = false;
+
+//     publishTrajectoryAfterOptimization(traj);
+//     return true;
+// }
 bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id) {
     auto* e0 = free_regions_graph_ptr_->getEdge(edge_id);
     if (!e0) return false;
@@ -2222,97 +2414,74 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
     
     Eigen::Matrix4d T_odom;
     getOdometryInfo(T_odom);
-    Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-    base_pos_odom = T_odom.block<3,1>(0,3);
-    // get rpy in odom frame
     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
     double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
-    // get goal yaw based on R
+
     Eigen::Matrix2d R_goal = e0->R_2d_;
     double goal_yaw = std::atan2(R_goal(1,0), R_goal(0,0));
 
     BezierSE2 traj = BezierSE2::initFromEndpoints(start_xyz.head<2>(), robot_yaw,
-                                                    goal_xyz.head<2>(), goal_yaw);
-
-    VerifyOptions opt;
-    opt.eps = 1e-6;
-    opt.min_dt = 5e-3;
-    opt.max_nodes = 1000;
-    opt.unit_normals = false;
-
-    std::vector<Eigen::Vector2d> verts;
-    for (const auto &pt : robot_shape_points_2d_){
-        verts.push_back(Eigen::Vector2d(pt[0], pt[1]));
-    }
+                                                  goal_xyz.head<2>(), goal_yaw);
 
     vec_E<Hyperplane2D> hyperplanes = e0->corridor_2d_.hyperplanes();
     LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
     Eigen::MatrixXd A = lc.A();
     Eigen::VectorXd b = lc.b();
 
-    WorstViolation wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
+    // sampled safety check only (continuous-safety ablation)
+    auto isTrajectorySafeSampled2D =
+        [&](const Eigen::MatrixXd& A_in,
+            const Eigen::VectorXd& b_in,
+            const BezierSE2& traj_in,
+            int num_samples,
+            double margin,
+            double* first_bad_t) -> bool
+    {
+        if (first_bad_t) *first_bad_t = -1.0;
+        if (num_samples < 2) num_samples = 2;
 
-    bool success = false;
+        for (int i = 0; i <= num_samples; ++i) {
+            const double t = static_cast<double>(i) / static_cast<double>(num_samples);
 
-    if (wv.safe){
-        ROS_INFO("[PlannerManager] Found a safe trajectory");
-        publishTrajectoryForVisualization(traj);
-        success = true;
-    }
-    else{
-        ROS_INFO("Bezier verify: safe=%d, g=%g, t=%g, k=%d, i=%d",
-                 (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
+            const Eigen::Vector2d p = traj_in.pos(t);
+            const Eigen::Matrix2d R = traj_in.R(t);
 
-        publishTrajectoryForVisualization(traj, wv.t);
+            for (int k = 0; k < A_in.rows(); ++k) {
+                const Eigen::Vector2d a = A_in.row(k).transpose();
+                const double sup = supportValueVertices(a, robot_shape_points_2d_d_, R);
+                const double lhs = a.dot(p) + sup;
 
-auto t4 = std::chrono::high_resolution_clock::now();
-
-        for (int it = 0; it < 30; ++it) {
-            bool ok = RepairOnce_PIQP(A, b, verts, traj, opt, wv,
-                                      /*Kcp=*/4,
-                                      /*topKplanes=*/5,
-                                      /*eps_add=*/1e-6,
-                                      /*margin=*/1e-4,
-                                      /*delta_p=*/0.10,
-                                      /*delta_th=*/0.10,
-                                      /*w_p=*/1.0,
-                                      /*w_th=*/0.1,
-                                      /*w_slack=*/1e4);
-            if (!ok) {
-                publishTrajectoryForVisualization(traj, wv.t);
-                ROS_WARN("[PlannerManager] RepairOnce_PIQP failed for edge %d", edge_id);
-
-                e0->has_traj_ = false;
-                e0->tried_ = true;
-                e0->traj_failed_ = true;
-                return false;
-            }
-
-            wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
-            publishTrajectoryForVisualizationIter(traj, wv.t, it);
-
-            if (wv.safe) {
-                success = true;
-                break;
+                if (lhs > b_in[k] - margin) {
+                    if (first_bad_t) *first_bad_t = t;
+                    return false;
+                }
             }
         }
+        return true;
+    };
 
-auto t5 = std::chrono::high_resolution_clock::now();
-double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
-ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
-traj_opt_time_sum_ms_ += ms_opt;
-traj_opt_time_count_ += 1;
+    const int sampled_check_num = 10;
+    const double sampled_margin = 0.0;
 
-        if (!success){
-            publishTrajectoryForVisualization(traj, wv.t);
-            ROS_WARN("[PlannerManager] Failed to find a safe 2D trajectory after optimization for edge %d", edge_id);
+    double first_bad_t = -1.0;
+    bool success = isTrajectorySafeSampled2D(A, b, traj,
+                                             sampled_check_num,
+                                             sampled_margin,
+                                             &first_bad_t);
 
-            e0->has_traj_ = false;
-            e0->tried_ = true;
-            e0->traj_failed_ = true;
-            return false;
-        }
+    if (!success) {
+        ROS_WARN("[PlannerManager] Sampled safety check failed for edge %d, first_bad_t = %.3f",
+                 edge_id, first_bad_t);
+
+        publishTrajectoryForVisualization(traj, first_bad_t);
+
+        e0->has_traj_ = false;
+        e0->tried_ = true;
+        e0->traj_failed_ = true;
+        return false;
     }
+
+    ROS_INFO("[PlannerManager] Sampled safety check passed for edge %d", edge_id);
 
     e0->has_traj_ = true;
     e0->traj_is_se3_ = false;
@@ -2320,9 +2489,11 @@ traj_opt_time_count_ += 1;
     e0->tried_ = true;
     e0->traj_failed_ = false;
 
+    publishTrajectoryForVisualization(traj);
     publishTrajectoryAfterOptimization(traj);
     return true;
 }
+
 
 void PlannerManager::expandNodePrimaryOnly(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id)
 {
