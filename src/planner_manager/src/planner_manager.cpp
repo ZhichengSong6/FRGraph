@@ -817,7 +817,7 @@ void PlannerManager::filterBackwardGaps(const Eigen::Vector3d &start_pos, NodeId
         auto* cur_node = free_regions_graph_ptr_->getNode(current_node_id);
         if (cur_node){
             const EdgeId incoming = cur_node->incoming_edge_id_;
-            if (incoming > 0){
+            if (incoming >= 0){
                 auto* e_in = free_regions_graph_ptr_->getEdge(incoming);
                 if (e_in && e_in->from_ >= 0){
                     auto* from_node = free_regions_graph_ptr_->getNode(e_in->from_);

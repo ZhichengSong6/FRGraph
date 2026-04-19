@@ -19,6 +19,14 @@
       <shadows>false</shadows>
     </scene>
 
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose>6 -20 2 0 0 1.5708</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
     <model name="env3d_mesh">
       <static>true</static>
       <pose>12 5 0 1.57 0 -1.57</pose>
