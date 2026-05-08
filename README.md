@@ -1,4 +1,4 @@
-# Continuous-Safe Navigation in Unknown Cluttered Environments via Direction-Aware Convex Free-Region Generation
+# Safe Navigation in Unknown Cluttered Environments via Direction-Aware Convex Free-Region Generation
 
 
 ## Overview
