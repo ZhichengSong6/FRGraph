@@ -240,7 +240,7 @@ Make sure these topics are correctly published before launching the planner.
 
 ---
 
-## Paper
+## Citation
 
 If you find this project useful, please consider citing our paper:
 
