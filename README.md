@@ -238,7 +238,7 @@ Make sure these topics are correctly published before launching the planner.
 - The robot geometry (vertex representation) must be consistent with your actual robot to ensure correct collision checking.
 - Ensure that the topic names match or are properly remapped if different in your system.
 
-<!-- ---
+---
 
 ## Paper
 
@@ -247,14 +247,27 @@ If you find this project useful, please consider citing our paper:
 **Continuous-Safe Navigation in Unknown Cluttered Environments via Direction-Aware Convex Free-Region Generation**
 
 ```bibtex
-@article{frgraph2026,
-  title   = {Continuous-Safe Navigation in Unknown Cluttered Environments via Direction-Aware Convex Free-Region Generation},
-  author  = {Author Names},
-  journal = {To be updated},
-  year    = {2026}
+@article{song2026safe,
+  title={Safe Navigation in Unknown and Cluttered Environments via Direction-Aware Convex Free-Region Generation},
+  author={Song, Zhicheng and Li, Yongjian and Chen, Kai and Li, Yulin and Shi, Fan and Ma, Jun},
+  journal={arXiv preprint arXiv:2604.23648},
+  year={2026}
 }
-``` -->
+``` 
+This project is also related to our previous work on navigation with a tree of free regions:
+```bibtex
+@ARTICLE{10897898,
+  author={Li, Yulin and Song, Zhicheng and Zheng, Chunxin and Bi, Zhihai and Chen, Kai and Wang, Michael Yu and Ma, Jun},
+  journal={IEEE Robotics and Automation Letters}, 
+  title={FRTree Planner: Robot Navigation in Cluttered and Unknown Environments With Tree of Free Regions}, 
+  year={2025},
+  volume={10},
+  number={4},
+  pages={3811-3818},
+  keywords={Navigation;Robots;Collision avoidance;Robot sensing systems;Geometry;Trajectory optimization;Data mining;Feature extraction;Real-time systems;Space exploration;Mobile robot navigation;collision avoidance;trajectory optimization},
+  doi={10.1109/LRA.2025.3544519}}
 
+```
 ---
 
 ## Acknowledgment
