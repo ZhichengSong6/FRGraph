@@ -254,7 +254,7 @@ If you find this project useful, please consider citing our paper:
   year={2026}
 }
 ``` 
-This project is also related to our previous work on navigation with a tree of free regions:
+An additional related paper is available here:
 ```bibtex
 @ARTICLE{10897898,
   author={Li, Yulin and Song, Zhicheng and Zheng, Chunxin and Bi, Zhihai and Chen, Kai and Wang, Michael Yu and Ma, Jun},
