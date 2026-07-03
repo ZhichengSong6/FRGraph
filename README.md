@@ -217,6 +217,51 @@ env_type: 1
 
 ---
 
+## Gap Extraction Parameters
+
+The navigation direction extraction module converts the local LiDAR observation into a range-map representation and extracts candidate direction hypotheses from detected gap regions. These candidate directions are not final traversability certificates. Robot-size and orientation feasibility are handled later by direction-aware free-region generation, target-pose selection, and continuous safety verification.
+
+The main gap-extraction parameters are configured in:
+
+```bash
+src/planner_manager/config/config.yaml
+```
+
+Representative values used in our experiments are summarized below.
+
+| Item | 2D setting | 3D setting |
+|---|---:|---:|
+| Range-map representation | Single-row angular range map | Spherical range map over azimuth and elevation |
+| Range-map size | `1600 x 1` | `1600 x 32` |
+| Horizontal field of view | `[-pi, pi]` | `[-pi, pi]` |
+| Vertical field of view | Single elevation row | `[-30.67 deg, 30.67 deg]` |
+| Local point-cloud range | `3 m` | `3 m` |
+| Open-gap minimum region size | `10` pixels | `20` pixels |
+| Limited-gap minimum region size | `2` pixels | `48` pixels |
+| Open-gap subregion span | `45 deg` in yaw | `45 deg` in yaw, `30 deg` in elevation |
+| Limited-gap subregion span | `30 deg` in yaw | `30 deg` in yaw, `30 deg` in elevation |
+| Minimum open-gap subregion size | `20` pixels | `40` pixels |
+| Minimum limited-gap subregion size | `2` pixels | `32` pixels |
+| Limited-gap splitting threshold | `30 deg` in yaw | `30 deg` in yaw, `30 deg` in elevation |
+| Limited-gap direction bias | `10 deg` in yaw/elevation | `10 deg` in yaw/elevation |
+| Number of candidate directions | Not fixed a priori; determined by detected gap subregions | Not fixed a priori; determined by detected gap subregions |
+| Robot-size filtering | Not performed in gap extraction; handled later by robot-geometry-aware region generation and safety verification | Same |
+
+Depth discontinuities are detected by comparing adjacent range-map cells using an adaptive range threshold of the form:
+
+```text
+a + b * r_near * sin(dpsi)
+```
+
+together with a geometric occlusion check. The edge-detection parameters used in our experiments are:
+
+| Parameter group | Values |
+|---|---|
+| Horizontal edge detection | `a_h = 0.20`, `b_h = 0.02`, `lambda_h = 0.5` |
+| Vertical edge detection | `a_v = 0.30`, `b_v = 0.05`, `lambda_v = 0.5` |
+
+---
+
 ## Input Requirements
 
 The planner requires the following inputs:
