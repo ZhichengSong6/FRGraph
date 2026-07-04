@@ -120,7 +120,7 @@ If all steps finish successfully, FRGraph is ready to use.
 ### Quick Start (2D Example)
 
 ```bash
-roslaunch simple_robot simple_robot.launch if_3d_lidar:=0
+roslaunch simple_robot simple_robot.launch if_3d_Lidar:=0
 roslaunch planner_manager planner.launch
 ```
 
@@ -138,7 +138,7 @@ FRGraph consists of two main components:
 You can launch the provided example robot:
 
 ```bash
-roslaunch simple_robot simple_robot.launch if_3d_lidar:=0
+roslaunch simple_robot simple_robot.launch if_3d_Lidar:=0
 ```
 
 This launch file provides a simple robot setup and can be replaced with your own robot system.
@@ -162,7 +162,7 @@ To run in a 2D environment:
 1. Launch the robot with 2D LiDAR:
 
 ```bash
-roslaunch simple_robot simple_robot.launch if_3d_lidar:=0
+roslaunch simple_robot simple_robot.launch if_3d_Lidar:=0
 ```
 
 2. Set the environment type in:
@@ -195,7 +195,7 @@ To run in a 3D environment:
 1. Launch the robot with 3D LiDAR:
 
 ```bash
-roslaunch simple_robot simple_robot.launch if_3d_lidar:=1
+roslaunch simple_robot simple_robot.launch if_3d_Lidar:=1
 ```
 
 2. Set the environment type:
