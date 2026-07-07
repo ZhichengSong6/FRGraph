@@ -2285,121 +2285,6 @@ traj_opt_time_count_ += 1;
     return true;
 }
 
-// bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id) {
-//     auto* e0 = free_regions_graph_ptr_->getEdge(edge_id);
-//     if (!e0) return false;
-
-//     if (e0->traj_failed_) {
-//         ROS_WARN("[PlannerManager] Edge %d is already marked as traj_failed_.", edge_id);
-//         return false;
-//     }
-
-//     Eigen::Vector3d start_xyz = start_pos;
-//     Eigen::Vector3d goal_xyz  = e0->replan_pos_;
-    
-//     Eigen::Matrix4d T_odom;
-//     getOdometryInfo(T_odom);
-//     Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
-//     base_pos_odom = T_odom.block<3,1>(0,3);
-//     // get rpy in odom frame
-//     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
-//     double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
-//     // get goal yaw based on R
-//     Eigen::Matrix2d R_goal = e0->R_2d_;
-//     double goal_yaw = std::atan2(R_goal(1,0), R_goal(0,0));
-
-//     BezierSE2 traj = BezierSE2::initFromEndpoints(start_xyz.head<2>(), robot_yaw,
-//                                                     goal_xyz.head<2>(), goal_yaw);
-
-//     VerifyOptions opt;
-//     opt.eps = 1e-6;
-//     opt.min_dt = 5e-3;
-//     opt.max_nodes = 1000;
-//     opt.unit_normals = false;
-
-//     std::vector<Eigen::Vector2d> verts;
-//     for (const auto &pt : robot_shape_points_2d_){
-//         verts.push_back(Eigen::Vector2d(pt[0], pt[1]));
-//     }
-
-//     vec_E<Hyperplane2D> hyperplanes = e0->corridor_2d_.hyperplanes();
-//     LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
-//     Eigen::MatrixXd A = lc.A();
-//     Eigen::VectorXd b = lc.b();
-
-//     WorstViolation wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
-
-//     bool success = false;
-
-//     if (wv.safe){
-//         ROS_INFO("[PlannerManager] Found a safe trajectory");
-//         publishTrajectoryForVisualization(traj);
-//         success = true;
-//     }
-//     else{
-//         ROS_INFO("Bezier verify: safe=%d, g=%g, t=%g, k=%d, i=%d",
-//                  (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
-
-//         publishTrajectoryForVisualization(traj, wv.t);
-
-// auto t4 = std::chrono::high_resolution_clock::now();
-
-//         for (int it = 0; it < 30; ++it) {
-//             bool ok = RepairOnce_PIQP(A, b, verts, traj, opt, wv,
-//                                       /*Kcp=*/4,
-//                                       /*topKplanes=*/5,
-//                                       /*eps_add=*/1e-6,
-//                                       /*margin=*/1e-4,
-//                                       /*delta_p=*/0.10,
-//                                       /*delta_th=*/0.10,
-//                                       /*w_p=*/1.0,
-//                                       /*w_th=*/0.1,
-//                                       /*w_slack=*/1e4);
-//             if (!ok) {
-//                 publishTrajectoryForVisualization(traj, wv.t);
-//                 ROS_WARN("[PlannerManager] RepairOnce_PIQP failed for edge %d", edge_id);
-
-//                 e0->has_traj_ = false;
-//                 e0->tried_ = true;
-//                 e0->traj_failed_ = true;
-//                 return false;
-//             }
-
-//             wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
-//             publishTrajectoryForVisualizationIter(traj, wv.t, it);
-
-//             if (wv.safe) {
-//                 success = true;
-//                 break;
-//             }
-//         }
-
-// auto t5 = std::chrono::high_resolution_clock::now();
-// double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
-// ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
-// traj_opt_time_sum_ms_ += ms_opt;
-// traj_opt_time_count_ += 1;
-
-//         if (!success){
-//             publishTrajectoryForVisualization(traj, wv.t);
-//             ROS_WARN("[PlannerManager] Failed to find a safe 2D trajectory after optimization for edge %d", edge_id);
-
-//             e0->has_traj_ = false;
-//             e0->tried_ = true;
-//             e0->traj_failed_ = true;
-//             return false;
-//         }
-//     }
-
-//     e0->has_traj_ = true;
-//     e0->traj_is_se3_ = false;
-//     e0->traj2_ = traj;
-//     e0->tried_ = true;
-//     e0->traj_failed_ = false;
-
-//     publishTrajectoryAfterOptimization(traj);
-//     return true;
-// }
 bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id) {
     auto* e0 = free_regions_graph_ptr_->getEdge(edge_id);
     if (!e0) return false;
@@ -2414,74 +2299,97 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
     
     Eigen::Matrix4d T_odom;
     getOdometryInfo(T_odom);
+    Eigen::Vector3d base_pos_odom(0.0, 0.0, 0.0);
+    base_pos_odom = T_odom.block<3,1>(0,3);
+    // get rpy in odom frame
     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
     double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
-
+    // get goal yaw based on R
     Eigen::Matrix2d R_goal = e0->R_2d_;
     double goal_yaw = std::atan2(R_goal(1,0), R_goal(0,0));
 
     BezierSE2 traj = BezierSE2::initFromEndpoints(start_xyz.head<2>(), robot_yaw,
-                                                  goal_xyz.head<2>(), goal_yaw);
+                                                    goal_xyz.head<2>(), goal_yaw);
+
+    VerifyOptions opt;
+    opt.eps = 1e-6;
+    opt.min_dt = 5e-3;
+    opt.max_nodes = 1000;
+    opt.unit_normals = false;
+
+    std::vector<Eigen::Vector2d> verts;
+    for (const auto &pt : robot_shape_points_2d_){
+        verts.push_back(Eigen::Vector2d(pt[0], pt[1]));
+    }
 
     vec_E<Hyperplane2D> hyperplanes = e0->corridor_2d_.hyperplanes();
     LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
     Eigen::MatrixXd A = lc.A();
     Eigen::VectorXd b = lc.b();
 
-    // sampled safety check only (continuous-safety ablation)
-    auto isTrajectorySafeSampled2D =
-        [&](const Eigen::MatrixXd& A_in,
-            const Eigen::VectorXd& b_in,
-            const BezierSE2& traj_in,
-            int num_samples,
-            double margin,
-            double* first_bad_t) -> bool
-    {
-        if (first_bad_t) *first_bad_t = -1.0;
-        if (num_samples < 2) num_samples = 2;
+    WorstViolation wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
 
-        for (int i = 0; i <= num_samples; ++i) {
-            const double t = static_cast<double>(i) / static_cast<double>(num_samples);
+    bool success = false;
 
-            const Eigen::Vector2d p = traj_in.pos(t);
-            const Eigen::Matrix2d R = traj_in.R(t);
+    if (wv.safe){
+        ROS_INFO("[PlannerManager] Found a safe trajectory");
+        publishTrajectoryForVisualization(traj);
+        success = true;
+    }
+    else{
+        ROS_INFO("Bezier verify: safe=%d, g=%g, t=%g, k=%d, i=%d",
+                 (int)wv.safe, wv.g, wv.t, wv.plane_k, wv.vert_i);
 
-            for (int k = 0; k < A_in.rows(); ++k) {
-                const Eigen::Vector2d a = A_in.row(k).transpose();
-                const double sup = supportValueVertices(a, robot_shape_points_2d_d_, R);
-                const double lhs = a.dot(p) + sup;
+        publishTrajectoryForVisualization(traj, wv.t);
 
-                if (lhs > b_in[k] - margin) {
-                    if (first_bad_t) *first_bad_t = t;
-                    return false;
-                }
+auto t4 = std::chrono::high_resolution_clock::now();
+
+        for (int it = 0; it < 30; ++it) {
+            bool ok = RepairOnce_PIQP(A, b, verts, traj, opt, wv,
+                                      /*Kcp=*/4,
+                                      /*topKplanes=*/5,
+                                      /*eps_add=*/1e-6,
+                                      /*margin=*/1e-4,
+                                      /*delta_p=*/0.10,
+                                      /*delta_th=*/0.10,
+                                      /*w_p=*/1.0,
+                                      /*w_th=*/0.1,
+                                      /*w_slack=*/1e4);
+            if (!ok) {
+                publishTrajectoryForVisualization(traj, wv.t);
+                ROS_WARN("[PlannerManager] RepairOnce_PIQP failed for edge %d", edge_id);
+
+                e0->has_traj_ = false;
+                e0->tried_ = true;
+                e0->traj_failed_ = true;
+                return false;
+            }
+
+            wv = FindWorstViolationContinuous2D(A, b, verts, traj, opt);
+            publishTrajectoryForVisualizationIter(traj, wv.t, it);
+
+            if (wv.safe) {
+                success = true;
+                break;
             }
         }
-        return true;
-    };
 
-    const int sampled_check_num = 10;
-    const double sampled_margin = 0.0;
+auto t5 = std::chrono::high_resolution_clock::now();
+double ms_opt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t5 - t4).count();
+ROS_INFO("[PlannerManager] trajectory optimization elapsed: %.3f ms", ms_opt);
+traj_opt_time_sum_ms_ += ms_opt;
+traj_opt_time_count_ += 1;
 
-    double first_bad_t = -1.0;
-    bool success = isTrajectorySafeSampled2D(A, b, traj,
-                                             sampled_check_num,
-                                             sampled_margin,
-                                             &first_bad_t);
+        if (!success){
+            publishTrajectoryForVisualization(traj, wv.t);
+            ROS_WARN("[PlannerManager] Failed to find a safe 2D trajectory after optimization for edge %d", edge_id);
 
-    if (!success) {
-        ROS_WARN("[PlannerManager] Sampled safety check failed for edge %d, first_bad_t = %.3f",
-                 edge_id, first_bad_t);
-
-        publishTrajectoryForVisualization(traj, first_bad_t);
-
-        e0->has_traj_ = false;
-        e0->tried_ = true;
-        e0->traj_failed_ = true;
-        return false;
+            e0->has_traj_ = false;
+            e0->tried_ = true;
+            e0->traj_failed_ = true;
+            return false;
+        }
     }
-
-    ROS_INFO("[PlannerManager] Sampled safety check passed for edge %d", edge_id);
 
     e0->has_traj_ = true;
     e0->traj_is_se3_ = false;
@@ -2489,10 +2397,102 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
     e0->tried_ = true;
     e0->traj_failed_ = false;
 
-    publishTrajectoryForVisualization(traj);
     publishTrajectoryAfterOptimization(traj);
     return true;
 }
+// bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, EdgeId edge_id) {
+//     auto* e0 = free_regions_graph_ptr_->getEdge(edge_id);
+//     if (!e0) return false;
+
+//     if (e0->traj_failed_) {
+//         ROS_WARN("[PlannerManager] Edge %d is already marked as traj_failed_.", edge_id);
+//         return false;
+//     }
+
+//     Eigen::Vector3d start_xyz = start_pos;
+//     Eigen::Vector3d goal_xyz  = e0->replan_pos_;
+    
+//     Eigen::Matrix4d T_odom;
+//     getOdometryInfo(T_odom);
+//     const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
+//     double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
+
+//     Eigen::Matrix2d R_goal = e0->R_2d_;
+//     double goal_yaw = std::atan2(R_goal(1,0), R_goal(0,0));
+
+//     BezierSE2 traj = BezierSE2::initFromEndpoints(start_xyz.head<2>(), robot_yaw,
+//                                                   goal_xyz.head<2>(), goal_yaw);
+
+//     vec_E<Hyperplane2D> hyperplanes = e0->corridor_2d_.hyperplanes();
+//     LinearConstraint2D lc(start_pos.head<2>(), hyperplanes);
+//     Eigen::MatrixXd A = lc.A();
+//     Eigen::VectorXd b = lc.b();
+
+//     // sampled safety check only (continuous-safety ablation)
+//     auto isTrajectorySafeSampled2D =
+//         [&](const Eigen::MatrixXd& A_in,
+//             const Eigen::VectorXd& b_in,
+//             const BezierSE2& traj_in,
+//             int num_samples,
+//             double margin,
+//             double* first_bad_t) -> bool
+//     {
+//         if (first_bad_t) *first_bad_t = -1.0;
+//         if (num_samples < 2) num_samples = 2;
+
+//         for (int i = 0; i <= num_samples; ++i) {
+//             const double t = static_cast<double>(i) / static_cast<double>(num_samples);
+
+//             const Eigen::Vector2d p = traj_in.pos(t);
+//             const Eigen::Matrix2d R = traj_in.R(t);
+
+//             for (int k = 0; k < A_in.rows(); ++k) {
+//                 const Eigen::Vector2d a = A_in.row(k).transpose();
+//                 const double sup = supportValueVertices(a, robot_shape_points_2d_d_, R);
+//                 const double lhs = a.dot(p) + sup;
+
+//                 if (lhs > b_in[k] - margin) {
+//                     if (first_bad_t) *first_bad_t = t;
+//                     return false;
+//                 }
+//             }
+//         }
+//         return true;
+//     };
+
+//     const int sampled_check_num = 10;
+//     const double sampled_margin = 0.0;
+
+//     double first_bad_t = -1.0;
+//     bool success = isTrajectorySafeSampled2D(A, b, traj,
+//                                              sampled_check_num,
+//                                              sampled_margin,
+//                                              &first_bad_t);
+
+//     if (!success) {
+//         ROS_WARN("[PlannerManager] Sampled safety check failed for edge %d, first_bad_t = %.3f",
+//                  edge_id, first_bad_t);
+
+//         publishTrajectoryForVisualization(traj, first_bad_t);
+
+//         e0->has_traj_ = false;
+//         e0->tried_ = true;
+//         e0->traj_failed_ = true;
+//         return false;
+//     }
+
+//     ROS_INFO("[PlannerManager] Sampled safety check passed for edge %d", edge_id);
+
+//     e0->has_traj_ = true;
+//     e0->traj_is_se3_ = false;
+//     e0->traj2_ = traj;
+//     e0->tried_ = true;
+//     e0->traj_failed_ = false;
+
+//     publishTrajectoryForVisualization(traj);
+//     publishTrajectoryAfterOptimization(traj);
+//     return true;
+// }
 
 
 void PlannerManager::expandNodePrimaryOnly(Eigen::Vector3d &start_pos, Eigen::Vector3d &goal_pos, NodeId current_id)
