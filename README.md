@@ -1,4 +1,4 @@
-# Continuous-Safe Navigation in Unknown Cluttered Environments via Direction-Aware Convex Free-Region Generation
+# Safe Navigation in Unknown Cluttered Environments via Direction-Aware Convex Free-Region Generation
 
 
 ## Overview
@@ -120,7 +120,7 @@ If all steps finish successfully, FRGraph is ready to use.
 ### Quick Start (2D Example)
 
 ```bash
-roslaunch simple_robot simple_robot.launch if_3d_lidar:=0
+roslaunch simple_robot simple_robot.launch if_3d_Lidar:=0
 roslaunch planner_manager planner.launch
 ```
 
@@ -138,7 +138,7 @@ FRGraph consists of two main components:
 You can launch the provided example robot:
 
 ```bash
-roslaunch simple_robot simple_robot.launch if_3d_lidar:=0
+roslaunch simple_robot simple_robot.launch if_3d_Lidar:=0
 ```
 
 This launch file provides a simple robot setup and can be replaced with your own robot system.
@@ -162,7 +162,7 @@ To run in a 2D environment:
 1. Launch the robot with 2D LiDAR:
 
 ```bash
-roslaunch simple_robot simple_robot.launch if_3d_lidar:=0
+roslaunch simple_robot simple_robot.launch if_3d_Lidar:=0
 ```
 
 2. Set the environment type in:
@@ -195,7 +195,7 @@ To run in a 3D environment:
 1. Launch the robot with 3D LiDAR:
 
 ```bash
-roslaunch simple_robot simple_robot.launch if_3d_lidar:=1
+roslaunch simple_robot simple_robot.launch if_3d_Lidar:=1
 ```
 
 2. Set the environment type:
@@ -214,6 +214,51 @@ env_type: 1
   `/velodyne_points`
 - Odometry:  
   `/odom`
+
+---
+
+## Gap Extraction Parameters
+
+The navigation direction extraction module converts the local LiDAR observation into a range-map representation and extracts candidate direction hypotheses from detected gap regions. These candidate directions are not final traversability certificates. Robot-size and orientation feasibility are handled later by direction-aware free-region generation, target-pose selection, and continuous safety verification.
+
+The main gap-extraction parameters are configured in:
+
+```bash
+src/planner_manager/config/config.yaml
+```
+
+Representative values used in our experiments are summarized below.
+
+| Item | 2D setting | 3D setting |
+|---|---:|---:|
+| Range-map representation | Single-row angular range map | Spherical range map over azimuth and elevation |
+| Range-map size | `1600 x 1` | `1600 x 32` |
+| Horizontal field of view | `[-pi, pi]` | `[-pi, pi]` |
+| Vertical field of view | Single elevation row | `[-30.67 deg, 30.67 deg]` |
+| Local point-cloud range | `3 m` | `3 m` |
+| Open-gap minimum region size | `10` pixels | `20` pixels |
+| Limited-gap minimum region size | `2` pixels | `48` pixels |
+| Open-gap subregion span | `45 deg` in yaw | `45 deg` in yaw, `30 deg` in elevation |
+| Limited-gap subregion span | `30 deg` in yaw | `30 deg` in yaw, `30 deg` in elevation |
+| Minimum open-gap subregion size | `20` pixels | `40` pixels |
+| Minimum limited-gap subregion size | `2` pixels | `32` pixels |
+| Limited-gap splitting threshold | `30 deg` in yaw | `30 deg` in yaw, `30 deg` in elevation |
+| Limited-gap direction bias | `10 deg` in yaw/elevation | `10 deg` in yaw/elevation |
+| Number of candidate directions | Not fixed a priori; determined by detected gap subregions | Not fixed a priori; determined by detected gap subregions |
+| Robot-size filtering | Not performed in gap extraction; handled later by robot-geometry-aware region generation and safety verification | Same |
+
+Depth discontinuities are detected by comparing adjacent range-map cells using an adaptive range threshold of the form:
+
+```text
+a + b * r_near * sin(dpsi)
+```
+
+together with a geometric occlusion check. The edge-detection parameters used in our experiments are:
+
+| Parameter group | Values |
+|---|---|
+| Horizontal edge detection | `a_h = 0.20`, `b_h = 0.02`, `lambda_h = 0.5` |
+| Vertical edge detection | `a_v = 0.30`, `b_v = 0.05`, `lambda_v = 0.5` |
 
 ---
 
@@ -238,23 +283,36 @@ Make sure these topics are correctly published before launching the planner.
 - The robot geometry (vertex representation) must be consistent with your actual robot to ensure correct collision checking.
 - Ensure that the topic names match or are properly remapped if different in your system.
 
-<!-- ---
+---
 
-## Paper
+## Citation
 
 If you find this project useful, please consider citing our paper:
 
 **Continuous-Safe Navigation in Unknown Cluttered Environments via Direction-Aware Convex Free-Region Generation**
 
 ```bibtex
-@article{frgraph2026,
-  title   = {Continuous-Safe Navigation in Unknown Cluttered Environments via Direction-Aware Convex Free-Region Generation},
-  author  = {Author Names},
-  journal = {To be updated},
-  year    = {2026}
+@article{song2026safe,
+  title={Safe Navigation in Unknown and Cluttered Environments via Direction-Aware Convex Free-Region Generation},
+  author={Song, Zhicheng and Li, Yongjian and Chen, Kai and Li, Yulin and Shi, Fan and Ma, Jun},
+  journal={arXiv preprint arXiv:2604.23648},
+  year={2026}
 }
-``` -->
+``` 
+An additional related paper is available here:
+```bibtex
+@ARTICLE{10897898,
+  author={Li, Yulin and Song, Zhicheng and Zheng, Chunxin and Bi, Zhihai and Chen, Kai and Wang, Michael Yu and Ma, Jun},
+  journal={IEEE Robotics and Automation Letters}, 
+  title={FRTree Planner: Robot Navigation in Cluttered and Unknown Environments With Tree of Free Regions}, 
+  year={2025},
+  volume={10},
+  number={4},
+  pages={3811-3818},
+  keywords={Navigation;Robots;Collision avoidance;Robot sensing systems;Geometry;Trajectory optimization;Data mining;Feature extraction;Real-time systems;Space exploration;Mobile robot navigation;collision avoidance;trajectory optimization},
+  doi={10.1109/LRA.2025.3544519}}
 
+```
 ---
 
 ## Acknowledgment
