@@ -262,6 +262,32 @@ together with a geometric occlusion check. The edge-detection parameters used in
 
 ---
 
+## Additional Experimental Statistics
+
+### Trajectory Refinement Statistics
+
+The following table summarizes the refinement behavior in
+randomized 2D environments, using 10 scenes and 40 navigation
+trials per obstacle density.
+
+| Obstacle Density | Traj. Attempts | Accepted Traj. | Traj. Entering Refinement | Refinement Rate | Avg. Refinement Iters. | Max Refinement Iters. | Failed Attempts |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 0.6 | 182 | 182 | 2 | 1.10% | 1.00 | 1 | 0 |
+| 0.8 | 417 | 417 | 25 | 6.00% | 4.20 | 24 | 0 |
+| 1.0 | 443 | 441 | 19 | 4.31% | 2.21 | 5 | 2 |
+| 1.2 | 756 | 750 | 25 | 3.33% | 3.80 | 20 | 6 |
+| Overall | 1798 | 1790 | 71 | 3.97% | 3.44 | 24 | 8 |
+
+The refinement rate is calculated over accepted trajectories.
+Overall, only 3.97% of accepted trajectories require refinement,
+with an average of 3.44 refinement iterations.
+
+Failed trajectory-generation attempts do not necessarily indicate
+navigation failure. The corresponding frontier edge is invalidated,
+and the graph planner attempts another available edge.
+
+---
+
 ## Input Requirements
 
 The planner requires the following inputs:
