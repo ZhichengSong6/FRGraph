@@ -286,6 +286,74 @@ Failed trajectory-generation attempts do not necessarily indicate
 navigation failure. The corresponding frontier edge is invalidated,
 and the graph planner attempts another available edge.
 
+### Confidence Intervals for Navigation Performance
+
+We report 95% Wilson score confidence intervals for Complete Rate
+(CR) and Collision-Free Rate (CFR) in the randomized 2D navigation
+experiments.
+
+For each obstacle density, 10 randomly generated scenarios are
+evaluated, with four repeated closed-loop runs per scenario under
+identical start and goal poses, yielding 40 runs per method.
+
+The confidence intervals are calculated from the observed binary
+outcomes of the 40 runs using the Wilson score method.
+
+#### Comparison with Baseline Planners
+
+| Density | Planner | CR | 95% CI (CR) | CFR | 95% CI (CFR) |
+|---|---|---:|---|---:|---|
+| 0.6 | DDR-OPT | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 0.6 | FASTER | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 0.6 | FRTree | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 0.6 | Ours | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 0.8 | DDR-OPT | 1.00 | [0.912, 1.000] | 0.60 | [0.446, 0.737] |
+| 0.8 | FASTER | 0.70 | [0.546, 0.819] | 0.28 | [0.161, 0.428] |
+| 0.8 | FRTree | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 0.8 | Ours | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 1.0 | DDR-OPT | 0.95 | [0.835, 0.986] | 0.60 | [0.446, 0.737] |
+| 1.0 | FASTER | 0.45 | [0.307, 0.602] | 0.20 | [0.105, 0.348] |
+| 1.0 | FRTree | 1.00 | [0.912, 1.000] | 0.65 | [0.495, 0.779] |
+| 1.0 | Ours | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 1.2 | DDR-OPT | 0.50 | [0.352, 0.648] | 0.63 | [0.470, 0.758] |
+| 1.2 | FASTER | 0.00 | [0.000, 0.088] | 0.40 | [0.263, 0.554] |
+| 1.2 | FRTree | 0.80 | [0.652, 0.895] | 0.28 | [0.161, 0.428] |
+| 1.2 | Ours | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+
+#### Ablation Study
+
+| Density | Variant | CR | 95% CI (CR) | CFR | 95% CI (CFR) |
+|---|---|---:|---|---:|---|
+| 1.0 | w/o Direction-Aware | 0.78 | [0.625, 0.877] | 1.00 | [0.912, 1.000] |
+| 1.0 | w/o Obstacle Selection | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 1.0 | w/o QP Bias | 0.78 | [0.625, 0.877] | 1.00 | [0.912, 1.000] |
+| 1.0 | w/o Continuous Safety | 0.98 | [0.871, 0.996] | 0.98 | [0.871, 0.996] |
+| 1.0 | Ours (Full) | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+| 1.2 | w/o Direction-Aware | 0.48 | [0.329, 0.625] | 1.00 | [0.912, 1.000] |
+| 1.2 | w/o Obstacle Selection | 0.90 | [0.769, 0.960] | 1.00 | [0.912, 1.000] |
+| 1.2 | w/o QP Bias | 0.40 | [0.263, 0.554] | 1.00 | [0.912, 1.000] |
+| 1.2 | w/o Continuous Safety | 0.83 | [0.681, 0.913] | 0.88 | [0.739, 0.945] |
+| 1.2 | Ours (Full) | 1.00 | [0.912, 1.000] | 1.00 | [0.912, 1.000] |
+
+#### Statistical Interpretation
+
+The intervals are computed using the Wilson score method with
+a 95% confidence level and 40 binary trial outcomes per setting.
+
+Each obstacle configuration is evaluated through four separate
+closed-loop runs. Consequently, the reported intervals represent
+approximate trial-level uncertainty under a binomial model.
+
+Because repeated runs within the same scenario share the same
+obstacle configuration and start-goal pose, the intervals do not
+explicitly account for within-scene correlation and should not
+be interpreted as confidence intervals obtained from 40
+independently generated environments.
+
+Small differences in observed rates, such as 1.00 versus 0.90,
+should not be considered conclusive evidence of statistical
+superiority.
+
 ---
 
 ## Input Requirements
