@@ -17,6 +17,9 @@ struct WorstViolation {
   int plane_k = -1;
   int vert_i = -1;
   double g = -1e100;
+  // A budget limit with a positive bound is uncertainty, not a safe result.
+  bool inconclusive = false;
+  double unresolved_upper_bound = -std::numeric_limits<double>::infinity();
 };
 
 struct VerifyOptions {

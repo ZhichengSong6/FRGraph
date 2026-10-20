@@ -37,14 +37,23 @@ class LineSegment : public DecompBase<Dim> {
       add_local_bbox(this->polyhedron_);
     }
 
-    void dilate_aniso_full(const Vecf<Dim> &center, const float radius){
+    bool dilate_aniso_full(const Vecf<Dim> &center, const float radius){
+      aniso_generation_ok_ = true;
       find_polyhedron_aniso_full(radius, center);
+      if (!aniso_generation_ok_)
+        return false;
+
       add_local_bbox_aniso(this->polyhedron_);
 // std::cout << "Aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
-      prune_near_duplicate_hyperplanes(this->polyhedron_, p1_, 5.0, 1e-2);
+      // Similar 2D normals/offsets do not imply redundant QP constraints.
+      // Keep the original 2D region; retain the existing 3D behavior.
+      if (Dim != 2) {
+        prune_near_duplicate_hyperplanes(this->polyhedron_, p1_, 5.0, 1e-2);
+      }
 // std::cout << "After pruning near-duplicate hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
       remove_redundant_hyperplanes(this->polyhedron_);
 // std::cout << "After removing redundant hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
+      return true;
     }
 
     /// Get the line
@@ -577,6 +586,7 @@ class LineSegment : public DecompBase<Dim> {
         Vec2f A_raw = lc.A_.row(0);
         double nrm = A_raw.norm();
         if (nrm < 1e-12) {
+          aniso_generation_ok_ = false;
           std::cout << "[Free Space generation] In find_polyhedron_aniso_full(2d), hyperplane normal norm is too small." << std::endl;
           break;
         }
@@ -584,9 +594,9 @@ class LineSegment : public DecompBase<Dim> {
         Vec2f A = A_raw / nrm;
         double b0 = lc.b()(0) / nrm;
 
-        const double eps_robot = 1e-4;
-        const double eps_obs   = 1e-4;
-        double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
+        // Section III-B intersects the separating planes returned by the QP.
+        // Keep their offsets; a subsequent inward shift is a different region.
+        const double b = b0;
 
         Hyperplane2D v(Vec2f::Zero(), Vec2f::Zero());
         v.n_ = A;
@@ -636,6 +646,7 @@ class LineSegment : public DecompBase<Dim> {
         Vec3f A_raw = lc.A_.row(0);
         double nrm = A_raw.norm();
         if (nrm < 1e-12) {
+          aniso_generation_ok_ = false;
           std::cout << "[Free Space generation] In find_polyhedron_aniso_full(3d), hyperplane normal norm is too small." << std::endl;
           break;
         }
@@ -688,6 +699,7 @@ class LineSegment : public DecompBase<Dim> {
 
     piqp::DenseSolver<double> solver_;
     bool solver_init_ = false;
+    bool aniso_generation_ok_ = true;
 };
 
 typedef LineSegment<2> LineSegment2D;

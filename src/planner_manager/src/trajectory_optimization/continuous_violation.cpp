@@ -204,7 +204,9 @@ WorstViolation FindWorstViolationContinuous2D(
     const VerifyOptions& opt)
 {
     WorstViolation worst;
-    worst.g = -1e100;
+    worst = evalAtT(0.0, A, b, robot_vertices, traj);
+    const auto endpoint = evalAtT(1.0, A, b, robot_vertices, traj);
+    if (endpoint.g > worst.g) worst = endpoint;
 
     const double L = computeGlobalL(A, robot_vertices, traj, opt.unit_normals);
 
@@ -227,8 +229,11 @@ WorstViolation FindWorstViolationContinuous2D(
 
         const double dt = cur.tR - cur.tL;
         if (dt <= opt.min_dt){
-            // cannot subdivide further
-            worst.safe = (worst.g <= opt.eps);
+            // An unresolved upper bound is not a continuous safety certificate.
+            // Sampled values cannot certify the rest of this interval or queue.
+            worst.safe = false;
+            worst.inconclusive = worst.g <= opt.eps;
+            worst.unresolved_upper_bound = cur.U;
             return worst;
         }
 
@@ -245,6 +250,8 @@ WorstViolation FindWorstViolationContinuous2D(
 
     // otherwise return worst found so far
     worst.safe = false;
+    worst.inconclusive = worst.g <= opt.eps;
+    if (!pq.empty()) worst.unresolved_upper_bound = pq.top().U;
     return worst;
 }
 
@@ -256,7 +263,9 @@ WorstViolation FindWorstViolationContinuous3D(
     const VerifyOptions& opt)
 {
     WorstViolation worst;
-    worst.g = -1e100;
+    worst = evalAtT(0.0, A, b, robot_vertices, traj);
+    const auto endpoint = evalAtT(1.0, A, b, robot_vertices, traj);
+    if (endpoint.g > worst.g) worst = endpoint;
 
     const double L = computeGlobalL(A, robot_vertices, traj, opt.unit_normals);
 
@@ -279,8 +288,10 @@ WorstViolation FindWorstViolationContinuous3D(
 
         const double dt = cur.tR - cur.tL;
         if (dt <= opt.min_dt){
-            // cannot subdivide further
-            worst.safe = (worst.g <= opt.eps);
+            // Budget exhaustion with an unresolved bound must fail closed.
+            worst.safe = false;
+            worst.inconclusive = worst.g <= opt.eps;
+            worst.unresolved_upper_bound = cur.U;
             return worst;
         }
 
@@ -298,6 +309,8 @@ WorstViolation FindWorstViolationContinuous3D(
 
     // otherwise return worst found so far
     worst.safe = false;
+    worst.inconclusive = worst.g <= opt.eps;
+    if (!pq.empty()) worst.unresolved_upper_bound = pq.top().U;
     return worst;
 }
 
