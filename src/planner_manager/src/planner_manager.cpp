@@ -1287,6 +1287,11 @@ bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eig
     }
     dir /= dir_norm;
 
+    Eigen::Matrix4d T_odom;
+    getOdometryInfo(T_odom);
+    const Eigen::Matrix3d base_rot_mat = Eigen::Matrix3d(T_odom.block<3,3>(0,0));
+    const double robot_yaw = std::atan2(base_rot_mat(1,0), base_rot_mat(0,0));
+
     const std::vector<double> coarse_yaws =
         buildUniformSamplesInclusive(-M_PI, M_PI, num_of_yaw_samples_);
 
@@ -1301,9 +1306,8 @@ bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eig
         for (int j = 0; j < m; ++j) {
             Eigen::Vector2d aj = A.row(j).transpose();
             const double hj = supportValueVertices(aj, robot_shape_points_2d_d_, R);
-            // Section III-C: the complete footprint must satisfy A p + h(R) <= b.
-            // An extra inset changes the feasible set of the stated target LP.
-            b_prime[j] = b[j] - hj;
+            const double shrink = 0.02 * aj.norm();
+            b_prime[j] = b[j] - hj - shrink;
         }
 
         Eigen::Vector2d best_vertex;
@@ -1312,9 +1316,14 @@ bool PlannerManager::getTargetPose2D(const Eigen::Vector3d &start_pos, const Eig
             return res;
         }
 
-        // Section III-C selects the largest forward LP value among sampled poses.
-        // Heading preferences must not overrule a larger feasible forward value.
-        const double score = value;
+        const Eigen::Vector2d x_axis_world = R.col(0);
+        const double align = x_axis_world.dot(dir);
+
+        const double yaw_err = std::abs(wrapAngleRad(yaw - robot_yaw));
+
+        const double w_align = 0.5;
+        const double w_angle_diff = 0.1;
+        const double score = value + align * w_align - yaw_err * w_angle_diff;
 
         res.valid = true;
         res.score = score;
@@ -2192,8 +2201,8 @@ bool PlannerManager::planTrajectoryToEdge3D(const Eigen::Vector3d &start_pos, Ed
 
     VerifyOptions opt;
     opt.eps = 1e-6;
-    opt.min_dt = 1e-8;
-    opt.max_nodes = 10000;
+    opt.min_dt = 5e-3;
+    opt.max_nodes = 1000;
     opt.unit_normals = false;
 
     std::vector<Eigen::Vector3d> verts;
@@ -2306,8 +2315,8 @@ bool PlannerManager::planTrajectoryToEdge2D(const Eigen::Vector3d &start_pos, Ed
 
     VerifyOptions opt;
     opt.eps = 1e-6;
-    opt.min_dt = 1e-8;
-    opt.max_nodes = 10000;
+    opt.min_dt = 5e-3;
+    opt.max_nodes = 1000;
     opt.unit_normals = false;
 
     std::vector<Eigen::Vector2d> verts;

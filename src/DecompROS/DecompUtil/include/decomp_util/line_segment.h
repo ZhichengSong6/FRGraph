@@ -45,11 +45,7 @@ class LineSegment : public DecompBase<Dim> {
 
       add_local_bbox_aniso(this->polyhedron_);
 // std::cout << "Aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
-      // Similar 2D normals/offsets do not imply redundant QP constraints.
-      // Keep the original 2D region; retain the existing 3D behavior.
-      if (Dim != 2) {
-        prune_near_duplicate_hyperplanes(this->polyhedron_, p1_, 5.0, 1e-2);
-      }
+      prune_near_duplicate_hyperplanes(this->polyhedron_, p1_, 5.0, 1e-2);
 // std::cout << "After pruning near-duplicate hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
       remove_redundant_hyperplanes(this->polyhedron_);
 // std::cout << "After removing redundant hyperplanes, aniso full polyhedron has " << this->polyhedron_.vs_.size() << " faces." << std::endl;
@@ -594,9 +590,9 @@ class LineSegment : public DecompBase<Dim> {
         Vec2f A = A_raw / nrm;
         double b0 = lc.b()(0) / nrm;
 
-        // Section III-B intersects the separating planes returned by the QP.
-        // Keep their offsets; a subsequent inward shift is a different region.
-        const double b = b0;
+        const double eps_robot = 1e-4;
+        const double eps_obs   = 1e-4;
+        double b = tighten_b(A, b0, pw, obs_remain, eps_robot, eps_obs, 0.01);
 
         Hyperplane2D v(Vec2f::Zero(), Vec2f::Zero());
         v.n_ = A;
